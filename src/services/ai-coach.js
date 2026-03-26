@@ -1,56 +1,73 @@
 /**
- * AI Coach Service (PLANNED — Phase 2)
- * 
- * This module will connect to the Claude API to provide
- * "skeptical, elite-level" coaching interpretations.
- * 
- * Design principle: "Zero-Inference Prompting"
- * ─────────────────────────────────────────────
- * The LLM does NOT analyze raw data. Instead, analytics.js
- * pre-computes all metrics and trends into a structured JSON
- * "coach context" object. The LLM then INTERPRETS these
- * pre-calculated findings.
- * 
- * This ensures:
- * 1. The AI cannot hallucinate data patterns
- * 2. All numerical analysis is deterministic and auditable
- * 3. The AI adds coaching knowledge, not statistical inference
- * 
- * Usage (future):
- *   import aiCoach from './ai-coach';
- *   aiCoach.configure(userApiKey);
- *   const advice = await aiCoach.interpret(coachContext);
+ * AI Coach Service — APEX
+ *
+ * "Zero-Inference" principle: analytics.js pre-computes all metrics.
+ * APEX interprets pre-calculated trends, never analyzes raw data.
+ *
+ * The service is stateless — conversation history is owned by the
+ * CoachChat component and passed in on each call.
  */
 
-const SYSTEM_PROMPT = `You are a skeptical, elite-level cycling coach. Your athlete races at category A1/open level in France, with an FTP around 295W at 77kg (3.83 W/kg).
+const MODEL = 'claude-sonnet-4-20250514';
+const MAX_HISTORY_MESSAGES = 30; // keep context window manageable
 
-Your coaching priorities:
-1. Aerobic efficiency and glycogen sparing above all else
-2. If Decoupling (Pwr:HR) exceeds 5% on an endurance ride, be CRITICAL and prescribe more Z2
-3. Running volume is only relevant if it impacts cycling recovery
-4. Never congratulate mediocre metrics — be honest about what needs work
-5. Track Efficiency Factor trends as primary indicator of aerobic fitness progression
+const BASE_SYSTEM_PROMPT = `You are APEX — an elite AI training coach embedded in Coach Center. Hardcore, direct, zero fluff.
 
-You will receive a JSON object containing pre-computed metrics. These numbers are VERIFIED — trust them.
-Your job is to INTERPRET the trends and provide actionable coaching recommendations.
+COACHING RULES:
+1. Pre-computed metrics are VERIFIED. Trust them. Never question the numbers.
+2. TSB < -25: prescribe recovery only. No quality work.
+3. EF declining week-over-week: prioritize Z2 volume, reduce intensity.
+4. Decoupling > 5% on endurance rides: prescribe more easy volume.
+5. Compliance < 90%: call it out without mercy.
+6. Reference specific numbers in every response. Vague advice is useless.
+7. Recovery metrics (RHR, sleep) are as important as training load.
 
-Format your response as:
-1. FORM ASSESSMENT (2-3 sentences on current CTL/ATL/TSB state)
-2. KEY CONCERN (the single most important issue right now)
-3. PRESCRIPTION (specific workout or adjustment for the next 3-5 days)
-4. MONITORING (what metric to watch this week)
+RESPONSE FORMAT:
+- Short, punchy sentences. Max 4 sentences per point.
+- For assessments use sections: FORM | CONCERN | PRESCRIPTION | WATCH
+- For training plans: list each day with zone, duration, and specific targets (watts or pace, HR cap)
+- End EVERY response with: WATCH: [the single most important metric this week]
+- No pleasantries. No "great question". Data + action only.
+- Gaming refs ("grind this block", "unlock the next level") are allowed but sparingly.`;
 
-Be concise. Be direct. No pleasantries.`;
+function buildSystemPrompt(athleteProfile) {
+  let prompt = BASE_SYSTEM_PROMPT;
+
+  if (athleteProfile) {
+    const weaknesses = Array.isArray(athleteProfile.weaknesses)
+      ? athleteProfile.weaknesses.join(', ')
+      : athleteProfile.weaknesses || 'not specified';
+
+    prompt += `\n\n## Athlete Profile
+- Primary sport: ${athleteProfile.primarySport || 'not specified'}
+- Season goal: ${athleteProfile.seasonGoal || 'not specified'}
+- Next target event: ${athleteProfile.eventTimeline || 'not specified'}
+- Weekly training capacity: ${athleteProfile.weeklyHours || 'not specified'}
+- Self-identified weaknesses: ${weaknesses}
+- Training approach: ${athleteProfile.trainingApproach || 'not specified'}
+- Injury history / limiters: ${athleteProfile.injuryHistory || 'none reported'}
+- Preferred coach style: ${athleteProfile.coachStyle || 'direct'}
+
+Use this profile to personalize every response. Reference their weaknesses and goals.`;
+  }
+
+  return prompt;
+}
+
+function buildContextBlock(coachContext) {
+  if (!coachContext) return null;
+  return `[TRAINING DATA SNAPSHOT — ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}]
+
+${JSON.stringify(coachContext, null, 2)}`;
+}
 
 class AICoachService {
   constructor() {
     this.apiKey = null;
-    this.conversationHistory = [];
-    this.model = 'claude-sonnet-4-20250514';
   }
 
   configure(apiKey) {
-    this.apiKey = apiKey;
+    this.apiKey = apiKey || null;
   }
 
   isConfigured() {
@@ -58,79 +75,97 @@ class AICoachService {
   }
 
   /**
-   * Send a pre-computed coach context to Claude for interpretation.
-   * 
-   * @param {Object} coachContext - Output of analytics.buildCoachContext()
-   * @param {string} userMessage - Optional follow-up question from athlete
-   * @returns {Promise<string>} - Coach's response
+   * Send a message to APEX.
+   *
+   * @param {string} userMessage - The user's message
+   * @param {Object|null} coachContext - Current training data (injected on first message)
+   * @param {Array} conversationHistory - Prior messages [{role, content}]
+   * @param {Object|null} athleteProfile - Onboarding profile
+   * @returns {Promise<string>} APEX's response
    */
-  async interpret(coachContext, userMessage = null) {
+  async chat(userMessage, coachContext, conversationHistory = [], athleteProfile = null) {
     if (!this.apiKey) {
-      throw new Error('Claude API key not configured. Set it in Settings.');
+      throw new Error('Claude API key not configured. Add it in Settings.');
     }
 
-    const messages = [
-      ...this.conversationHistory,
-    ];
+    const systemPrompt = buildSystemPrompt(athleteProfile);
 
-    // First message: structured context
-    if (messages.length === 0) {
-      messages.push({
+    // Build the messages array for the API call
+    const apiMessages = [];
+
+    // Inject context as first user/assistant pair if this is a fresh conversation
+    const isFirstMessage = conversationHistory.length === 0;
+    if (isFirstMessage && coachContext) {
+      const contextBlock = buildContextBlock(coachContext);
+      apiMessages.push({
         role: 'user',
-        content: `Here is my current training data:\n\n${JSON.stringify(coachContext, null, 2)}\n\nAnalyze my current form and give me your coaching assessment.`,
+        content: contextBlock,
+      });
+      apiMessages.push({
+        role: 'assistant',
+        content: 'DATA LOADED. Ready.',
       });
     }
 
-    // Follow-up question
-    if (userMessage) {
-      messages.push({
-        role: 'user',
-        content: userMessage,
-      });
+    // Append trimmed conversation history
+    const trimmedHistory = conversationHistory.slice(-MAX_HISTORY_MESSAGES);
+    apiMessages.push(...trimmedHistory.map(m => ({ role: m.role, content: m.content })));
+
+    // Append the new user message
+    apiMessages.push({ role: 'user', content: userMessage });
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: apiMessages,
+      }),
+    });
+
+    if (!response.ok) {
+      let errMsg = `API error ${response.status}`;
+      try {
+        const errBody = await response.json();
+        errMsg = errBody?.error?.message || errMsg;
+      } catch (_) {}
+      throw new Error(errMsg);
     }
 
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: this.model,
-          max_tokens: 1024,
-          system: SYSTEM_PROMPT,
-          messages,
-        }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Claude API error ${response.status}: ${errText}`);
-      }
-
-      const data = await response.json();
-      const assistantMessage = data.content
-        .filter(block => block.type === 'text')
-        .map(block => block.text)
-        .join('\n');
-
-      // Maintain conversation history for follow-ups
-      this.conversationHistory = [
-        ...messages,
-        { role: 'assistant', content: assistantMessage },
-      ];
-
-      return assistantMessage;
-    } catch (err) {
-      throw new Error(`Coach AI error: ${err.message}`);
-    }
+    const data = await response.json();
+    return data.content
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join('\n');
   }
 
-  clearHistory() {
-    this.conversationHistory = [];
+  // ─── Quick-action message builders ──────────────────────────
+
+  static formCheckMessage(coachContext) {
+    const ctx = buildContextBlock(coachContext);
+    return `FORM CHECK REQUEST\n\n${ctx}\n\nGive me your full form assessment. FORM | CONCERN | PRESCRIPTION | WATCH.`;
+  }
+
+  static todayWorkoutMessage(coachContext) {
+    const ctx = buildContextBlock(coachContext);
+    return `TODAY'S WORKOUT REQUEST\n\n${ctx}\n\nWhat specific workout should I do today? Give exact targets: zone, duration, watts/pace, HR cap. No options — one prescription.`;
+  }
+
+  static buildWeekMessage(coachContext) {
+    const ctx = buildContextBlock(coachContext);
+    return `WEEKLY PLAN REQUEST\n\n${ctx}\n\nBuild me a full 7-day training plan. List each day: workout type, zone, duration, specific targets. Include at least one rest/recovery day. Be specific.`;
+  }
+
+  static planReviewMessage(coachContext) {
+    const ctx = buildContextBlock(coachContext);
+    return `PLAN REVIEW REQUEST\n\n${ctx}\n\nReview my last 4 weeks of training. What patterns concern you? What am I doing wrong? What should I change immediately?`;
   }
 }
 

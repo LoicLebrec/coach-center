@@ -14,6 +14,7 @@ const credentialsStore = localforage.createInstance({ name: 'coach-center', stor
 const dataStore = localforage.createInstance({ name: 'coach-center', storeName: 'cached-data' });
 const notesStore = localforage.createInstance({ name: 'coach-center', storeName: 'coach-notes' });
 const prefsStore = localforage.createInstance({ name: 'coach-center', storeName: 'preferences' });
+const coachStore = localforage.createInstance({ name: 'coach-center', storeName: 'coach' });
 
 const persistence = {
   // ─── Credentials ──────────────────────────────────────────
@@ -90,6 +91,40 @@ const persistence = {
 
   async getAthleteContext() {
     return prefsStore.getItem('athlete-context');
+  },
+
+  // ─── Claude API Key ────────────────────────────────────────
+  async saveClaudeApiKey(key) {
+    return credentialsStore.setItem('claude', key);
+  },
+
+  async getClaudeApiKey() {
+    return credentialsStore.getItem('claude');
+  },
+
+  // ─── Coach Conversation History ────────────────────────────
+  async saveConversationHistory(messages) {
+    return coachStore.setItem('conversation-history', messages);
+  },
+
+  async getConversationHistory() {
+    return (await coachStore.getItem('conversation-history')) || [];
+  },
+
+  async clearConversationHistory() {
+    return coachStore.removeItem('conversation-history');
+  },
+
+  // ─── Athlete Onboarding Profile ────────────────────────────
+  async saveAthleteProfile(profile) {
+    return coachStore.setItem('athlete-profile', {
+      ...profile,
+      savedAt: new Date().toISOString(),
+    });
+  },
+
+  async getAthleteProfile() {
+    return coachStore.getItem('athlete-profile');
   },
 };
 

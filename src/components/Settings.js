@@ -12,6 +12,9 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
   const [stravaClientId, setStravaClientId] = useState('');
   const [stravaClientSecret, setStravaClientSecret] = useState('');
 
+  // Claude AI
+  const [claudeApiKey, setClaudeApiKey] = useState('');
+
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
 
@@ -28,6 +31,8 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
         setStravaClientId(stravaCreds.clientId || '');
         setStravaClientSecret(stravaCreds.clientSecret || '');
       }
+      const claudeKey = await persistence.getClaudeApiKey();
+      if (claudeKey) setClaudeApiKey(claudeKey);
     })();
   }, []);
 
@@ -60,6 +65,23 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
     }
     await onSave('strava', { clientId: stravaClientId.trim(), clientSecret: stravaClientSecret.trim() });
     showMessage('Strava credentials saved. Click "Connect Strava" to authorize.');
+  };
+
+  const handleSaveClaude = async () => {
+    if (!claudeApiKey.trim()) {
+      showMessage('Enter a valid Anthropic API key.', true);
+      return;
+    }
+    await persistence.saveClaudeApiKey(claudeApiKey.trim());
+    onSave('claude', { apiKey: claudeApiKey.trim() });
+    showMessage('Claude API key saved. APEX is ready.');
+  };
+
+  const handleRemoveClaude = async () => {
+    await persistence.saveClaudeApiKey('');
+    setClaudeApiKey('');
+    onSave('claude', { apiKey: null });
+    showMessage('Claude API key removed.');
   };
 
   const handleStravaAuth = () => {
@@ -223,6 +245,51 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
         </div>
       </div>
 
+      {/* ═══ Claude AI Coach ═══ */}
+      <div className="settings-section">
+        <div className="settings-section-title">
+          Claude AI Coach (APEX)
+          {claudeApiKey && <span style={{ color: 'var(--accent-green)', fontSize: 12, marginLeft: 8 }}>● Configured</span>}
+        </div>
+        <div className="settings-section-desc">
+          APEX uses the Anthropic Claude API directly from your browser. Your key is stored
+          only in this browser's local storage and is never sent to any server other than Anthropic's.
+        </div>
+
+        <div className="info-banner">
+          <strong>Setup:</strong><br />
+          1. Go to <code>console.anthropic.com</code> → API Keys → Create Key<br />
+          2. Paste your key below (starts with <code>sk-ant-</code>)<br />
+          3. Usage is billed to your Anthropic account at standard rates<br />
+          <br />
+          <strong>Privacy note:</strong> your API key is visible in browser DevTools network traffic.
+          Do not use this on a shared or public device.
+        </div>
+
+        <div className="form-field">
+          <label className="form-label">Anthropic API Key</label>
+          <input
+            className="form-input"
+            type="password"
+            placeholder="sk-ant-..."
+            value={claudeApiKey}
+            onChange={e => setClaudeApiKey(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSaveClaude()}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" onClick={handleSaveClaude}>
+            {claudeApiKey ? 'Update Key' : 'Save Key'}
+          </button>
+          {claudeApiKey && (
+            <button className="btn btn-danger" onClick={handleRemoveClaude}>
+              Remove Key
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* ═══ Data Management ═══ */}
       <div className="settings-section">
         <div className="settings-section-title">Data Management</div>
@@ -264,7 +331,7 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
           &nbsp;&nbsp;├── garmin.js &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{'//'} Garmin bridge + FIT parser (future)<br />
           &nbsp;&nbsp;├── analytics.js &nbsp;&nbsp;{'//'} Pre-computed metrics engine<br />
           &nbsp;&nbsp;├── persistence.js {'//'} Local storage / IndexedDB<br />
-          &nbsp;&nbsp;└── <span style={{ color: 'var(--text-3)' }}>ai-coach.js</span> &nbsp;&nbsp;&nbsp;&nbsp;{'//'} <span style={{ color: 'var(--text-3)' }}>Claude AI (planned)</span><br />
+          &nbsp;&nbsp;└── ai-coach.js &nbsp;&nbsp;&nbsp;&nbsp;{'//'} APEX Claude AI coach<br />
           <br />
           <span style={{ color: 'var(--accent-cyan)' }}>src/components/</span><br />
           &nbsp;&nbsp;├── Dashboard.js &nbsp;&nbsp;{'//'} Main overview<br />
@@ -272,7 +339,7 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
           &nbsp;&nbsp;├── Activities.js &nbsp;{'//'} Activity list + sort/filter<br />
           &nbsp;&nbsp;├── WeeklyLoad.js &nbsp;{'//'} Weekly volume chart<br />
           &nbsp;&nbsp;├── Settings.js &nbsp;&nbsp;&nbsp;{'//'} Connection management<br />
-          &nbsp;&nbsp;└── <span style={{ color: 'var(--text-3)' }}>CoachChat.js</span> &nbsp;&nbsp;{'//'} <span style={{ color: 'var(--text-3)' }}>AI coach interface (planned)</span>
+          &nbsp;&nbsp;└── CoachChat.js &nbsp;&nbsp;{'//'} APEX AI coach interface
         </div>
       </div>
     </div>

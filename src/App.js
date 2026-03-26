@@ -2,15 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { intervalsService } from './services/intervals';
 import { stravaService } from './services/strava';
 import { garminService } from './services/garmin';
+import { aiCoachService } from './services/ai-coach';
 import persistence from './services/persistence';
 import Dashboard from './components/Dashboard';
 import Activities from './components/Activities';
 import PMCChart from './components/PMCChart';
 import Settings from './components/Settings';
 import WeeklyLoad from './components/WeeklyLoad';
+import CoachChat from './components/CoachChat';
 import './styles/app.css';
 
 const VIEWS = {
+  COACH: 'coach',
   DASHBOARD: 'dashboard',
   PMC: 'pmc',
   ACTIVITIES: 'activities',
@@ -19,7 +22,7 @@ const VIEWS = {
 };
 
 export default function App() {
-  const [view, setView] = useState(VIEWS.DASHBOARD);
+  const [view, setView] = useState(VIEWS.COACH);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -28,6 +31,9 @@ export default function App() {
   const [activities, setActivities] = useState([]);
   const [athlete, setAthlete] = useState(null);
   const [events, setEvents] = useState([]);
+
+  // Claude API key
+  const [claudeApiKey, setClaudeApiKey] = useState(null);
 
   // Connection state
   const [connections, setConnections] = useState({
@@ -61,6 +67,12 @@ export default function App() {
 
         garminService.configure('intervals');
         setConnections(c => ({ ...c, garmin: intervalsService.isConfigured() }));
+
+        const claudeKey = await persistence.getClaudeApiKey();
+        if (claudeKey) {
+          aiCoachService.configure(claudeKey);
+          setClaudeApiKey(claudeKey);
+        }
 
       } catch (err) {
         console.error('Failed to load credentials:', err);
@@ -157,6 +169,9 @@ export default function App() {
     } else if (provider === 'strava') {
       stravaService.configure(creds.clientId, creds.clientSecret);
       await persistence.saveCredentials('strava', creds);
+    } else if (provider === 'claude') {
+      aiCoachService.configure(creds.apiKey || null);
+      setClaudeApiKey(creds.apiKey || null);
     }
   };
 
@@ -192,6 +207,17 @@ export default function App() {
     }
 
     switch (view) {
+      case VIEWS.COACH:
+        return (
+          <CoachChat
+            wellness={wellness}
+            activities={activities}
+            athlete={athlete}
+            events={events}
+            claudeApiKey={claudeApiKey}
+            onNeedApiKey={() => setView(VIEWS.SETTINGS)}
+          />
+        );
       case VIEWS.DASHBOARD:
         return <Dashboard wellness={wellness} activities={activities} athlete={athlete} loading={loading} error={error} />;
       case VIEWS.PMC:
@@ -219,9 +245,14 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-logo">Coach<span>Center</span></div>
-          <div className="sidebar-version">v0.1.0 — data + charts</div>
+          <div className="sidebar-version">v0.2.0 — APEX coach</div>
         </div>
         <nav className="sidebar-nav">
+          <div className="nav-section-label">Coach</div>
+          <button className={`nav-item${view === VIEWS.COACH ? ' active coach-nav-active' : ''}`} onClick={() => setView(VIEWS.COACH)}>
+            <span className="nav-icon">⚡</span><span>APEX Coach</span>
+          </button>
+
           <div className="nav-section-label">Analysis</div>
           <button className={`nav-item ${view === VIEWS.DASHBOARD ? 'active' : ''}`} onClick={() => setView(VIEWS.DASHBOARD)}>
             <span className="nav-icon">◈</span><span>Dashboard</span>
@@ -257,8 +288,8 @@ export default function App() {
         </nav>
       </aside>
 
-      <main className="main-content">
-        {error && <div className="error-banner">⚠ {error}</div>}
+      <main className={`main-content${view === VIEWS.COACH ? ' coach-active' : ''}`}>
+        {error && view !== VIEWS.COACH && <div className="error-banner">⚠ {error}</div>}
         {renderView()}
       </main>
     </div>
