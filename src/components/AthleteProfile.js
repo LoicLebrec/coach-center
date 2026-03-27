@@ -110,7 +110,7 @@ function buildBrutalReport({ currentFtp, tsb, targetFtp, targetDate, coachStyle 
     };
 }
 
-export default function AthleteProfile({ wellness = [], athlete = null, events = [], activities = [] }) {
+export default function AthleteProfile({ wellness = [], athlete = null, events = [], activities = [], loading = false }) {
     const [profile, setProfile] = useState({
         riderName: '',
         primarySport: 'Road Cycling',
@@ -262,18 +262,165 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
         setSaveMsg('Profile saved.');
     };
 
+    // Get upcoming races for racing focus
+    const upcomingRaces = useMemo(() => {
+        const now = new Date();
+        const raceLike = (events || []).filter(e => {
+            const txt = `${e?.name || e?.title || ''} ${e?.type || ''} ${e?.event_type || ''}`.toLowerCase();
+            return /race|crit|criterium|gp|road race|event/.test(txt);
+        });
+
+        return raceLike
+            .filter(e => {
+                const raw = e?.start_date_local || e?.start_date || e?.date || e?.event_date;
+                if (!raw) return false;
+                const d = new Date(String(raw).slice(0, 10));
+                return !Number.isNaN(d.getTime()) && d >= new Date(new Date().toDateString());
+            })
+            .sort((a, b) => {
+                const da = new Date(String(a.start_date_local || a.start_date || a.date || a.event_date).slice(0, 10)).getTime();
+                const db = new Date(String(b.start_date_local || b.start_date || b.date || b.event_date).slice(0, 10)).getTime();
+                return da - db;
+            })
+            .slice(0, 6);
+    }, [events]);
+
+    const nextRace = upcomingRaces[0] || null;
+    const nextRaceDate = nextRace
+        ? new Date(String(nextRace.start_date_local || nextRace.start_date || nextRace.date || nextRace.event_date).slice(0, 10))
+        : null;
+    const daysToNextRace = nextRaceDate
+        ? Math.ceil((nextRaceDate.getTime() - new Date().getTime()) / 86400000)
+        : null;
+
+    // Calculate next 4 weekends and which races fall on them
+    const next4Weekends = useMemo(() => {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        // Find the next Saturday (day 6)
+        const daysUntilSaturday = (6 - today.getDay() + 7) % 7 || 7;
+        const firstSaturday = new Date(today);
+        firstSaturday.setDate(today.getDate() + daysUntilSaturday);
+
+        const weekends = [];
+        for (let i = 0; i < 4; i++) {
+            const saturday = new Date(firstSaturday);
+            saturday.setDate(firstSaturday.getDate() + i * 7);
+            const sunday = new Date(saturday);
+            sunday.setDate(saturday.getDate() + 1);
+
+            const satStr = saturday.toISOString().split('T')[0];
+            const sunStr = sunday.toISOString().split('T')[0];
+
+            // Find races on this weekend
+            const racesThisWeekend = upcomingRaces.filter(race => {
+                const raw = race?.start_date_local || race?.start_date || race?.date || race?.event_date;
+                const raceDate = String(raw).slice(0, 10);
+                return raceDate === satStr || raceDate === sunStr;
+            });
+
+            weekends.push({
+                weekNum: i + 1,
+                saturday,
+                saturday_str: saturday.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }),
+                races: racesThisWeekend,
+                raceCount: racesThisWeekend.length,
+            });
+        }
+        return weekends;
+    }, [upcomingRaces]);
+
     return (
         <div>
             <div className="page-header">
                 <div className="page-title">Athlete Profile</div>
-                <div className="page-subtitle">FTP, target event tracking, and brutally honest readiness feedback</div>
+                <div className="page-subtitle">{profile.riderName || 'Racer'} — Power targets, racing calendar, and race-specific readiness</div>
+            </div>
+
+            {/* ─── UPCOMING RACES (Race-Focused) ─── */}
+            {upcomingRaces.length > 0 && (
+                <div className="card" style={{ marginBottom: 16 }}>
+                    <div className="card-header">
+                        <span className="card-title">🏁 Upcoming Races ({upcomingRaces.length})</span>
+                        <span className="card-badge">Next {daysToNextRace != null ? `${daysToNextRace}d` : '—'}</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                        {upcomingRaces.map((race, idx) => {
+                            const raceDate = new Date(String(race.start_date_local || race.start_date || race.date || race.event_date).slice(0, 10));
+                            const daysUntilRace = Math.ceil((raceDate.getTime() - new Date().getTime()) / 86400000);
+                            const isNextRace = idx === 0;
+                            return (
+                                <div
+                                    key={idx}
+                                    style={{
+                                        padding: 12,
+                                        borderRadius: 6,
+                                        border: `1px solid ${isNextRace ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                                        background: isNextRace ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
+                                    }}
+                                >
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: isNextRace ? 'var(--accent-cyan)' : 'var(--text-2)' }}>
+                                        {isNextRace ? '⭐ NEXT' : `+${daysUntilRace}d`}
+                                    </div>
+                                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4, color: 'var(--text-1)' }}>
+                                        {race.name || race.title || 'Race'}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                                        {raceDate.toLocaleDateString('en-GB', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+
+
+            {/* ─── NEXT 4 WEEKENDS ─── */}
+            <div className="card" style={{ marginBottom: 16 }}>
+                <div className="card-header">
+                    <span className="card-title">📅 Next 4 Weekends</span>
+                    <span className="card-badge">{next4Weekends.reduce((sum, w) => sum + w.raceCount, 0)} races</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+                    {next4Weekends.map((weekend) => (
+                        <div
+                            key={weekend.weekNum}
+                            style={{
+                                padding: 12,
+                                borderRadius: 6,
+                                border: `1px solid ${weekend.raceCount > 0 ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                                background: weekend.raceCount > 0 ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
+                            }}
+                        >
+                            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', marginBottom: 8 }}>
+                                WEEK {weekend.weekNum} — {weekend.saturday_str}
+                            </div>
+                            {weekend.raceCount > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {weekend.races.map((race, idx) => (
+                                        <div key={idx} style={{ fontSize: 11, color: 'var(--accent-cyan)', fontWeight: 500 }}>
+                                            🏁 {race.name || race.title || 'Race'}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic' }}>
+                                    No races
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
             </div>
 
             <div className="calendar-layout" style={{ gridTemplateColumns: '1.2fr 1fr' }}>
                 <div className="card" style={{ marginBottom: 0 }}>
                     <div className="card-header">
                         <span className="card-title">Rider Setup</span>
-                        <span className="card-badge">Persistent profile</span>
+                        <span className="card-badge">Profile</span>
                     </div>
 
                     <div className="calendar-form-row">
@@ -336,10 +483,12 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                     </div>
 
                     {!hasWellnessData && (
-                        <div className="info-banner" style={{ marginBottom: 12, backgroundColor: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.3)' }}>
-                            <strong>Syncing training data...</strong>
+                        <div className="info-banner" style={{ marginBottom: 12, backgroundColor: loading ? 'rgba(59,130,246,0.1)' : 'rgba(249,115,22,0.1)', borderColor: loading ? 'rgba(59,130,246,0.3)' : 'rgba(249,115,22,0.3)' }}>
+                            <strong>{loading ? '⏳ Fetching training metrics...' : '⚠ Training data not yet loaded'}</strong>
                             <div style={{ marginTop: 6, fontSize: 12 }}>
-                                Waiting for Intervals.icu sync. If this persists, check your connection or visit the Dashboard to manually trigger a refresh. Data includes CTL/ATL (fitness/fatigue), TSB (form), and Resting HR.
+                                {loading
+                                    ? 'Syncing with Intervals.icu. CTL/ATL (fitness/fatigue), TSB (form), and RHR will appear here shortly.'
+                                    : 'CTL/ATL/TSB metrics require Intervals.icu connection. Check Settings → Intervals.icu or navigate to Dashboard to trigger sync.'}
                             </div>
                         </div>
                     )}

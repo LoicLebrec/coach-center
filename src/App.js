@@ -687,7 +687,7 @@ export default function App() {
           </div>
         );
       case VIEWS.ATHLETE_PROFILE:
-        return <AthleteProfile wellness={wellness} athlete={athlete} events={events} activities={activities} />;
+        return <AthleteProfile wellness={wellness} athlete={athlete} events={events} activities={activities} loading={loading} />;
       case VIEWS.GPX_BUILDER:
         return (
           <div>

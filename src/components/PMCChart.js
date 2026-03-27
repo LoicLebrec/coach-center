@@ -124,6 +124,19 @@ export default function PMCChart({ wellness, loading }) {
     );
   }
 
+  if (data.length === 0) {
+    return (
+      <div className="page-header">
+        <div className="info-banner" style={{ marginTop: 16, backgroundColor: 'rgba(249,115,22,0.1)', borderColor: 'rgba(249,115,22,0.3)' }}>
+          <strong>⚠ No PMC data available</strong>
+          <div style={{ marginTop: 6, fontSize: 12 }}>
+            PMC requires Intervals.icu data sync. Visit Settings to connect Intervals.icu, then return to Dashboard to trigger a sync. CTL, ATL, and TSB will appear once training data is loaded.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
     return (
