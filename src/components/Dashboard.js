@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Cell } from 'recharts';
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Cell } from 'recharts';
 import IntervalsService from '../services/intervals';
 import analytics from '../services/analytics';
 
@@ -104,6 +104,31 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       tsb: w.icu_ctl && w.icu_atl ? Math.round((w.icu_ctl - w.icu_atl) * 10) / 10 : null,
     }));
   }, [wellness]);
+
+  const evolutionData = useMemo(() => {
+    const efByDay = new Map();
+    (activities || []).forEach(a => {
+      const day = String(a.start_date_local || '').slice(0, 10);
+      if (!day) return;
+      const watts = Number(a.icu_average_watts || a.average_watts || 0);
+      const hr = Number(a.average_heartrate || 0);
+      if (watts > 0 && hr > 0) {
+        efByDay.set(day, Number((watts / hr).toFixed(3)));
+      }
+    });
+
+    return (wellness || [])
+      .slice(-60)
+      .map(w => ({
+        date: w.id,
+        ctl: w.icu_ctl != null ? Number(w.icu_ctl.toFixed(1)) : null,
+        atl: w.icu_atl != null ? Number(w.icu_atl.toFixed(1)) : null,
+        tsb: (w.icu_ctl != null && w.icu_atl != null) ? Number((w.icu_ctl - w.icu_atl).toFixed(1)) : null,
+        rhr: w.restingHR != null ? Number(w.restingHR) : null,
+        weight: w.weight != null ? Number(Number(w.weight).toFixed(1)) : null,
+        ef: efByDay.get(w.id) ?? null,
+      }));
+  }, [wellness, activities]);
 
   // Weekly TSS — last 8 weeks
   const weeklyTSS = useMemo(() => {
@@ -373,6 +398,72 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
           </ResponsiveContainer>
         </div>
       </div>
+
+      {evolutionData.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Evolution — Load & Form (60d)</span>
+            <span className="card-badge">Trend</span>
+          </div>
+          <div className="chart-container" style={{ height: 220 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={evolutionData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="ctlFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--ctl-color)" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="var(--ctl-color)" stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="atlFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--atl-color)" stopOpacity={0.18} />
+                    <stop offset="95%" stopColor="var(--atl-color)" stopOpacity={0.01} />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
+                  tickLine={false}
+                  axisLine={{ stroke: 'var(--border)' }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }} tickLine={false} axisLine={false} width={40} />
+                <Tooltip content={<CustomTooltip />} />
+                <ReferenceLine y={0} stroke="var(--border)" strokeDasharray="3 3" />
+                <Area type="monotone" dataKey="ctl" name="CTL" stroke="var(--ctl-color)" fill="url(#ctlFill)" strokeWidth={2} />
+                <Area type="monotone" dataKey="atl" name="ATL" stroke="var(--atl-color)" fill="url(#atlFill)" strokeWidth={1.5} />
+                <Line type="monotone" dataKey="tsb" name="TSB" stroke="var(--tsb-color)" strokeWidth={1.5} dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {evolutionData.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Evolution — Physiology (60d)</span>
+            <span className="card-badge">RHR / EF / Weight</span>
+          </div>
+          <div className="chart-container" style={{ height: 220 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={evolutionData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
+                  tickLine={false}
+                  axisLine={{ stroke: 'var(--border)' }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis yAxisId="left" tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }} tickLine={false} axisLine={false} width={40} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }} tickLine={false} axisLine={false} width={40} />
+                <Tooltip content={<CustomTooltip />} />
+                <Line yAxisId="left" type="monotone" dataKey="rhr" name="Resting HR" stroke="#f97316" strokeWidth={1.8} dot={false} />
+                <Line yAxisId="left" type="monotone" dataKey="weight" name="Weight" stroke="#22c55e" strokeWidth={1.6} dot={false} />
+                <Line yAxisId="right" type="monotone" dataKey="ef" name="EF" stroke="#38bdf8" strokeWidth={1.8} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* ─── Card 5: EF Assessment ─── */}
       {efTrend && (

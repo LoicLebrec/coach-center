@@ -313,13 +313,6 @@ export default function Calendar({
             .sort((a, b) => a.date - b.date);
     }, [allEvents]);
 
-    const futureEvents = useMemo(() => {
-        const today = startOfDay(new Date());
-        return normalizedAllEvents
-            .filter(e => e.date >= today)
-            .sort((a, b) => a.date - b.date);
-    }, [normalizedAllEvents]);
-
     const monthStart = startOfMonth(cursor);
     const monthEnd = endOfMonth(cursor);
     const weekStart = startOfWeek(cursor, { weekStartsOn: 1 });
@@ -370,7 +363,7 @@ export default function Calendar({
         const arr = [];
         for (let i = 0; i < 12; i++) {
             const monthDate = new Date(yearStart.getFullYear(), i, 1);
-            const monthEvents = futureEvents.filter(e => isSameMonth(e.date, monthDate));
+            const monthEvents = normalizedAllEvents.filter(e => isSameMonth(e.date, monthDate));
             arr.push({
                 monthDate,
                 total: monthEvents.length,
@@ -380,9 +373,13 @@ export default function Calendar({
             });
         }
         return arr;
-    }, [futureEvents, yearStart]);
+    }, [normalizedAllEvents, yearStart]);
 
-    const upcoming = futureEvents.slice(0, 30);
+    const timelineEvents = useMemo(() => {
+        return [...normalizedAllEvents]
+            .sort((a, b) => b.date - a.date)
+            .slice(0, 60);
+    }, [normalizedAllEvents]);
 
     const periodLabel = useMemo(() => {
         if (viewMode === 'week') {
@@ -760,7 +757,7 @@ export default function Calendar({
                     <div className="card" style={{ marginBottom: 0 }}>
                         <div className="card-header">
                             <span className="card-title">{periodLabel}</span>
-                            <span className="card-badge">{futureEvents.length} future events</span>
+                            <span className="card-badge">{normalizedAllEvents.length} total events</span>
                         </div>
 
                         {viewMode !== 'year' && (
@@ -884,9 +881,9 @@ export default function Calendar({
 
                 <div className="card" style={{ marginBottom: 0 }}>
                     <div className="card-header">
-                        <span className="card-title">Upcoming</span>
+                        <span className="card-title">Timeline (Past + Future)</span>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <span className="card-badge">Next {upcoming.length}</span>
+                            <span className="card-badge">{timelineEvents.length} shown</span>
                             <button className="planner-toggle" onClick={() => toggleSection('upcoming')}>
                                 <span>{collapsed.upcoming ? 'Show' : 'Hide'}</span>
                             </button>
@@ -1050,14 +1047,14 @@ export default function Calendar({
                         </div>
                     )}
 
-                    {!collapsed.upcoming && (loading && upcoming.length === 0 ? (
+                    {!collapsed.upcoming && (loading && timelineEvents.length === 0 ? (
                         <div className="loading-state" style={{ padding: '24px 8px' }}>
                             <div className="loading-spinner" />
                             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>Loading planned events...</span>
                         </div>
-                    ) : upcoming.length === 0 ? (
+                    ) : timelineEvents.length === 0 ? (
                         <div className="info-banner" style={{ marginBottom: 0 }}>
-                            No future events found. Add planned workouts or race objectives in Intervals.icu events.
+                            No events found. Add planned workouts or race objectives in Intervals.icu events.
                             {csvImportSummary?.imported > 0 && (
                                 <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 11 }}>
                                     CSV import succeeded, but imported dates may be in the past relative to today.
@@ -1066,7 +1063,7 @@ export default function Calendar({
                         </div>
                     ) : (
                         <div className="calendar-upcoming-list">
-                            {upcoming.map(event => (
+                            {timelineEvents.map(event => (
                                 <div key={event.id} className="calendar-upcoming-item" onClick={() => setSelectedEvent(event)} style={{ cursor: 'pointer' }}>
                                     <div>
                                         <div className="calendar-upcoming-date">{format(event.date, 'EEE dd MMM yyyy')}</div>
@@ -1074,6 +1071,9 @@ export default function Calendar({
                                         <WorkoutBlocksGraph blocks={event.workoutBlocks} />
                                     </div>
                                     <div className="calendar-upcoming-actions" onClick={e => e.stopPropagation()}>
+                                        <span className={`calendar-kind-badge ${event.date < startOfDay(new Date()) ? 'calendar-kind-objective' : 'calendar-kind-training'}`}>
+                                            {event.date < startOfDay(new Date()) ? 'Past' : 'Upcoming'}
+                                        </span>
                                         <span className={`calendar-kind-badge calendar-kind-${event.kind}`}>{kindLabel(event.kind)}</span>
                                         {eventHasWorkoutData(event) && (
                                             <button className="calendar-fit-btn" onClick={() => downloadEventFit(event)}>

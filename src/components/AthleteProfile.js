@@ -84,7 +84,7 @@ function buildBrutalReport({ currentFtp, tsb, targetFtp, targetDate, coachStyle 
     };
 }
 
-export default function AthleteProfile({ wellness = [], athlete = null, events = [] }) {
+export default function AthleteProfile({ wellness = [], athlete = null, events = [], activities = [] }) {
     const [profile, setProfile] = useState({
         riderName: '',
         primarySport: 'Road Cycling',
@@ -182,14 +182,26 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
             return day === 0 || day === 6;
         });
 
+        const raceLikeActivities = (activities || []).filter(a => {
+            const txt = `${a?.name || ''} ${a?.type || ''}`.toLowerCase();
+            return /race|crit|criterium|road race|event/.test(txt) || /race/i.test(String(a?.type || ''));
+        });
+
+        const recentRaceActivities = raceLikeActivities.filter(a => {
+            const raw = a?.start_date_local || a?.start_date || a?.date;
+            if (!raw) return false;
+            const d = new Date(String(raw).slice(0, 10));
+            return !Number.isNaN(d.getTime()) && d >= fourWeeksAgo && d <= now;
+        });
+
         const weekendHitRate = Math.round((weekendRaces.length / 4) * 100);
         return {
             upcomingCount: upcomingRaces.length,
-            racesLast4w: recentRaces.length,
+            racesLast4w: Math.max(recentRaces.length, recentRaceActivities.length),
             weekendRaces: weekendRaces.length,
             weekendHitRate,
         };
-    }, [events]);
+    }, [events, activities]);
 
     const latest = wellness?.[wellness.length - 1] || null;
     const ctl = latest?.icu_ctl ?? null;
