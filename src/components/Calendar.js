@@ -177,6 +177,30 @@ function parseBlocksColumn(value) {
         });
 }
 
+function parseDurationMinutes(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return 0;
+    const numericOnly = raw.replace(',', '.');
+    if (/^\d+(?:\.\d+)?$/.test(numericOnly)) {
+        return Math.max(0, Math.round(Number(numericOnly)));
+    }
+
+    const range = raw.match(/(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)/);
+    if (range) {
+        const a = Number(range[1]);
+        const b = Number(range[2]);
+        return Math.max(0, Math.round((a + b) / 2));
+    }
+
+    const mins = raw.match(/(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes)\b/i);
+    if (mins) return Math.max(0, Math.round(Number(mins[1])));
+
+    const hours = raw.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/i);
+    if (hours) return Math.max(0, Math.round(Number(hours[1]) * 60));
+
+    return 0;
+}
+
 function normalizeCsvHeader(value) {
     return String(value || '')
         .toLowerCase()
@@ -186,6 +210,12 @@ function normalizeCsvHeader(value) {
 function eventHasWorkoutData(event) {
     const combinedText = `${event?.title || ''}\n${event?.notes || ''}`;
     return (event?.workoutBlocks?.length > 0) || hasWorkoutContent(combinedText);
+}
+
+function looksLikeSessionWorkout(title = '', notes = '') {
+    const haystack = `${title} ${notes}`.toLowerCase();
+    if (/\brest\b|full recovery|no riding|off day/i.test(haystack)) return false;
+    return /(vo2|interval|threshold|tempo|sweet.?spot|endurance|race|ride|run|ftp test|openers|sprint|workout|session|z\d)/i.test(haystack);
 }
 
 const LIBRARY_WORKOUTS = [
@@ -320,6 +350,7 @@ export default function Calendar({
     const [isGenerating, setIsGenerating] = useState(false);
     const [isImportingCsv, setIsImportingCsv] = useState(false);
     const [csvImportSummary, setCsvImportSummary] = useState(null);
+    const [importedSessions, setImportedSessions] = useState([]);
     const [plannerError, setPlannerError] = useState(null);
     const [dragOverDay, setDragOverDay] = useState(null);
 
@@ -593,6 +624,7 @@ export default function Calendar({
 
         setPlannerError(null);
         setCsvImportSummary(null);
+        setImportedSessions([]);
         setIsImportingCsv(true);
 
         try {
@@ -637,6 +669,7 @@ export default function Calendar({
             let imported = 0;
             let detectedWorkouts = 0;
             const importedIds = [];
+            const importedPreview = [];
 
             for (let i = 1; i < rows.length; i++) {
                 const cells = splitCsvLine(rows[i]);
@@ -650,7 +683,7 @@ export default function Calendar({
                 const notesRaw = notesIdx >= 0 ? cells[notesIdx] : '';
                 const descriptionRaw = descriptionIdx >= 0 ? cells[descriptionIdx] : '';
                 const nutritionRaw = nutritionIdx >= 0 ? cells[nutritionIdx] : '';
-                const durationRaw = durationIdx >= 0 ? Number(cells[durationIdx]) : 0;
+                const durationRaw = durationIdx >= 0 ? parseDurationMinutes(cells[durationIdx]) : 0;
                 const zoneRaw = zoneIdx >= 0 ? String(cells[zoneIdx] || '').toUpperCase() : '';
                 const powerRaw = powerIdx >= 0 ? String(cells[powerIdx] || '').trim() : '';
                 const cadenceRaw = cadenceIdx >= 0 ? String(cells[cadenceIdx] || '').trim() : '';
@@ -698,10 +731,20 @@ export default function Calendar({
                 });
 
                 imported += 1;
-                if (eventHasWorkoutData({ title, notes, workoutBlocks })) {
+                const hasWorkout = eventHasWorkoutData({ title, notes, workoutBlocks }) || looksLikeSessionWorkout(title, notes);
+                if (hasWorkout) {
                     detectedWorkouts += 1;
                 }
                 importedIds.push(localId);
+                importedPreview.push({
+                    id: localId,
+                    date: parseISO(`${isoDate}T00:00:00`),
+                    title,
+                    type,
+                    notes,
+                    workoutBlocks,
+                    hasWorkout,
+                });
             }
 
             if (imported === 0) {
@@ -713,6 +756,7 @@ export default function Calendar({
                 imported,
                 detectedWorkouts,
             });
+            setImportedSessions(importedPreview);
         } catch (err) {
             setPlannerError(err.message || 'CSV import failed.');
         } finally {
@@ -972,6 +1016,29 @@ export default function Calendar({
                                     <div>Imported events: {csvImportSummary.imported}</div>
                                     <div>Detected workouts: {csvImportSummary.detectedWorkouts}</div>
                                     <div>Use "Download FIT" on each session card.</div>
+                                </div>
+                            )}
+                            {!!importedSessions.length && (
+                                <div className="calendar-upcoming-list" style={{ marginTop: 10 }}>
+                                    {importedSessions.slice(0, 40).map(session => (
+                                        <div key={session.id} className="calendar-upcoming-item">
+                                            <div>
+                                                <div className="calendar-upcoming-date">{format(session.date, 'EEE dd MMM yyyy')}</div>
+                                                <div className="calendar-upcoming-title">{session.title}</div>
+                                                <WorkoutBlocksGraph blocks={session.workoutBlocks} />
+                                            </div>
+                                            <div className="calendar-upcoming-actions">
+                                                <span className={`calendar-kind-badge ${session.hasWorkout ? 'calendar-kind-training' : 'calendar-kind-objective'}`}>
+                                                    {session.hasWorkout ? 'Workout' : 'No workout'}
+                                                </span>
+                                                {session.hasWorkout && (
+                                                    <button className="calendar-fit-btn" onClick={() => downloadEventFit(session)}>
+                                                        Download FIT
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                             <button className="btn" disabled={isImportingCsv} onClick={() => csvInputRef.current?.click()}>
