@@ -244,6 +244,7 @@ function looksLikeSessionWorkout(title = '', notes = '') {
 export default function Calendar({
     events,
     plannedEvents,
+    activities = [],
     athlete,
     loading,
     onAddPlannedEvent,
@@ -279,6 +280,7 @@ export default function Calendar({
     const [plannerError, setPlannerError] = useState(null);
     const [dragOverDay, setDragOverDay] = useState(null);
     const [selectedEvent, setSelectedEvent] = useState(null);
+    const [selectedActivityDay, setSelectedActivityDay] = useState(null);
 
     // ── Persist preferences to localStorage ───────────────────
     useEffect(() => {
@@ -336,6 +338,74 @@ export default function Calendar({
         });
         return map;
     }, [normalizedAllEvents]);
+
+    // ── Past activities heatmap (strava/intervals activities) ────────────────────
+    const pastActivityColor = useMemo(() => {
+        const colorMap = new Map();
+        if (!activities || activities.length === 0) return colorMap;
+
+        let maxTss = 0;
+        const tssMap = new Map();
+
+        // Use actual activities data directly
+        activities.forEach(activity => {
+            const dateStr = activity.start_date_local || activity.start_date || activity.date;
+            if (!dateStr) return;
+
+            let dateObj;
+            if (typeof dateStr === 'string') {
+                dateObj = dateStr.includes('T') ? parseISO(dateStr) : parseISO(`${dateStr}T00:00:00`);
+            } else {
+                dateObj = new Date(dateStr);
+            }
+
+            if (Number.isNaN(dateObj.getTime())) return;
+
+            const key = format(dateObj, 'yyyy-MM-dd');
+            const tss = activity.icu_training_load || activity.training_load || activity.tss || activity.load || 0;
+            if (tss > 0) {
+                const current = tssMap.get(key) || 0;
+                tssMap.set(key, current + tss);
+                maxTss = Math.max(maxTss, current + tss);
+            }
+        });
+
+        if (maxTss === 0) return colorMap; // No activities with TSS
+
+        // Convert TSS to colors
+        const getColor = (tss) => {
+            if (!tss || tss === 0) return null; // No color for no activity
+            const ratio = Math.min(tss / (maxTss * 0.7), 1);
+
+            if (ratio < 0.2) return 'rgba(198, 228, 139, 0.15)'; // Very light green
+            if (ratio < 0.4) return 'rgba(123, 201, 111, 0.2)'; // Light green
+            if (ratio < 0.6) return 'rgba(35, 154, 59, 0.25)'; // Medium green
+            if (ratio < 0.8) return 'rgba(25, 97, 39, 0.3)'; // Dark green
+            return 'rgba(13, 56, 23, 0.35)'; // Very dark green
+        };
+
+        tssMap.forEach((tss, dateKey) => {
+            colorMap.set(dateKey, { tss, color: getColor(tss) });
+        });
+
+        return colorMap;
+    }, [activities]);
+
+    // ── Get activities for selected day ─────────────────────────────
+    const currentDayActivities = useMemo(() => {
+        if (!selectedActivityDay || !activities) return [];
+        return activities.filter(a => {
+            const dateStr = a.start_date_local || a.start_date || a.date;
+            if (!dateStr) return false;
+            let dateObj;
+            if (typeof dateStr === 'string') {
+                dateObj = dateStr.includes('T') ? parseISO(dateStr) : parseISO(`${dateStr}T00:00:00`);
+            } else {
+                dateObj = new Date(dateStr);
+            }
+            return format(dateObj, 'yyyy-MM-dd') === selectedActivityDay;
+        });
+    }, [selectedActivityDay, activities]);
 
     const days = useMemo(() => {
         const start = startOfWeek(monthStart, { weekStartsOn: 1 });
@@ -773,6 +843,9 @@ export default function Calendar({
                                 {days.map(day => {
                                     const dayKey = format(day, 'yyyy-MM-dd');
                                     const entries = byDay.get(dayKey) || [];
+                                    const activityData = pastActivityColor.get(dayKey);
+                                    const dayActivities = currentDayActivities.length > 0 && selectedActivityDay === dayKey ? currentDayActivities : [];
+
                                     return (
                                         <div
                                             key={dayKey}
@@ -783,6 +856,16 @@ export default function Calendar({
                                             }}
                                             onDragLeave={() => setDragOverDay(null)}
                                             onDrop={handleDropOnDay(dayKey)}
+                                            onClick={() => {
+                                                if (activityData && activityData.tss > 0) {
+                                                    setSelectedActivityDay(selectedActivityDay === dayKey ? null : dayKey);
+                                                }
+                                            }}
+                                            style={{
+                                                ...(activityData ? { backgroundColor: activityData.color } : {}),
+                                                cursor: activityData && activityData.tss > 0 ? 'pointer' : 'default',
+                                            }}
+                                            title={activityData ? `${Math.round(activityData.tss)} TSS - Click to view` : ''}
                                         >
                                             <div className="calendar-day-num">{format(day, 'd')}</div>
                                             <div className="calendar-day-events">
@@ -811,6 +894,7 @@ export default function Calendar({
                                 {weekDays.map(day => {
                                     const dayKey = format(day, 'yyyy-MM-dd');
                                     const entries = byDayAll.get(dayKey) || [];
+                                    const activityData = pastActivityColor.get(dayKey);
                                     return (
                                         <div
                                             key={dayKey}
@@ -821,6 +905,8 @@ export default function Calendar({
                                             }}
                                             onDragLeave={() => setDragOverDay(null)}
                                             onDrop={handleDropOnDay(dayKey)}
+                                            style={activityData ? { backgroundColor: activityData.color } : {}}
+                                            title={activityData ? `${Math.round(activityData.tss)} TSS` : ''}
                                         >
                                             <div className="calendar-day-num">{format(day, 'EEE d')}</div>
                                             <div className="calendar-week-events">
@@ -1092,6 +1178,143 @@ export default function Calendar({
                     ))}
                 </div>
             </div>
+
+            {/* ── Activity details modal ───────────────────────────── */}
+            {selectedActivityDay && currentDayActivities.length > 0 && (
+                <div
+                    style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+                        zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: '16px',
+                    }}
+                    onClick={() => setSelectedActivityDay(null)}
+                >
+                    <div
+                        style={{
+                            background: 'var(--bg-1)', border: '1px solid var(--border)',
+                            borderRadius: 12, width: '100%', maxWidth: 600,
+                            maxHeight: '82vh', overflowY: 'auto',
+                            boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+                            padding: '24px',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+                            <div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>ACTIVITIES</div>
+                                <div style={{ fontFamily: 'var(--font-sans)', fontSize: 18, fontWeight: 600, color: 'var(--text-0)' }}>
+                                    {format(parseISO(`${selectedActivityDay}T00:00:00`), 'EEEE, dd MMMM yyyy')}
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setSelectedActivityDay(null)}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-2)', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '0 4px' }}
+                            >×</button>
+                        </div>
+
+                        {/* Activities list */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            {currentDayActivities.map((activity, idx) => {
+                                const duration = activity.moving_time ? Math.round(activity.moving_time / 60) : 0;
+                                const avgWatts = activity.icu_average_watts || activity.average_watts || null;
+                                const avgHr = activity.average_heartrate || null;
+                                const tss = activity.icu_training_load || activity.training_load || activity.tss || activity.load || 0;
+                                const distance = activity.distance ? (activity.distance / 1000).toFixed(1) : null;
+                                const elevGain = activity.total_elevation_gain;
+                                const ef = (avgWatts && avgHr) ? (avgWatts / avgHr).toFixed(3) : null;
+                                const type = activity.type || activity.sport_type || activity.sport || 'Activity';
+
+                                return (
+                                    <div key={idx} style={{
+                                        background: 'var(--bg-2)', borderRadius: 10, padding: 16,
+                                        border: '1px solid var(--border)',
+                                    }}>
+                                        {/* Activity title and type */}
+                                        <div style={{ marginBottom: 12 }}>
+                                            <div style={{ fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 600, color: 'var(--text-0)', marginBottom: 4 }}>
+                                                {activity.name || 'Untitled Activity'}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '4px 10px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
+                                                    {type.toUpperCase()}
+                                                </span>
+                                                {tss > 0 && (
+                                                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '4px 10px', borderRadius: 20, background: 'rgba(34, 197, 94, 0.12)', color: '#22c55e', letterSpacing: '0.06em' }}>
+                                                        {Math.round(tss)} TSS
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Metrics grid */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 12 }}>
+                                            {duration > 0 && (
+                                                <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>DURATION</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--text-0)' }}>
+                                                        {duration}m
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {distance && (
+                                                <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>DISTANCE</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--text-0)' }}>
+                                                        {distance} km
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {avgWatts && (
+                                                <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>AVG POWER</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--accent-blue)' }}>
+                                                        {Math.round(avgWatts)} W
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {avgHr && (
+                                                <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>AVG HR</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--accent-red)' }}>
+                                                        {Math.round(avgHr)} bpm
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {ef && (
+                                                <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>EFFICIENCY</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--accent-green)' }}>
+                                                        {ef}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {elevGain && (
+                                                <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>ELEVATION</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--text-0)' }}>
+                                                        {Math.round(elevGain)} m
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Notes if present */}
+                                        {activity.notes && (
+                                            <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
+                                                {activity.notes}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Close button */}
+                        <button className="btn" style={{ marginTop: 20, width: '100%' }} onClick={() => setSelectedActivityDay(null)}>Close</button>
+                    </div>
+                </div>
+            )}
 
             {/* ── Event detail modal ───────────────────────────── */}
             {selectedEvent && (

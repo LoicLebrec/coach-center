@@ -114,6 +114,8 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
     const [profile, setProfile] = useState({
         riderName: '',
         primarySport: 'Road Cycling',
+        isRacing: 'yes',
+        racingWeeks: {},
         weeklyHours: '8-12 hours',
         coachStyle: 'Brutal honesty - no mercy',
         notes: '',
@@ -121,6 +123,9 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
         targetDate: '',
         targetFtp: '',
         targetWeight: '',
+        longTermGoalType: 'ftp',
+        longTermGoalValue: '',
+        longTermGoalDate: '',
     });
     const [saveMsg, setSaveMsg] = useState('');
 
@@ -241,6 +246,7 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
     const tsb = ctl != null && atl != null ? ctl - atl : null;
     const currentFtp = getAthleteFtp(athlete);
     const restingHr = getWellnessRestingHr(latest);
+    const longTermDaysLeft = daysUntil(profile.longTermGoalDate || null);
 
     const report = useMemo(() => {
         return buildBrutalReport({
@@ -260,6 +266,18 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
     const saveProfile = async () => {
         await persistence.saveAthleteProfile(profile);
         setSaveMsg('Profile saved.');
+    };
+
+    const toggleRacingWeek = async (weekKey) => {
+        const nextWeeks = {
+            ...(profile.racingWeeks || {}),
+            [weekKey]: !(profile.racingWeeks || {})[weekKey],
+        };
+        const nextProfile = { ...profile, racingWeeks: nextWeeks };
+        setProfile(nextProfile);
+        await persistence.saveAthleteProfile(nextProfile);
+        setSaveMsg('Week preference saved.');
+        setTimeout(() => setSaveMsg(''), 1800);
     };
 
     // Get upcoming races for racing focus
@@ -323,6 +341,7 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
             weekends.push({
                 weekNum: i + 1,
                 saturday,
+                weekKey: satStr,
                 saturday_str: saturday.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }),
                 races: racesThisWeekend,
                 raceCount: racesThisWeekend.length,
@@ -386,17 +405,27 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
                     {next4Weekends.map((weekend) => (
-                        <div
+                        <button
                             key={weekend.weekNum}
+                            type="button"
+                            onClick={() => toggleRacingWeek(weekend.weekKey)}
                             style={{
                                 padding: 12,
                                 borderRadius: 6,
-                                border: `1px solid ${weekend.raceCount > 0 ? 'var(--accent-cyan)' : 'var(--border)'}`,
-                                background: weekend.raceCount > 0 ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
+                                border: `1px solid ${(profile.racingWeeks || {})[weekend.weekKey] ? 'var(--accent-green)' : (weekend.raceCount > 0 ? 'var(--accent-cyan)' : 'var(--border)')}`,
+                                background: (profile.racingWeeks || {})[weekend.weekKey]
+                                    ? 'rgba(34,197,94,0.12)'
+                                    : (weekend.raceCount > 0 ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)'),
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                transition: 'all 0.15s ease',
                             }}
                         >
                             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', marginBottom: 8 }}>
                                 WEEK {weekend.weekNum} — {weekend.saturday_str}
+                            </div>
+                            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, color: (profile.racingWeeks || {})[weekend.weekKey] ? 'var(--accent-green)' : 'var(--text-3)' }}>
+                                {(profile.racingWeeks || {})[weekend.weekKey] ? 'RACING: ON' : 'RACING: OFF'}
                             </div>
                             {weekend.raceCount > 0 ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -411,7 +440,7 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                                     No races
                                 </div>
                             )}
-                        </div>
+                        </button>
                     ))}
                 </div>
             </div>
@@ -443,11 +472,21 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                             <option>12-16 hours</option>
                             <option>16+ hours</option>
                         </select>
+                        <select className="form-input calendar-form-input" value={profile.isRacing || 'yes'} onChange={e => update('isRacing', e.target.value)}>
+                            <option value="yes">Currently racing: Yes</option>
+                            <option value="no">Currently racing: No</option>
+                        </select>
+                    </div>
+
+                    <div className="calendar-form-row">
                         <select className="form-input calendar-form-input" value={profile.coachStyle || 'Brutal honesty - no mercy'} onChange={e => update('coachStyle', e.target.value)}>
                             <option>Brutal honesty - no mercy</option>
                             <option>Direct and analytical - data first</option>
                             <option>Demanding but constructive</option>
                         </select>
+                        <div className="calendar-helper" style={{ display: 'flex', alignItems: 'center', paddingLeft: 6 }}>
+                            {profile.isRacing === 'yes' ? 'Race mode enabled' : 'Build mode enabled'}
+                        </div>
                     </div>
 
                     <div className="card-title" style={{ marginTop: 8, marginBottom: 8 }}>Target</div>
@@ -460,6 +499,46 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                     <div className="calendar-form-row">
                         <input className="form-input calendar-form-input" type="number" placeholder="Target FTP (W)" value={profile.targetFtp || ''} onChange={e => update('targetFtp', e.target.value)} />
                         <input className="form-input calendar-form-input" type="number" placeholder="Target weight (kg)" value={profile.targetWeight || ''} onChange={e => update('targetWeight', e.target.value)} />
+                    </div>
+
+                    <div className="card-title" style={{ marginTop: 8, marginBottom: 8 }}>Long-Term Performance Goal</div>
+
+                    <div className="calendar-form-row">
+                        <select className="form-input calendar-form-input" value={profile.longTermGoalType || 'ftp'} onChange={e => update('longTermGoalType', e.target.value)}>
+                            <option value="ftp">FTP (cycling watts)</option>
+                            <option value="running_pace">Running pace</option>
+                        </select>
+                        {profile.longTermGoalType === 'running_pace' ? (
+                            <input
+                                className="form-input calendar-form-input"
+                                type="text"
+                                placeholder="Target pace (e.g. 3:45/km)"
+                                value={profile.longTermGoalValue || ''}
+                                onChange={e => update('longTermGoalValue', e.target.value)}
+                            />
+                        ) : (
+                            <input
+                                className="form-input calendar-form-input"
+                                type="number"
+                                placeholder="Target FTP (W)"
+                                value={profile.longTermGoalValue || ''}
+                                onChange={e => update('longTermGoalValue', e.target.value)}
+                            />
+                        )}
+                    </div>
+
+                    <div className="calendar-form-row">
+                        <input
+                            className="form-input calendar-form-input"
+                            type="date"
+                            value={profile.longTermGoalDate || ''}
+                            onChange={e => update('longTermGoalDate', e.target.value)}
+                        />
+                        <div className="calendar-helper" style={{ display: 'flex', alignItems: 'center', paddingLeft: 6 }}>
+                            {profile.longTermGoalDate
+                                ? `Goal horizon: ${longTermDaysLeft != null ? `${longTermDaysLeft} days` : 'invalid date'}`
+                                : 'Set a long-term goal date'}
+                        </div>
                     </div>
 
                     <textarea
@@ -538,6 +617,22 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                         <div className="calendar-upcoming-item">
                             <div className="calendar-upcoming-date">Upcoming race count</div>
                             <div className="calendar-upcoming-title">{critStats.upcomingCount}</div>
+                        </div>
+                        <div className="calendar-upcoming-item">
+                            <div className="calendar-upcoming-date">Racing mode</div>
+                            <div className="calendar-upcoming-title">{profile.isRacing === 'yes' ? 'Racing' : 'Not racing'}</div>
+                        </div>
+                        <div className="calendar-upcoming-item">
+                            <div className="calendar-upcoming-date">Long-term goal</div>
+                            <div className="calendar-upcoming-title">
+                                {profile.longTermGoalValue
+                                    ? `${profile.longTermGoalType === 'running_pace' ? 'Pace' : 'FTP'}: ${profile.longTermGoalValue}${profile.longTermGoalType === 'running_pace' ? '' : ' W'}`
+                                    : '—'}
+                            </div>
+                        </div>
+                        <div className="calendar-upcoming-item">
+                            <div className="calendar-upcoming-date">Goal timeline</div>
+                            <div className="calendar-upcoming-title">{longTermDaysLeft != null ? `${longTermDaysLeft} days` : '—'}</div>
                         </div>
                     </div>
                 </div>

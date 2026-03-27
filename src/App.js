@@ -486,15 +486,36 @@ export default function App() {
       throw new Error('AI provider not configured. Add your API key in Settings first.');
     }
 
+    const athleteProfile = await persistence.getAthleteProfile();
+    const racingWeeks = athleteProfile?.racingWeeks || {};
+
     const startDate = new Date();
     startDate.setDate(startDate.getDate() + 1);
     const startDay = startDate.toISOString().split('T')[0];
+
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + Math.max(0, Number(days) - 1));
+
+    const raceSundays = Object.entries(racingWeeks)
+      .filter(([, enabled]) => !!enabled)
+      .map(([saturdayKey]) => {
+        const sunday = new Date(`${saturdayKey}T00:00:00`);
+        sunday.setDate(sunday.getDate() + 1);
+        return sunday;
+      })
+      .filter((d) => !Number.isNaN(d.getTime()) && d >= startDate && d <= endDate)
+      .map((d) => d.toISOString().split('T')[0]);
+
+    const sundayRaceDirective = raceSundays.length
+      ? `Race weeks are ON for: ${raceSundays.join(', ')}. These dates are race day (Sunday). Create race entries with kind="race" on each of those Sundays, and taper/load accordingly before them.`
+      : 'No race-week toggles are ON in the current planning window.';
 
     const prompt = [
       'Build a realistic training micro-cycle as strict JSON array only.',
       `Generate ${days} planned sessions starting ${startDay}.`,
       'Return ONLY valid JSON. No markdown.',
       'Each item keys: date (YYYY-MM-DD), title, type, kind (training|objective|race), notes.',
+      sundayRaceDirective,
       objective ? `Primary objective: ${objective}.` : 'Primary objective: improve aerobic fitness and consistency.',
     ].join('\n');
 
@@ -535,6 +556,36 @@ export default function App() {
         notes: item?.notes || '',
       };
     });
+
+    // Enforce Sunday race defaults for toggled race weeks, even if model misses them.
+    if (raceSundays.length) {
+      raceSundays.forEach((dateKey) => {
+        const sameDay = generated.find((g) => String(g.start_date_local || '').slice(0, 10) === dateKey);
+        if (sameDay) {
+          sameDay.kind = 'race';
+          sameDay.type = sameDay.type || 'Race';
+          sameDay.event_type = sameDay.event_type || 'Race';
+          sameDay.name = sameDay.name || 'Race Day';
+          sameDay.title = sameDay.title || 'Race Day';
+          sameDay.notes = `${sameDay.notes ? `${sameDay.notes} | ` : ''}Auto-marked as Sunday race from race-week toggle.`;
+        } else {
+          generated.push({
+            id: `local_ai_race_${Date.now()}_${dateKey}`,
+            source: 'ai',
+            planned: true,
+            name: 'Race Day',
+            title: 'Race Day',
+            type: 'Race',
+            event_type: 'Race',
+            kind: 'race',
+            start_date_local: `${dateKey}T09:00:00`,
+            notes: 'Auto-inserted Sunday race from race-week toggle.',
+          });
+        }
+      });
+
+      generated.sort((a, b) => (a.start_date_local || '').localeCompare(b.start_date_local || ''));
+    }
 
     const current = await persistence.getPlannedEvents();
     const next = [...(current || []), ...generated];
@@ -615,9 +666,11 @@ export default function App() {
     } else if (provider === 'claude') {
       aiCoachService.configure(creds.apiKey || null);
       setClaudeApiKey(creds.apiKey || null);
+      await persistence.saveClaudeApiKey(creds.apiKey || null);
     } else if (provider === 'groq') {
       aiCoachService.configureGroq(creds.apiKey || null);
       setGroqApiKey(creds.apiKey || null);
+      await persistence.saveGroqApiKey(creds.apiKey || null);
     } else if (provider === 'llm-provider') {
       aiCoachService.setProvider(creds.provider);
       setLlmProvider(creds.provider);
@@ -716,6 +769,7 @@ export default function App() {
           <Calendar
             events={events}
             plannedEvents={plannedEvents}
+            activities={activities}
             athlete={athlete}
             loading={loading}
             onAddPlannedEvent={handleAddPlannedEvent}
