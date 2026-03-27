@@ -1,24 +1,105 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   ComposedChart, LineChart, Line, Area, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from 'recharts';
+import persistence from '../services/persistence';
+
+const IMPRESSION_OPTIONS = [
+  { value: 'great', label: '✨ Great', color: '#22c55e' },
+  { value: 'good', label: '✓ Good', color: '#4ade80' },
+  { value: 'neutral', label: '◦ Neutral', color: '#facc15' },
+  { value: 'tired', label: '⬇ Tired', color: '#fb923c' },
+  { value: 'very-tired', label: '⬇⬇ Very Tired', color: '#ef4444' },
+];
 
 export default function PMCChart({ wellness, loading }) {
   const [range, setRange] = useState(90);
+  const [formImpressions, setFormImpressions] = useState({});
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedImpression, setSelectedImpression] = useState('');
+  const [selectedNotes, setSelectedNotes] = useState('');
+  const [saveMsg, setSaveMsg] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const impressions = await persistence.getFormImpressions();
+      setFormImpressions(impressions || {});
+      const todayImpression = impressions?.[selectedDate];
+      if (todayImpression) {
+        setSelectedImpression(todayImpression.impression);
+        setSelectedNotes(todayImpression.notes || '');
+      }
+    })();
+  }, [selectedDate]);
 
   const data = useMemo(() => {
     if (!wellness || wellness.length === 0) return [];
-    return wellness.slice(-range).map(w => ({
-      date: w.id,
-      shortDate: w.id ? w.id.slice(5) : '',
-      ctl: w.icu_ctl ? Math.round(w.icu_ctl * 10) / 10 : null,
-      atl: w.icu_atl ? Math.round(w.icu_atl * 10) / 10 : null,
-      tsb: w.icu_ctl && w.icu_atl ? Math.round((w.icu_ctl - w.icu_atl) * 10) / 10 : null,
-      rhr: w.restingHR || null,
-      load: w.icu_training_load || 0,
-    }));
-  }, [wellness, range]);
+    return wellness.slice(-range).map(w => {
+      const impression = formImpressions[w.id];
+      return {
+        date: w.id,
+        shortDate: w.id ? w.id.slice(5) : '',
+        ctl: w.icu_ctl ? Math.round(w.icu_ctl * 10) / 10 : null,
+        atl: w.icu_atl ? Math.round(w.icu_atl * 10) / 10 : null,
+        tsb: w.icu_ctl && w.icu_atl ? Math.round((w.icu_ctl - w.icu_atl) * 10) / 10 : null,
+        rhr: w.restingHR || null,
+        load: w.icu_training_load || 0,
+        impressionValue: impression ? { great: 25, good: 15, neutral: 5, tired: -10, 'very-tired': -25 }[impression.impression] : null,
+        impression: impression ? impression.impression : null,
+      };
+    });
+  }, [wellness, range, formImpressions]);
+
+  const stats = useMemo(() => {
+    if (data.length === 0) return null;
+    const ctlValues = data.map(d => d.ctl).filter(v => v != null);
+    const atlValues = data.map(d => d.atl).filter(v => v != null);
+    const tsbValues = data.map(d => d.tsb).filter(v => v != null);
+    const rhValues = data.map(d => d.rhr).filter(v => v != null);
+
+    const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+    const min = arr => Math.min(...arr);
+    const max = arr => Math.max(...arr);
+
+    return {
+      ctl: ctlValues.length ? {
+        avg: avg(ctlValues),
+        min: min(ctlValues),
+        max: max(ctlValues),
+        latest: ctlValues[ctlValues.length - 1],
+      } : null,
+      atl: atlValues.length ? {
+        avg: avg(atlValues),
+        min: min(atlValues),
+        max: max(atlValues),
+        latest: atlValues[atlValues.length - 1],
+      } : null,
+      tsb: tsbValues.length ? {
+        avg: avg(tsbValues),
+        min: min(tsbValues),
+        max: max(tsbValues),
+        latest: tsbValues[tsbValues.length - 1],
+      } : null,
+      rhr: rhValues.length ? {
+        avg: avg(rhValues),
+        min: min(rhValues),
+        max: max(rhValues),
+        latest: rhValues[rhValues.length - 1],
+      } : null,
+    };
+  }, [data]);
+
+  const handleSaveFormImpression = async () => {
+    if (!selectedImpression) {
+      setSaveMsg('Select an impression first.');
+      return;
+    }
+    await persistence.saveFormImpression(selectedDate, selectedImpression, selectedNotes);
+    setFormImpressions(await persistence.getFormImpressions());
+    setSaveMsg('Form impression saved.');
+    setTimeout(() => setSaveMsg(''), 2500);
+  };
 
   if (loading && data.length === 0) {
     return (
@@ -76,8 +157,8 @@ export default function PMCChart({ wellness, loading }) {
       </div>
 
       <div className="info-banner">
-        <strong>Reading the PMC:</strong> CTL (blue) = chronic training load / fitness. ATL (orange) = acute fatigue. 
-        TSB (green area) = form. Positive TSB = fresh for competition. Negative TSB = productive overload. 
+        <strong>Reading the PMC:</strong> CTL (blue) = chronic training load / fitness. ATL (orange) = acute fatigue.
+        TSB (green area) = form. Positive TSB = fresh for competition. Negative TSB = productive overload.
         TSB below −25 = risk of overtraining.
       </div>
 
@@ -156,8 +237,153 @@ export default function PMCChart({ wellness, loading }) {
                 strokeDasharray="6 3"
                 activeDot={{ r: 3, fill: 'var(--atl-color)' }}
               />
+
+              {/* Form Impressions as overlay dots */}
+              <Line
+                yAxisId="pmc"
+                type="monotone"
+                dataKey="impressionValue"
+                name="Form Impression"
+                stroke="transparent"
+                dot={(props) => {
+                  if (props.payload.impression) {
+                    const colors = {
+                      'great': '#22c55e',
+                      'good': '#4ade80',
+                      'neutral': '#facc15',
+                      'tired': '#fb923c',
+                      'very-tired': '#ef4444',
+                    };
+                    const color = colors[props.payload.impression] || '#888';
+                    return (
+                      <circle
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={5}
+                        fill={color}
+                        stroke="white"
+                        strokeWidth={2}
+                      />
+                    );
+                  }
+                  return null;
+                }}
+                activeDot={false}
+              />
             </ComposedChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Stats Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 12 }}>
+        {stats?.ctl && (
+          <div className="card" style={{ marginBottom: 0, padding: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>CTL (Fitness)</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--ctl-color)', marginBottom: 4 }}>
+              {stats.ctl.latest.toFixed(1)} <span style={{ fontSize: 10, color: 'var(--text-2)' }}>current</span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+              Avg {stats.ctl.avg.toFixed(1)} · Min {stats.ctl.min.toFixed(1)} · Max {stats.ctl.max.toFixed(1)}
+            </div>
+          </div>
+        )}
+        {stats?.atl && (
+          <div className="card" style={{ marginBottom: 0, padding: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>ATL (Fatigue)</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--atl-color)', marginBottom: 4 }}>
+              {stats.atl.latest.toFixed(1)} <span style={{ fontSize: 10, color: 'var(--text-2)' }}>current</span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+              Avg {stats.atl.avg.toFixed(1)} · Min {stats.atl.min.toFixed(1)} · Max {stats.atl.max.toFixed(1)}
+            </div>
+          </div>
+        )}
+        {stats?.tsb && (
+          <div className="card" style={{ marginBottom: 0, padding: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>TSB (Form)</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--tsb-color)', marginBottom: 4 }}>
+              {stats.tsb.latest.toFixed(1)} <span style={{ fontSize: 10, color: 'var(--text-2)' }}>current</span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+              Avg {stats.tsb.avg.toFixed(1)} · Min {stats.tsb.min.toFixed(1)} · Max {stats.tsb.max.toFixed(1)}
+            </div>
+          </div>
+        )}
+        {stats?.rhr && (
+          <div className="card" style={{ marginBottom: 0, padding: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>RHR (Recovery)</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--accent-purple)', marginBottom: 4 }}>
+              {stats.rhr.latest.toFixed(0)} <span style={{ fontSize: 10, color: 'var(--text-2)' }}>bpm</span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+              Avg {stats.rhr.avg.toFixed(0)} · Min {stats.rhr.min.toFixed(0)} · Max {stats.rhr.max.toFixed(0)}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Form Impression Logger */}
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="card-header">
+          <span className="card-title">How Do You Feel?</span>
+          <span className="card-badge">Subjective Form Log</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+          <input
+            type="date"
+            className="form-input"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            style={{ flex: 1, minWidth: 140 }}
+          />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {IMPRESSION_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setSelectedImpression(opt.value)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: `1px solid ${selectedImpression === opt.value ? opt.color : 'var(--border)'}`,
+                  background: selectedImpression === opt.value ? `${opt.color}15` : 'var(--bg-2)',
+                  color: selectedImpression === opt.value ? opt.color : 'var(--text-1)',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  transition: 'all 0.2s',
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <textarea
+          className="form-input"
+          placeholder="Optional notes: legs felt heavy, slept well, recovered well, etc."
+          value={selectedNotes}
+          onChange={(e) => setSelectedNotes(e.target.value)}
+          style={{ minHeight: 60, marginBottom: 8, width: '100%', boxSizing: 'border-box' }}
+        />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="btn btn-primary" onClick={handleSaveFormImpression}>
+            Log Form Impression
+          </button>
+          {saveMsg && <div style={{ fontSize: 11, color: 'var(--accent-green)' }}>{saveMsg}</div>}
+        </div>
+      </div>
+
+      {/* Form Impression Legend */}
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="card-header" style={{ fontSize: 12, fontWeight: 600 }}>Form Impression Scale on Chart</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginTop: 8 }}>
+          {IMPRESSION_OPTIONS.map(opt => (
+            <div key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 12, height: 12, borderRadius: '50%', background: opt.color, border: '2px solid white' }} />
+              <span style={{ fontSize: 11 }}>{opt.label}</span>
+            </div>
+          ))}
         </div>
       </div>
 

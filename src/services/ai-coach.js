@@ -10,7 +10,7 @@
  */
 
 const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
-const GROQ_MODEL   = 'llama-3.3-70b-versatile';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const MAX_HISTORY_MESSAGES = 30;
 
@@ -40,7 +40,7 @@ RESPONSE FORMAT:
 - No pleasantries. No "great question". Data + action only.
 - Gaming refs ("grind this block", "unlock the next level") are allowed but sparingly.`;
 
-function buildSystemPrompt(athleteProfile, journalEntries) {
+function buildSystemPrompt(athleteProfile, journalEntries, formImpressions = []) {
   let prompt = BASE_SYSTEM_PROMPT;
 
   if (athleteProfile) {
@@ -68,6 +68,23 @@ Use this profile to personalize every response. Reference their weaknesses and g
       prompt += `\n[${w.weekStart}] CTL:${w.ctl?.toFixed(1)} ATL:${w.atl?.toFixed(1)} TSB:${tsbSign}${w.tsb?.toFixed(1)} TSS:${w.totalTSS} rides:${w.rides || 0} runs:${w.runs || 0}${w.notes?.length ? ' | ' + w.notes.join(', ') : ''}`;
     });
     prompt += '\n\nUse this history to identify trends, recovery patterns, and training load trajectory.';
+  }
+
+  if (formImpressions?.length) {
+    // Get last 14 days of form impressions
+    const recentImpressions = formImpressions
+      .sort((a, b) => b.dateStr.localeCompare(a.dateStr))
+      .slice(0, 14)
+      .reverse();
+
+    if (recentImpressions.length > 0) {
+      prompt += `\n\n## Self-Reported Form (last ${recentImpressions.length} days)`;
+      recentImpressions.forEach(imp => {
+        const notesText = imp.notes ? ` - ${imp.notes}` : '';
+        prompt += `\n${imp.dateStr}: ${imp.impression}${notesText}`;
+      });
+      prompt += '\n\nAthletes know their bodies. Use form impressions to calibrate recovery and intensity recommendations. If athlete reports tired/very-tired, prioritize recovery even if metrics suggest capacity.';
+    }
   }
 
   return prompt;
@@ -118,13 +135,13 @@ class AICoachService {
    * @param {Array} journalEntries - Weekly snapshots for trend memory
    * @returns {Promise<string>}
    */
-  async chat(userMessage, coachContext, conversationHistory = [], athleteProfile = null, journalEntries = []) {
+  async chat(userMessage, coachContext, conversationHistory = [], athleteProfile = null, journalEntries = [], formImpressions = []) {
     if (!this.isConfigured()) {
       const label = this.provider === 'groq' ? 'Groq' : 'Claude';
       throw new Error(`${label} API key not configured. Add it in Settings.`);
     }
 
-    const systemPrompt = buildSystemPrompt(athleteProfile, journalEntries);
+    const systemPrompt = buildSystemPrompt(athleteProfile, journalEntries, formImpressions);
 
     const apiMessages = [];
 
@@ -164,7 +181,7 @@ class AICoachService {
 
     if (!response.ok) {
       let errMsg = `Claude API error ${response.status}`;
-      try { const b = await response.json(); errMsg = b?.error?.message || errMsg; } catch (_) {}
+      try { const b = await response.json(); errMsg = b?.error?.message || errMsg; } catch (_) { }
       throw new Error(errMsg);
     }
 
@@ -191,7 +208,7 @@ class AICoachService {
 
     if (!response.ok) {
       let errMsg = `Groq API error ${response.status}`;
-      try { const b = await response.json(); errMsg = b?.error?.message || errMsg; } catch (_) {}
+      try { const b = await response.json(); errMsg = b?.error?.message || errMsg; } catch (_) { }
       throw new Error(errMsg);
     }
 

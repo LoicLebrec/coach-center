@@ -45,11 +45,60 @@ const VIEWS = {
   SETTINGS: 'settings',
 };
 
+function asNumber(...values) {
+  for (const v of values) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function findNumericByKeyPattern(obj, pattern, depth = 0) {
+  if (!obj || typeof obj !== 'object' || depth > 2) return null;
+  for (const [key, value] of Object.entries(obj)) {
+    if (pattern.test(String(key))) {
+      const num = asNumber(value);
+      if (num != null) return num;
+    }
+    if (value && typeof value === 'object') {
+      const nested = findNumericByKeyPattern(value, pattern, depth + 1);
+      if (nested != null) return nested;
+    }
+  }
+  return null;
+}
+
+function normalizeAthleteProfile(rawAthlete) {
+  if (!rawAthlete || typeof rawAthlete !== 'object') return rawAthlete;
+
+  const explicitFtp = asNumber(
+    rawAthlete.icu_ftp,
+    rawAthlete.eftp,
+    rawAthlete.eFTP,
+    rawAthlete.estimated_ftp,
+    rawAthlete.estimatedFtp,
+    rawAthlete.ftp,
+    rawAthlete.ftp_watts,
+    rawAthlete.critical_power,
+    rawAthlete.zones?.ftp
+  );
+
+  const scannedEFtp = findNumericByKeyPattern(rawAthlete, /(^|_)e\s*ftp$|estimated.?ftp|^eftp$/i);
+  const scannedFtp = findNumericByKeyPattern(rawAthlete, /(^|_)ftp$|ftp.?watts|critical.?power/i);
+  const normalizedFtp = explicitFtp ?? scannedEFtp ?? scannedFtp ?? null;
+
+  return {
+    ...rawAthlete,
+    icu_ftp: normalizedFtp ?? rawAthlete.icu_ftp ?? null,
+    eftp: scannedEFtp ?? asNumber(rawAthlete.eftp, rawAthlete.eFTP) ?? null,
+  };
+}
+
 export default function App() {
   const INCREMENTAL_SYNC_DAYS = 120;
   const REPAIR_SYNC_DAYS = 730;
 
-  const [view, setView] = useState(VIEWS.COACH);
+  const [view, setView] = useState(VIEWS.DASHBOARD);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -359,7 +408,7 @@ export default function App() {
 
       if (wellnessData.status === 'fulfilled') setWellness(wellness);
       if (activitiesData.status === 'fulfilled') setActivities(dedupedActivities);
-      if (athleteData.status === 'fulfilled') setAthlete(athleteData.value || null);
+      if (athleteData.status === 'fulfilled') setAthlete(normalizeAthleteProfile(athleteData.value || null));
       if (eventsData.status === 'fulfilled') setEvents(eventsData.value || []);
 
       // Build training journal for LLM memory
@@ -615,6 +664,7 @@ export default function App() {
             activities={activities}
             athlete={athlete}
             events={events}
+            plannedEvents={plannedEvents}
             claudeApiKey={claudeApiKey}
             groqApiKey={groqApiKey}
             llmProvider={llmProvider}

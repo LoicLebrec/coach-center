@@ -11,14 +11,36 @@ function asNumber(...values) {
   return null;
 }
 
+function findNumericByKeyPattern(obj, pattern, depth = 0) {
+  if (!obj || typeof obj !== 'object' || depth > 2) return null;
+  for (const [key, value] of Object.entries(obj)) {
+    if (pattern.test(String(key))) {
+      const num = asNumber(value);
+      if (num != null) return num;
+    }
+    if (value && typeof value === 'object') {
+      const nested = findNumericByKeyPattern(value, pattern, depth + 1);
+      if (nested != null) return nested;
+    }
+  }
+  return null;
+}
+
 function getAthleteFtp(athlete) {
-  return asNumber(
+  const explicit = asNumber(
     athlete?.icu_ftp,
+    athlete?.eftp,
+    athlete?.eFTP,
+    athlete?.estimated_ftp,
+    athlete?.estimatedFtp,
     athlete?.ftp,
     athlete?.ftp_watts,
     athlete?.critical_power,
     athlete?.zones?.ftp
   );
+
+  if (explicit != null) return explicit;
+  return findNumericByKeyPattern(athlete, /(^|_)e\s*ftp$|estimated.?ftp|(^|_)ftp$|ftp.?watts|critical.?power/i);
 }
 
 function getAthleteWeight(athlete) {
@@ -396,6 +418,22 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
               {getWellnessWeight(latest).toFixed(1)} kg
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="card-header">
+          <span className="card-title">Acronym Guide</span>
+          <span className="card-badge">Metrics</span>
+        </div>
+        <div style={{ display: 'grid', gap: 6, fontSize: 12, color: 'var(--text-1)' }}>
+          <div><strong>CTL</strong>: Chronic Training Load (long-term fitness trend, about 42 days).</div>
+          <div><strong>ATL</strong>: Acute Training Load (short-term fatigue trend, about 7 days).</div>
+          <div><strong>TSB</strong>: Training Stress Balance = CTL - ATL (freshness/form).</div>
+          <div><strong>TSS</strong>: Training Stress Score (session load).</div>
+          <div><strong>EF</strong>: Efficiency Factor = average power / average heart rate.</div>
+          <div><strong>RHR</strong>: Resting Heart Rate (from Intervals wellness data).</div>
+          <div><strong>eFTP</strong>: Estimated FTP from Intervals.icu, used as FTP fallback.</div>
         </div>
       </div>
 

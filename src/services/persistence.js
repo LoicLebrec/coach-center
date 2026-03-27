@@ -218,6 +218,34 @@ const persistence = {
     await planningStore.setItem('workout-library', next);
     return next;
   },
+
+  // ─── Form Impression Log (subjective self-reporting) ─────
+  // Date → { date, impression, notes
+  async saveFormImpression(dateStr, impression, notes = '') {
+    const log = (await planningStore.getItem('form-impressions')) || {};
+    log[dateStr] = {
+      date: dateStr,
+      impression, // 'great' | 'good' | 'neutral' | 'tired' | 'very-tired'
+      notes,
+      savedAt: new Date().toISOString(),
+    };
+    return planningStore.setItem('form-impressions', log);
+  },
+
+  async getFormImpressions() {
+    return (await planningStore.getItem('form-impressions')) || {};
+  },
+
+  async getFormImpression(dateStr) {
+    const log = (await planningStore.getItem('form-impressions')) || {};
+    return log[dateStr] || null;
+  },
+
+  async deleteFormImpression(dateStr) {
+    const log = (await planningStore.getItem('form-impressions')) || {};
+    delete log[dateStr];
+    return planningStore.setItem('form-impressions', log);
+  },
 };
 
 export default persistence;

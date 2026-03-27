@@ -164,6 +164,7 @@ export default function CoachChat({
   activities,
   athlete,
   events,
+  plannedEvents,
   claudeApiKey,
   groqApiKey,
   llmProvider,
@@ -175,6 +176,7 @@ export default function CoachChat({
   const [athleteProfile, setAthleteProfile] = useState(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [journalEntries, setJournalEntries] = useState([]);
+  const [formImpressions, setFormImpressions] = useState([]);
   const [editingProfile, setEditingProfile] = useState(false);
 
   // Typewriter state
@@ -207,10 +209,11 @@ export default function CoachChat({
   // Load persisted data on mount
   useEffect(() => {
     (async () => {
-      const [history, profile, journal] = await Promise.all([
+      const [history, profile, journal, impressions] = await Promise.all([
         persistence.getConversationHistory(),
         persistence.getAthleteProfile(),
         persistence.getRecentJournal(8),
+        persistence.getFormImpressions(),
       ]);
       if (history?.length) {
         setMessages(history);
@@ -218,6 +221,7 @@ export default function CoachChat({
       }
       setAthleteProfile(profile);
       setJournalEntries(journal || []);
+      setFormImpressions(impressions || []);
       setProfileLoaded(true);
     })();
   }, []);
@@ -293,7 +297,8 @@ export default function CoachChat({
           coachContext,
           historyForApi,
           athleteProfile,
-          journalEntries
+          journalEntries,
+          formImpressions
         );
 
         const assistantMsg = {
@@ -325,7 +330,7 @@ export default function CoachChat({
         setTimeout(() => inputRef.current?.focus(), 50);
       }
     },
-    [messages, isLoading, isLlmConfigured, coachContext, athleteProfile, journalEntries, startTypewriter]
+    [messages, isLoading, isLlmConfigured, coachContext, athleteProfile, journalEntries, formImpressions, startTypewriter]
   );
 
   const handleClearHistory = useCallback(async () => {
