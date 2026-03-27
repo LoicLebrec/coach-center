@@ -904,7 +904,7 @@ export default function Calendar({
                             const ftp = athlete?.ftp || athlete?.icu_ftp || 200;
                             const built = buildRuleBasedWorkout(trainingType, durationRaw, 'good', ftp);
                             workoutBlocks = built.blocks || [];
-                        } catch (_) {}
+                        } catch (_) { }
                     }
                 }
 

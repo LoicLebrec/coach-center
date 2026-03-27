@@ -263,7 +263,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       start.setDate(end.getDate() - 6);
       start.setHours(0, 0, 0, 0);
       const label = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-      
+
       const weekActivities = activities.filter(a => {
         if (!a.start_date_local) return false;
         const d = new Date(a.start_date_local);
