@@ -60,17 +60,25 @@ class StravaService {
   }
 
   async exchangeCode(code, redirectUri) {
+    const body = new URLSearchParams({
+      client_id: String(this.clientId),
+      client_secret: String(this.clientSecret),
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri,
+    });
+
     const response = await fetch(STRAVA_TOKEN, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: this.clientId,
-        client_secret: this.clientSecret,
-        code,
-        grant_type: 'authorization_code',
-      }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
     });
-    if (!response.ok) throw new Error('Strava token exchange failed');
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Strava token exchange failed (${response.status}): ${text}`);
+    }
+
     const data = await response.json();
     this.setTokens(data.access_token, data.refresh_token, data.expires_at);
     return data;
@@ -78,16 +86,20 @@ class StravaService {
 
   async refreshAccessToken() {
     if (!this.refreshToken || !this.clientSecret) return false;
+
+    const body = new URLSearchParams({
+      client_id: String(this.clientId),
+      client_secret: String(this.clientSecret),
+      refresh_token: String(this.refreshToken),
+      grant_type: 'refresh_token',
+    });
+
     const response = await fetch(STRAVA_TOKEN, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: this.clientId,
-        client_secret: this.clientSecret,
-        refresh_token: this.refreshToken,
-        grant_type: 'refresh_token',
-      }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
     });
+
     if (!response.ok) return false;
     const data = await response.json();
     this.setTokens(data.access_token, data.refresh_token, data.expires_at);

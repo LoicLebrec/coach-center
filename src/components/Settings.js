@@ -117,10 +117,13 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
   };
 
   const handleStravaAuth = () => {
-    if (!stravaService.hasCredentials()) {
+    if (!stravaClientId.trim() || !stravaClientSecret.trim()) {
       showMessage('Save your Strava Client ID and Secret first.', true);
       return;
     }
+
+    stravaService.configure(stravaClientId.trim(), stravaClientSecret.trim());
+
     const redirectUri = window.location.origin + window.location.pathname;
     window.location.href = stravaService.getAuthUrl(redirectUri);
   };

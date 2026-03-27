@@ -16,6 +16,7 @@ const notesStore = localforage.createInstance({ name: 'coach-center', storeName:
 const prefsStore = localforage.createInstance({ name: 'coach-center', storeName: 'preferences' });
 const coachStore = localforage.createInstance({ name: 'coach-center', storeName: 'coach' });
 const journalStore = localforage.createInstance({ name: 'coach-center', storeName: 'journal' });
+const planningStore = localforage.createInstance({ name: 'coach-center', storeName: 'planning' });
 
 const persistence = {
   // ─── Credentials ──────────────────────────────────────────
@@ -171,6 +172,29 @@ const persistence = {
 
   async getAthleteProfile() {
     return coachStore.getItem('athlete-profile');
+  },
+
+  // ─── Planned Events (manual/library/AI) ───────────────────
+  async getPlannedEvents() {
+    return (await planningStore.getItem('planned-events')) || [];
+  },
+
+  async savePlannedEvents(events) {
+    return planningStore.setItem('planned-events', events || []);
+  },
+
+  async addPlannedEvent(event) {
+    const list = (await planningStore.getItem('planned-events')) || [];
+    const next = [...list, event];
+    await planningStore.setItem('planned-events', next);
+    return next;
+  },
+
+  async removePlannedEvent(eventId) {
+    const list = (await planningStore.getItem('planned-events')) || [];
+    const next = list.filter(e => e?.id !== eventId);
+    await planningStore.setItem('planned-events', next);
+    return next;
   },
 };
 

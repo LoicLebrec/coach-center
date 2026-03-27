@@ -10,7 +10,20 @@ import PMCChart from './components/PMCChart';
 import Settings from './components/Settings';
 import WeeklyLoad from './components/WeeklyLoad';
 import CoachChat from './components/CoachChat';
+import Calendar from './components/Calendar';
 import './styles/app.css';
+
+function extractJsonBlock(text) {
+  if (!text) return null;
+
+  const fenced = text.match(/```json\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) return fenced[1].trim();
+
+  const arrayMatch = text.match(/\[[\s\S]*\]/);
+  if (arrayMatch?.[0]) return arrayMatch[0].trim();
+
+  return null;
+}
 
 const VIEWS = {
   COACH: 'coach',
@@ -18,6 +31,7 @@ const VIEWS = {
   PMC: 'pmc',
   ACTIVITIES: 'activities',
   WEEKLY: 'weekly',
+  CALENDAR: 'calendar',
   SETTINGS: 'settings',
 };
 
@@ -34,6 +48,7 @@ export default function App() {
   const [activities, setActivities] = useState([]);
   const [athlete, setAthlete] = useState(null);
   const [events, setEvents] = useState([]);
+  const [plannedEvents, setPlannedEvents] = useState([]);
 
   // LLM config
   const [claudeApiKey, setClaudeApiKey] = useState(null);
@@ -89,6 +104,9 @@ export default function App() {
         aiCoachService.setProvider(provider);
         setLlmProvider(provider);
 
+        const localPlanned = await persistence.getPlannedEvents();
+        setPlannedEvents(localPlanned || []);
+
       } catch (err) {
         console.error('Failed to load credentials:', err);
       } finally {
@@ -101,8 +119,15 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
-    const scope = params.get('scope');
-    if (code && scope?.includes('activity:read')) {
+    const authError = params.get('error');
+
+    if (authError) {
+      setError(`Strava OAuth was not completed: ${authError}`);
+      window.history.replaceState({}, '', window.location.pathname);
+      return;
+    }
+
+    if (code) {
       (async () => {
         try {
           const redirectUri = window.location.origin + window.location.pathname;
@@ -358,6 +383,90 @@ export default function App() {
     await fetchData({ mode: 'repair' });
   }, [fetchData]);
 
+  const handleAddPlannedEvent = useCallback(async (event) => {
+    if (!event) return;
+
+    const safeId = event.id || `local_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    const normalized = {
+      ...event,
+      id: safeId,
+      source: event.source || 'manual',
+      planned: true,
+    };
+
+    const next = await persistence.addPlannedEvent(normalized);
+    setPlannedEvents(next);
+  }, []);
+
+  const handleRemovePlannedEvent = useCallback(async (eventId) => {
+    if (!eventId) return;
+    const next = await persistence.removePlannedEvent(eventId);
+    setPlannedEvents(next);
+  }, []);
+
+  const handleGenerateAiWorkouts = useCallback(async ({ objective = '', days = 7 } = {}) => {
+    const hasProviderKey = llmProvider === 'groq' ? !!groqApiKey : !!claudeApiKey;
+    if (!hasProviderKey) {
+      throw new Error('AI provider not configured. Add your API key in Settings first.');
+    }
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() + 1);
+    const startDay = startDate.toISOString().split('T')[0];
+
+    const prompt = [
+      'Build a realistic training micro-cycle as strict JSON array only.',
+      `Generate ${days} planned sessions starting ${startDay}.`,
+      'Return ONLY valid JSON. No markdown.',
+      'Each item keys: date (YYYY-MM-DD), title, type, kind (training|objective|race), notes.',
+      objective ? `Primary objective: ${objective}.` : 'Primary objective: improve aerobic fitness and consistency.',
+    ].join('\n');
+
+    const aiResponse = await aiCoachService.chat(prompt, null, [], null, []);
+    const jsonPayload = extractJsonBlock(aiResponse);
+
+    if (!jsonPayload) {
+      throw new Error('AI response could not be parsed as JSON workouts.');
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonPayload);
+    } catch (err) {
+      throw new Error('AI returned invalid JSON format for workout plan.');
+    }
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      throw new Error('AI returned an empty workout list.');
+    }
+
+    const generated = parsed.map((item, idx) => {
+      const fallbackDate = new Date(startDate);
+      fallbackDate.setDate(startDate.getDate() + idx);
+      const dateKey = typeof item?.date === 'string' ? item.date : fallbackDate.toISOString().split('T')[0];
+      const kind = String(item?.kind || 'training').toLowerCase();
+
+      return {
+        id: `local_ai_${Date.now()}_${idx}`,
+        source: 'ai',
+        planned: true,
+        name: item?.title || `AI Session ${idx + 1}`,
+        title: item?.title || `AI Session ${idx + 1}`,
+        type: item?.type || 'Workout',
+        event_type: item?.type || 'Workout',
+        kind,
+        start_date_local: `${dateKey}T07:00:00`,
+        notes: item?.notes || '',
+      };
+    });
+
+    const current = await persistence.getPlannedEvents();
+    const next = [...(current || []), ...generated];
+    await persistence.savePlannedEvents(next);
+    setPlannedEvents(next);
+    return generated;
+  }, [llmProvider, groqApiKey, claudeApiKey]);
+
   const handleSaveSettings = async (provider, creds) => {
     if (provider === 'intervals') {
       intervalsService.configure(creds.athleteId, creds.apiKey);
@@ -433,6 +542,18 @@ export default function App() {
         return <Activities activities={activities} loading={loading} />;
       case VIEWS.WEEKLY:
         return <WeeklyLoad activities={activities} loading={loading} />;
+      case VIEWS.CALENDAR:
+        return (
+          <Calendar
+            events={events}
+            plannedEvents={plannedEvents}
+            athlete={athlete}
+            loading={loading}
+            onAddPlannedEvent={handleAddPlannedEvent}
+            onRemovePlannedEvent={handleRemovePlannedEvent}
+            onGenerateAiWorkouts={handleGenerateAiWorkouts}
+          />
+        );
       case VIEWS.SETTINGS:
         return (
           <Settings
@@ -473,6 +594,9 @@ export default function App() {
           </button>
           <button className={`nav-item ${view === VIEWS.WEEKLY ? 'active' : ''}`} onClick={() => setView(VIEWS.WEEKLY)}>
             <span className="nav-icon nav-icon-text">▦</span><span>Weekly Load</span>
+          </button>
+          <button className={`nav-item ${view === VIEWS.CALENDAR ? 'active' : ''}`} onClick={() => setView(VIEWS.CALENDAR)}>
+            <span className="nav-icon nav-icon-text">◷</span><span>Calendar</span>
           </button>
 
           <div className="nav-section-label">System</div>
