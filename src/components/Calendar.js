@@ -19,7 +19,7 @@ import {
 } from 'date-fns';
 import WorkoutBuilder from './WorkoutBuilder';
 import { exportWorkoutFit, hasWorkoutContent } from '../services/workout-exporter';
-import { generateAndDownloadGpx, estimateDistanceKm } from '../services/gpx-generator';
+import GpxRouteBuilder from './GpxRouteBuilder';
 
 const ZONE_STYLE = {
     Z1: 'z1',
@@ -360,20 +360,9 @@ export default function Calendar({
         library: false,
         ai: true,
         csv: true,
-        gpx: false,
         upcoming: false,
     });
     const [jumpDate, setJumpDate] = useState('');
-    const [gpxSport, setGpxSport] = useState('Ride');
-    const [gpxZone, setGpxZone] = useState('Z2');
-    const [gpxDuration, setGpxDuration] = useState(90);
-    const [gpxShape, setGpxShape] = useState('loop');
-    const [gpxDirection, setGpxDirection] = useState('N');
-    const [gpxElevation, setGpxElevation] = useState('rolling');
-    const [gpxLat, setGpxLat] = useState('');
-    const [gpxLng, setGpxLng] = useState('');
-    const [gpxLocStatus, setGpxLocStatus] = useState('');
-    const [gpxResult, setGpxResult] = useState(null);
     const [manualDate, setManualDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [manualTitle, setManualTitle] = useState('');
     const [manualType, setManualType] = useState('Workout');
@@ -395,14 +384,6 @@ export default function Calendar({
         if (!saved) return;
         try {
             const p = JSON.parse(saved);
-            if (p.gpxSport) setGpxSport(p.gpxSport);
-            if (p.gpxZone) setGpxZone(p.gpxZone);
-            if (p.gpxDuration) setGpxDuration(p.gpxDuration);
-            if (p.gpxShape) setGpxShape(p.gpxShape);
-            if (p.gpxDirection) setGpxDirection(p.gpxDirection);
-            if (p.gpxElevation) setGpxElevation(p.gpxElevation);
-            if (p.gpxLat) setGpxLat(p.gpxLat);
-            if (p.gpxLng) setGpxLng(p.gpxLng);
             if (p.aiObjective) setAiObjective(p.aiObjective);
             if (p.aiDays) setAiDays(p.aiDays);
         } catch (_) {}
@@ -410,10 +391,9 @@ export default function Calendar({
 
     useEffect(() => {
         localStorage.setItem('apex-calendar-prefs', JSON.stringify({
-            gpxSport, gpxZone, gpxDuration, gpxShape, gpxDirection,
-            gpxElevation, gpxLat, gpxLng, aiObjective, aiDays,
+            aiObjective, aiDays,
         }));
-    }, [gpxSport, gpxZone, gpxDuration, gpxShape, gpxDirection, gpxElevation, gpxLat, gpxLng, aiObjective, aiDays]);
+    }, [aiObjective, aiDays]);
 
     const allEvents = useMemo(() => {
         return [...(events || []), ...(plannedEvents || [])];
@@ -839,42 +819,6 @@ export default function Calendar({
         }
     };
 
-    const handleGetLocation = () => {
-        if (!navigator.geolocation) {
-            setGpxLocStatus('Geolocation not supported by your browser.');
-            return;
-        }
-        setGpxLocStatus('Detecting location...');
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                setGpxLat(pos.coords.latitude.toFixed(5));
-                setGpxLng(pos.coords.longitude.toFixed(5));
-                setGpxLocStatus(`Location set: ${pos.coords.latitude.toFixed(4)}°, ${pos.coords.longitude.toFixed(4)}°`);
-            },
-            () => setGpxLocStatus('Could not get location. Enter coordinates manually.'),
-            { timeout: 8000 }
-        );
-    };
-
-    const handleGenerateGpx = () => {
-        const lat = parseFloat(gpxLat);
-        const lng = parseFloat(gpxLng);
-        if (!gpxLat || !gpxLng || isNaN(lat) || isNaN(lng)) {
-            setGpxLocStatus('Set your starting location first.');
-            return;
-        }
-        const result = generateAndDownloadGpx({
-            lat, lng,
-            sport: gpxSport,
-            zone: gpxZone,
-            durationMin: Number(gpxDuration),
-            shape: gpxShape,
-            direction: gpxDirection,
-            elevation: gpxElevation,
-        });
-        setGpxResult(result);
-    };
-
     return (
         <div>
             <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -905,6 +849,7 @@ export default function Calendar({
             </div>
 
             <div className="calendar-layout">
+                <div>
                 <div className="card" style={{ marginBottom: 0 }}>
                     <div className="card-header">
                         <span className="card-title">{periodLabel}</span>
@@ -1025,6 +970,9 @@ export default function Calendar({
                             ))}
                         </div>
                     )}
+                </div>
+
+                <GpxRouteBuilder athlete={athlete} />
                 </div>
 
                 <div className="card" style={{ marginBottom: 0 }}>
@@ -1181,99 +1129,6 @@ export default function Calendar({
                         </div>}
                     </div>
 
-                    <div className="planner-section">
-                        <button className="planner-toggle" onClick={() => toggleSection('gpx')}>
-                            <span>GPX Route Generator</span>
-                            <span>{collapsed.gpx ? '+' : '-'}</span>
-                        </button>
-                        {!collapsed.gpx && (
-                            <div className="calendar-planner-box">
-                                <div className="card-title" style={{ marginBottom: 8 }}>GPX Route Generator</div>
-                                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                                    <button className="btn btn-primary" onClick={handleGetLocation} style={{ flex: 1 }}>
-                                        Use My Location
-                                    </button>
-                                </div>
-                                {gpxLocStatus && (
-                                    <div style={{ fontSize: 11, color: 'var(--text-2)', fontFamily: 'var(--font-mono)', marginBottom: 8 }}>
-                                        {gpxLocStatus}
-                                    </div>
-                                )}
-                                <div className="calendar-form-row" style={{ marginBottom: 8 }}>
-                                    <input
-                                        className="form-input calendar-form-input"
-                                        placeholder="Latitude"
-                                        value={gpxLat}
-                                        onChange={e => setGpxLat(e.target.value)}
-                                    />
-                                    <input
-                                        className="form-input calendar-form-input"
-                                        placeholder="Longitude"
-                                        value={gpxLng}
-                                        onChange={e => setGpxLng(e.target.value)}
-                                    />
-                                </div>
-                                <div className="calendar-form-row" style={{ marginBottom: 8 }}>
-                                    <select className="form-input calendar-form-input" value={gpxSport} onChange={e => setGpxSport(e.target.value)}>
-                                        <option value="Ride">Cycling</option>
-                                        <option value="Run">Running</option>
-                                    </select>
-                                    <select className="form-input calendar-form-input" value={gpxZone} onChange={e => setGpxZone(e.target.value)}>
-                                        <option value="Z1">Z1 — Recovery</option>
-                                        <option value="Z2">Z2 — Endurance</option>
-                                        <option value="Z3">Z3 — Tempo</option>
-                                        <option value="Z4">Z4 — Threshold</option>
-                                        <option value="Z5">Z5 — VO2 Max</option>
-                                        <option value="Race">Race Pace</option>
-                                    </select>
-                                </div>
-                                <div className="calendar-form-row" style={{ marginBottom: 8 }}>
-                                    <input
-                                        className="form-input calendar-form-input"
-                                        type="number" min="20" max="300"
-                                        value={gpxDuration}
-                                        onChange={e => setGpxDuration(e.target.value)}
-                                        placeholder="Duration (min)"
-                                    />
-                                    <select className="form-input calendar-form-input" value={gpxShape} onChange={e => setGpxShape(e.target.value)}>
-                                        <option value="loop">Loop</option>
-                                        <option value="out-and-back">Out &amp; Back</option>
-                                        <option value="figure8">Figure-8</option>
-                                    </select>
-                                </div>
-                                <div className="calendar-form-row" style={{ marginBottom: 8 }}>
-                                    {gpxShape === 'out-and-back' && (
-                                        <select className="form-input calendar-form-input" value={gpxDirection} onChange={e => setGpxDirection(e.target.value)}>
-                                            {['N','NE','E','SE','S','SW','W','NW'].map(d => (
-                                                <option key={d} value={d}>{d}</option>
-                                            ))}
-                                        </select>
-                                    )}
-                                    <select className="form-input calendar-form-input" value={gpxElevation} onChange={e => setGpxElevation(e.target.value)}>
-                                        <option value="flat">Flat</option>
-                                        <option value="rolling">Rolling Hills</option>
-                                        <option value="hilly">Hilly</option>
-                                        <option value="climb">Climb &amp; Descent</option>
-                                    </select>
-                                </div>
-                                <div className="calendar-helper" style={{ marginBottom: 8 }}>
-                                    Est. distance: ~{estimateDistanceKm(gpxSport, gpxZone, Number(gpxDuration))} km
-                                </div>
-                                <button className="btn btn-primary" onClick={handleGenerateGpx} style={{ width: '100%' }}>
-                                    Download GPX Route
-                                </button>
-                                {gpxResult && (
-                                    <div style={{ fontSize: 11, color: 'var(--accent-green)', fontFamily: 'var(--font-mono)', marginTop: 8 }}>
-                                        ✓ {gpxResult.routeName} downloaded
-                                    </div>
-                                )}
-                                <div className="calendar-helper" style={{ marginTop: 6 }}>
-                                    Routes are geometric guides, not road-following. Load into Garmin/Wahoo as a reference route.
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
                     {plannerError && (
                         <div className="error-banner" style={{ marginBottom: 12 }}>
                             <span className="error-tag">[ERR]</span>
@@ -1410,16 +1265,6 @@ export default function Calendar({
                             {eventHasWorkoutData(selectedEvent) && (
                                 <button className="btn btn-primary" onClick={() => { downloadEventFit(selectedEvent); }}>
                                     Download FIT
-                                </button>
-                            )}
-                            {gpxLat && gpxLng && (
-                                <button className="btn" onClick={() => {
-                                    const zone = inferZone({ title: selectedEvent.title, notes: selectedEvent.notes || '' });
-                                    const sport = /run/i.test(selectedEvent.type || '') ? 'Run' : 'Ride';
-                                    const dur = totalDuration(selectedEvent.workoutBlocks || []) || 90;
-                                    generateAndDownloadGpx({ lat: parseFloat(gpxLat), lng: parseFloat(gpxLng), sport, zone, durationMin: dur, shape: gpxShape, direction: gpxDirection, elevation: gpxElevation });
-                                }}>
-                                    Get GPX Route
                                 </button>
                             )}
                             {String(selectedEvent.id).startsWith('local_') && (
