@@ -133,7 +133,7 @@ export default function WorkoutBuilder({ onCreate, ftp }) {
 
             <div className="workout-zone-legend">
                 {ZONES.map(z => (
-                    <div key={z.id} className="workout-zone-item">
+                    <div key={z.id} className={`workout-zone-item zone-${z.id.toLowerCase()}`}>
                         <div className="workout-zone-head">{z.id} · {z.name}</div>
                         <div className="workout-zone-sub">{z.pct[0]}-{z.pct[1]}% FTP · RPE {z.rpe}</div>
                         <div className="workout-zone-desc">{z.desc}</div>
