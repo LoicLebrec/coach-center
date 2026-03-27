@@ -8,15 +8,26 @@ export default function Activities({ activities, loading }) {
   const processed = useMemo(() => {
     if (!activities) return [];
     return activities
-      .map(a => ({
-        ...a,
-        ef: a.icu_average_watts && a.average_heartrate
-          ? a.icu_average_watts / a.average_heartrate
-          : null,
-        dateStr: a.start_date_local?.split('T')[0] || '',
-        durationMin: Math.round((a.moving_time || a.elapsed_time || 0) / 60),
-      }))
-      .filter(a => filterType === 'all' || a.type === filterType);
+      .map(a => {
+        const watts = a.icu_average_watts || a.average_watts || null;
+        const hr = a.average_heartrate || null;
+        const duration = a.moving_time || a.elapsed_time || a.icu_moving_time || 0;
+        const tss = a.icu_training_load || a.training_load || null;
+        const type = a.type || a.sport_type || a.sport || '';
+        const name = a.name || a.description || '';
+        return {
+          ...a,
+          _name: name || type || 'Activity',
+          _type: type,
+          _tss: tss,
+          _duration: duration,
+          _watts: watts,
+          _hr: hr,
+          ef: watts && hr ? watts / hr : null,
+          dateStr: a.start_date_local?.split('T')[0] || '',
+        };
+      })
+      .filter(a => filterType === 'all' || a._type === filterType);
   }, [activities, filterType]);
 
   const sorted = useMemo(() => {
@@ -25,10 +36,10 @@ export default function Activities({ activities, loading }) {
       let va, vb;
       switch (sortField) {
         case 'date': va = a.start_date_local || ''; vb = b.start_date_local || ''; break;
-        case 'tss': va = a.icu_training_load || 0; vb = b.icu_training_load || 0; break;
-        case 'duration': va = a.moving_time || 0; vb = b.moving_time || 0; break;
-        case 'watts': va = a.icu_average_watts || 0; vb = b.icu_average_watts || 0; break;
-        case 'hr': va = a.average_heartrate || 0; vb = b.average_heartrate || 0; break;
+        case 'tss': va = a._tss || 0; vb = b._tss || 0; break;
+        case 'duration': va = a._duration || 0; vb = b._duration || 0; break;
+        case 'watts': va = a._watts || 0; vb = b._watts || 0; break;
+        case 'hr': va = a._hr || 0; vb = b._hr || 0; break;
         case 'ef': va = a.ef || 0; vb = b.ef || 0; break;
         default: va = 0; vb = 0;
       }
@@ -71,7 +82,7 @@ export default function Activities({ activities, loading }) {
   // Unique activity types for filter
   const types = useMemo(() => {
     if (!activities) return [];
-    const set = new Set(activities.map(a => a.type).filter(Boolean));
+    const set = new Set(activities.map(a => a.type || a.sport_type || a.sport).filter(Boolean));
     return ['all', ...Array.from(set)];
   }, [activities]);
 
@@ -122,20 +133,20 @@ export default function Activities({ activities, loading }) {
                 <span style={{ color: 'var(--text-2)', fontSize: 10, display: 'block', marginBottom: 2 }}>
                   {a.dateStr}
                 </span>
-                {a.name || 'Untitled'}
-                <span className="type-badge">{a.type}</span>
+                {a._name}
+                {a._type && <span className="type-badge">{a._type}</span>}
               </span>
               <span className="activity-data">
-                {a.icu_training_load ? Math.round(a.icu_training_load) : '—'}
+                {a._tss ? Math.round(a._tss) : '—'}
               </span>
               <span className="activity-data">
-                {formatDuration(a.moving_time || a.elapsed_time)}
+                {formatDuration(a._duration)}
               </span>
               <span className="activity-data">
-                {a.icu_average_watts || a.average_watts || '—'}
+                {a._watts ? Math.round(a._watts) : '—'}
               </span>
               <span className="activity-data">
-                {a.average_heartrate ? Math.round(a.average_heartrate) : '—'}
+                {a._hr ? Math.round(a._hr) : '—'}
               </span>
               <span className="activity-data" style={{
                 color: a.ef ? (a.ef > 1.5 ? 'var(--accent-green)' : a.ef < 1.2 ? 'var(--accent-orange)' : 'var(--text-1)') : 'var(--text-2)',

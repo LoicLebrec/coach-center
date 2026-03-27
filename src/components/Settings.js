@@ -12,8 +12,10 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
   const [stravaClientId, setStravaClientId] = useState('');
   const [stravaClientSecret, setStravaClientSecret] = useState('');
 
-  // Claude AI
+  // AI Coach
   const [claudeApiKey, setClaudeApiKey] = useState('');
+  const [groqApiKey, setGroqApiKey] = useState('');
+  const [llmProvider, setLlmProvider] = useState('claude');
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -25,6 +27,9 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
       if (intCreds) {
         setIntAthleteId(intCreds.athleteId || '');
         setIntApiKey(intCreds.apiKey || '');
+      } else {
+        setIntAthleteId(process.env.REACT_APP_ICU_ATHLETE_ID || '');
+        setIntApiKey(process.env.REACT_APP_ICU_API_KEY || '');
       }
       const stravaCreds = await persistence.getCredentials('strava');
       if (stravaCreds) {
@@ -33,6 +38,10 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
       }
       const claudeKey = await persistence.getClaudeApiKey();
       if (claudeKey) setClaudeApiKey(claudeKey);
+      const groqKey = await persistence.getGroqApiKey();
+      if (groqKey) setGroqApiKey(groqKey);
+      const provider = await persistence.getLlmProvider();
+      setLlmProvider(provider || 'claude');
     })();
   }, []);
 
@@ -82,6 +91,29 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
     setClaudeApiKey('');
     onSave('claude', { apiKey: null });
     showMessage('Claude API key removed.');
+  };
+
+  const handleSaveGroq = async () => {
+    if (!groqApiKey.trim()) {
+      showMessage('Enter a valid Groq API key.', true);
+      return;
+    }
+    await persistence.saveGroqApiKey(groqApiKey.trim());
+    onSave('groq', { apiKey: groqApiKey.trim() });
+    showMessage('Groq API key saved. APEX ready on free tier.');
+  };
+
+  const handleRemoveGroq = async () => {
+    await persistence.saveGroqApiKey('');
+    setGroqApiKey('');
+    onSave('groq', { apiKey: null });
+    showMessage('Groq API key removed.');
+  };
+
+  const handleSetProvider = async (provider) => {
+    setLlmProvider(provider);
+    onSave('llm-provider', { provider });
+    showMessage(`AI provider set to ${provider === 'groq' ? 'Groq (free)' : 'Claude (Anthropic)'}.`);
   };
 
   const handleStravaAuth = () => {
@@ -245,49 +277,139 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
         </div>
       </div>
 
-      {/* ═══ Claude AI Coach ═══ */}
+      {/* ═══ More Integrations ═══ */}
       <div className="settings-section">
-        <div className="settings-section-title">
-          Claude AI Coach (APEX)
-          {claudeApiKey && <span style={{ color: 'var(--accent-green)', fontSize: 12, marginLeft: 8 }}>● Configured</span>}
-        </div>
+        <div className="settings-section-title">More Integrations</div>
         <div className="settings-section-desc">
-          APEX uses the Anthropic Claude API directly from your browser. Your key is stored
-          only in this browser's local storage and is never sent to any server other than Anthropic's.
+          Additional platform connections coming soon. Vote or request via GitHub Issues.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', opacity: 0.7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-0)' }}>TrainingPeaks</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', background: 'var(--bg-3)', padding: '2px 8px', borderRadius: 10, letterSpacing: '0.08em' }}>COMING SOON</span>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>Structured training plans and TSS calendar sync</div>
+          </div>
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', opacity: 0.7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-0)' }}>Wahoo / SYSTM</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', background: 'var(--bg-3)', padding: '2px 8px', borderRadius: 10, letterSpacing: '0.08em' }}>COMING SOON</span>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>Indoor training workouts and power data</div>
+          </div>
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', opacity: 0.7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-0)' }}>Polar Flow</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', background: 'var(--bg-3)', padding: '2px 8px', borderRadius: 10, letterSpacing: '0.08em' }}>COMING SOON</span>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>HR monitor data and running metrics</div>
+          </div>
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', opacity: 0.7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-0)' }}>Zwift</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', background: 'var(--bg-3)', padding: '2px 8px', borderRadius: 10, letterSpacing: '0.08em' }}>COMING SOON</span>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>Virtual ride activities and event data</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══ AI Coach (LLM) ═══ */}
+      <div className="settings-section">
+        <div className="settings-section-title">AI Coach — APEX</div>
+        <div className="settings-section-desc">
+          Choose your AI provider. Groq is free and recommended for testing.
+          Claude gives better coaching quality for serious use.
         </div>
 
-        <div className="info-banner">
-          <strong>Setup:</strong><br />
-          1. Go to <code>console.anthropic.com</code> → API Keys → Create Key<br />
-          2. Paste your key below (starts with <code>sk-ant-</code>)<br />
-          3. Usage is billed to your Anthropic account at standard rates<br />
-          <br />
-          <strong>Privacy note:</strong> your API key is visible in browser DevTools network traffic.
-          Do not use this on a shared or public device.
-        </div>
-
-        <div className="form-field">
-          <label className="form-label">Anthropic API Key</label>
-          <input
-            className="form-input"
-            type="password"
-            placeholder="sk-ant-..."
-            value={claudeApiKey}
-            onChange={e => setClaudeApiKey(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSaveClaude()}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" onClick={handleSaveClaude}>
-            {claudeApiKey ? 'Update Key' : 'Save Key'}
+        {/* Provider toggle */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          <button
+            className={`btn ${llmProvider === 'groq' ? 'btn-primary' : ''}`}
+            onClick={() => handleSetProvider('groq')}
+          >
+            Groq — Free
           </button>
-          {claudeApiKey && (
-            <button className="btn btn-danger" onClick={handleRemoveClaude}>
-              Remove Key
-            </button>
-          )}
+          <button
+            className={`btn ${llmProvider === 'claude' ? 'btn-primary' : ''}`}
+            onClick={() => handleSetProvider('claude')}
+          >
+            Claude — Paid
+          </button>
         </div>
+
+        {/* Groq section */}
+        {llmProvider === 'groq' && (
+          <>
+            <div className="info-banner">
+              <strong>Groq free tier</strong> — llama-3.3-70b model, 14,400 requests/day, very fast.<br />
+              1. Sign up at <code>console.groq.com</code><br />
+              2. Create an API key<br />
+              3. Paste below (starts with <code>gsk_</code>)<br />
+              <br />
+              <strong>Note:</strong> Groq processes data on their servers. Don't use on shared devices.
+            </div>
+            <div className="form-field">
+              <label className="form-label">
+                Groq API Key
+                {groqApiKey && <span style={{ color: 'var(--accent-green)', marginLeft: 8 }}>● Configured</span>}
+              </label>
+              <input
+                className="form-input"
+                type="password"
+                placeholder="gsk_..."
+                value={groqApiKey}
+                onChange={e => setGroqApiKey(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSaveGroq()}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary" onClick={handleSaveGroq}>
+                {groqApiKey ? 'Update Key' : 'Save Key'}
+              </button>
+              {groqApiKey && (
+                <button className="btn btn-danger" onClick={handleRemoveGroq}>Remove Key</button>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Claude section */}
+        {llmProvider === 'claude' && (
+          <>
+            <div className="info-banner">
+              <strong>Anthropic Claude</strong> — claude-sonnet-4, highest coaching quality.<br />
+              1. Go to <code>console.anthropic.com</code> → API Keys → Create Key<br />
+              2. Paste below (starts with <code>sk-ant-</code>)<br />
+              3. Billed at standard Anthropic rates (~$3/M tokens)<br />
+              <br />
+              <strong>Privacy note:</strong> key visible in browser DevTools. Don't use on shared devices.
+            </div>
+            <div className="form-field">
+              <label className="form-label">
+                Anthropic API Key
+                {claudeApiKey && <span style={{ color: 'var(--accent-green)', marginLeft: 8 }}>● Configured</span>}
+              </label>
+              <input
+                className="form-input"
+                type="password"
+                placeholder="sk-ant-..."
+                value={claudeApiKey}
+                onChange={e => setClaudeApiKey(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSaveClaude()}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary" onClick={handleSaveClaude}>
+                {claudeApiKey ? 'Update Key' : 'Save Key'}
+              </button>
+              {claudeApiKey && (
+                <button className="btn btn-danger" onClick={handleRemoveClaude}>Remove Key</button>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ═══ Data Management ═══ */}

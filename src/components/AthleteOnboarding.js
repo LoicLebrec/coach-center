@@ -3,9 +3,18 @@ import React, { useState } from 'react';
 const STEPS = [
   {
     field: 'primarySport',
-    question: 'What is your primary sport?',
+    question: 'What is your primary discipline?',
     type: 'single',
-    options: ['Cycling', 'Triathlon', 'Running', 'Duathlon', 'Other endurance'],
+    options: [
+      'Road Cycling',
+      'Weekly Crit Racer',
+      'Track / Velodrome',
+      'Gravel / Endurance',
+      'Triathlon',
+      'Running',
+      'Duathlon',
+      'Other endurance',
+    ],
   },
   {
     field: 'seasonGoal',
@@ -13,6 +22,7 @@ const STEPS = [
     type: 'single',
     options: [
       'Peak performance at A-race',
+      'Win / podium at crits',
       'Build aerobic base (no race target)',
       'Improve threshold / race pace',
       'Stay healthy and consistent',
@@ -24,11 +34,27 @@ const STEPS = [
     question: 'When is your next target event?',
     type: 'single',
     options: [
+      'Racing this week or next',
       'Racing in < 4 weeks',
       'Racing in 4–8 weeks',
       'Racing in 8–16 weeks',
       'Racing in 16+ weeks',
       'No target race',
+    ],
+  },
+  {
+    field: 'raceFormat',
+    question: 'What race formats do you target? Select all that apply.',
+    type: 'multi',
+    options: [
+      'Criterium (< 90 min, aggressive)',
+      'Road race (mass start)',
+      'Time trial / TT',
+      'Hill climb / Haute Route',
+      'Stage race (multi-day)',
+      'Gran Fondo / sportive',
+      'Track: points / omnium',
+      'Triathlon / duathlon',
     ],
   },
   {
@@ -46,6 +72,7 @@ const STEPS = [
       'VO2max / short power',
       'FTP / threshold',
       'Sprint / neuromuscular power',
+      'Crit tactics / pack riding',
       'Climbing',
       'Recovery management',
       'Training consistency',
@@ -59,6 +86,7 @@ const STEPS = [
       'Polarized (80% easy, 20% hard)',
       'Pyramidal (mostly easy with some threshold)',
       'Sweet spot / threshold-heavy',
+      'Crit-specific (short, punchy, race simulation)',
       'By feel / heart rate',
       'Not sure — build me one',
     ],
@@ -87,9 +115,10 @@ const STEPS = [
   },
 ];
 
-export default function AthleteOnboarding({ onComplete }) {
+export default function AthleteOnboarding({ onComplete, existingProfile }) {
+  const isEditing = !!existingProfile;
   const [step, setStep] = useState(0);
-  const [profile, setProfile] = useState({});
+  const [profile, setProfile] = useState(existingProfile || {});
 
   const current = STEPS[step];
   const value = profile[current.field];
@@ -108,11 +137,8 @@ export default function AthleteOnboarding({ onComplete }) {
   const handleMultiToggle = (option) => {
     setProfile(p => {
       const prev = new Set(p[current.field] || []);
-      if (prev.has(option)) {
-        prev.delete(option);
-      } else {
-        prev.add(option);
-      }
+      if (prev.has(option)) prev.delete(option);
+      else prev.add(option);
       return { ...p, [current.field]: Array.from(prev) };
     });
   };
@@ -131,7 +157,11 @@ export default function AthleteOnboarding({ onComplete }) {
   };
 
   const handleSkip = () => {
-    onComplete({});
+    if (isEditing) {
+      onComplete(existingProfile); // cancel edit, keep existing
+    } else {
+      onComplete({});
+    }
   };
 
   return (
@@ -139,7 +169,9 @@ export default function AthleteOnboarding({ onComplete }) {
       <div className="onboarding-terminal">
         {/* Header */}
         <div className="onboarding-header">
-          <div className="onboarding-title">[⚡ APEX] — PLAYER SETUP</div>
+          <div className="onboarding-title">
+            [APEX] — {isEditing ? 'EDIT PROFILE' : 'PLAYER SETUP'}
+          </div>
           <div className="onboarding-progress">
             {STEPS.map((_, i) => (
               <div
@@ -159,16 +191,12 @@ export default function AthleteOnboarding({ onComplete }) {
         {/* Options */}
         <div className={`onboarding-options${isMulti ? ' multi' : ''}`}>
           {current.options.map((option) => {
-            const isSelected = isMulti
-              ? selectedSet.has(option)
-              : value === option;
+            const isSelected = isMulti ? selectedSet.has(option) : value === option;
             return (
               <button
                 key={option}
                 className={`option-btn${isSelected ? ' selected' : ''}`}
-                onClick={() =>
-                  isMulti ? handleMultiToggle(option) : handleSingleSelect(option)
-                }
+                onClick={() => isMulti ? handleMultiToggle(option) : handleSingleSelect(option)}
               >
                 {isMulti && (
                   <span className="option-checkbox">
@@ -183,12 +211,8 @@ export default function AthleteOnboarding({ onComplete }) {
 
         {/* Navigation */}
         <div className="onboarding-nav">
-          <button
-            className="onboarding-skip"
-            onClick={handleSkip}
-            title="Skip setup and go straight to chat"
-          >
-            SKIP SETUP
+          <button className="onboarding-skip" onClick={handleSkip}>
+            {isEditing ? 'CANCEL' : 'SKIP SETUP'}
           </button>
           <div style={{ display: 'flex', gap: 8 }}>
             {step > 0 && (
@@ -201,7 +225,7 @@ export default function AthleteOnboarding({ onComplete }) {
               onClick={handleNext}
               disabled={!canProceed}
             >
-              {step === STEPS.length - 1 ? 'ACTIVATE APEX ►' : 'NEXT ►'}
+              {step === STEPS.length - 1 ? (isEditing ? 'SAVE PROFILE ►' : 'ACTIVATE APEX ►') : 'NEXT ►'}
             </button>
           </div>
         </div>

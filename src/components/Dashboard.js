@@ -1,7 +1,50 @@
 import React, { useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Cell } from 'recharts';
 import IntervalsService from '../services/intervals';
 import analytics from '../services/analytics';
+
+// ── FormGauge: horizontal gradient bar with TSB indicator ────────────────────
+function FormGauge({ tsb }) {
+  if (tsb == null) return null;
+  const pct = Math.min(100, Math.max(0, ((tsb - (-30)) / 60) * 100));
+  return (
+    <div style={{ position: 'relative', width: '100%', marginTop: 12, marginBottom: 8 }}>
+      <div style={{
+        height: 10,
+        borderRadius: 5,
+        background: 'linear-gradient(to right, #ef4444 0%, #ef4444 15%, #f97316 15%, #f97316 35%, #facc15 35%, #facc15 55%, #22c55e 55%, #22c55e 80%, #4ade80 80%, #4ade80 92%, #94a3b8 92%, #94a3b8 100%)',
+        position: 'relative',
+      }}>
+        <div style={{
+          position: 'absolute',
+          left: `${pct}%`,
+          top: -3,
+          transform: 'translateX(-50%)',
+          width: 4,
+          height: 16,
+          background: 'var(--text-0)',
+          borderRadius: 2,
+          boxShadow: '0 0 4px rgba(0,0,0,0.5)',
+        }} />
+      </div>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        marginTop: 5,
+        fontSize: 9,
+        fontFamily: 'var(--font-mono)',
+        color: 'var(--text-3)',
+        letterSpacing: '0.04em',
+      }}>
+        <span>Overtraining</span>
+        <span>Fatigued</span>
+        <span>Neutral</span>
+        <span>Fresh</span>
+        <span>Race Ready</span>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard({ wellness, activities, athlete, loading, error }) {
   const latest = wellness?.[wellness.length - 1];
@@ -9,6 +52,10 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
   const atl = latest?.icu_atl || 0;
   const tsb = ctl - atl;
   const formState = IntervalsService.assessFormState(tsb);
+
+  const readiness = (ctl || atl)
+    ? Math.round(Math.min(100, Math.max(0, 50 + tsb * 2)))
+    : null;
 
   const pmcTrend = useMemo(() => analytics.computePMCTrend(wellness, 14), [wellness]);
   const efTrend = useMemo(() => analytics.computeEFTrend(activities, 14), [activities]);
@@ -23,6 +70,31 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       tsb: w.icu_ctl && w.icu_atl ? Math.round((w.icu_ctl - w.icu_atl) * 10) / 10 : null,
     }));
   }, [wellness]);
+
+  // Weekly TSS — last 8 weeks
+  const weeklyTSS = useMemo(() => {
+    if (!activities?.length) return [];
+    const result = [];
+    const now = new Date();
+    for (let i = 7; i >= 0; i--) {
+      const end = new Date(now);
+      end.setDate(now.getDate() - i * 7);
+      end.setHours(23, 59, 59, 999);
+      const start = new Date(end);
+      start.setDate(end.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+      const label = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      const tss = activities
+        .filter(a => {
+          if (!a.start_date_local) return false;
+          const d = new Date(a.start_date_local);
+          return d >= start && d <= end;
+        })
+        .reduce((s, a) => s + (a.icu_training_load || 0), 0);
+      result.push({ label, tss: Math.round(tss), current: i === 0 });
+    }
+    return result;
+  }, [activities]);
 
   // Recent activities (last 7)
   const recentActivities = useMemo(() => {
@@ -62,9 +134,26 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         <div style={{ color: 'var(--text-2)', marginBottom: 4 }}>{label}</div>
         {payload.map((p, i) => (
           <div key={i} style={{ color: p.color }}>
-            {p.name}: {p.value?.toFixed(1)}
+            {p.name}: {p.value?.toFixed ? p.value.toFixed(1) : p.value}
           </div>
         ))}
+      </div>
+    );
+  };
+
+  const BarTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div style={{
+        background: 'var(--bg-2)',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        padding: '8px 12px',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 11,
+      }}>
+        <div style={{ color: 'var(--text-2)', marginBottom: 4 }}>{label}</div>
+        <div style={{ color: 'var(--accent-blue)' }}>TSS: {payload[0]?.value}</div>
       </div>
     );
   };
@@ -78,7 +167,34 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         </div>
       </div>
 
-      {/* ─── PMC Metrics Row ─── */}
+      {/* ─── Card 1: Training Readiness ─── */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-header">
+          <span className="card-title">Training Readiness</span>
+          {formState && (
+            <span className="card-badge" style={{ background: `${formState.color}18`, color: formState.color }}>
+              {formState.label}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, marginBottom: 4 }}>
+          <div style={{
+            fontSize: 52,
+            fontWeight: 700,
+            fontFamily: 'var(--font-mono)',
+            lineHeight: 1,
+            color: formState?.color || 'var(--text-0)',
+          }}>
+            {readiness != null ? `${readiness}%` : '—'}
+          </div>
+          <div style={{ paddingBottom: 6, fontSize: 12, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' }}>
+            TSB {tsb >= 0 ? '+' : ''}{tsb.toFixed(1)}
+          </div>
+        </div>
+        <FormGauge tsb={tsb} />
+      </div>
+
+      {/* ─── Card 2: PMC Metrics Row ─── */}
       <div className="metrics-row">
         <div className="metric-tile">
           <div className="metric-label">Fitness (CTL)</div>
@@ -152,7 +268,47 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         </div>
       </div>
 
-      {/* ─── Mini PMC Chart ─── */}
+      {/* ─── Card 3: Weekly Load (last 8 weeks) ─── */}
+      {weeklyTSS.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Weekly Load — Last 8 Weeks</span>
+            <span className="card-badge">TSS</span>
+          </div>
+          <div style={{ height: 180, marginTop: 8 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={weeklyTSS} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
+                  tickLine={false}
+                  axisLine={{ stroke: 'var(--border)' }}
+                />
+                <YAxis
+                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={36}
+                  label={{ value: 'TSS', angle: -90, position: 'insideLeft', fill: 'var(--text-3)', fontSize: 9, fontFamily: 'var(--font-mono)', dy: 14 }}
+                />
+                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <Bar dataKey="tss" name="TSS" radius={[3, 3, 0, 0]}>
+                  {weeklyTSS.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.current ? 'var(--accent-blue)' : 'var(--bg-3)'}
+                      stroke={entry.current ? 'var(--accent-blue)' : 'var(--border)'}
+                      strokeWidth={1}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Card 4: Form & Fatigue 30-day chart ─── */}
       <div className="card">
         <div className="card-header">
           <span className="card-title">Form & Fatigue — 30 days</span>
@@ -184,7 +340,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         </div>
       </div>
 
-      {/* ─── EF Assessment ─── */}
+      {/* ─── Card 5: EF Assessment ─── */}
       {efTrend && (
         <div className="card">
           <div className="card-header">
@@ -204,7 +360,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         </div>
       )}
 
-      {/* ─── Recent Activities ─── */}
+      {/* ─── Card 6: Recent Activities ─── */}
       <div className="card">
         <div className="card-header">
           <span className="card-title">Recent Activities</span>

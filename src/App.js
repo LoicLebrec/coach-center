@@ -32,8 +32,10 @@ export default function App() {
   const [athlete, setAthlete] = useState(null);
   const [events, setEvents] = useState([]);
 
-  // Claude API key
+  // LLM config
   const [claudeApiKey, setClaudeApiKey] = useState(null);
+  const [groqApiKey, setGroqApiKey] = useState(null);
+  const [llmProvider, setLlmProvider] = useState('groq');
 
   // Connection state
   const [connections, setConnections] = useState({
@@ -74,6 +76,16 @@ export default function App() {
           setClaudeApiKey(claudeKey);
         }
 
+        const groqKey = await persistence.getGroqApiKey();
+        if (groqKey) {
+          aiCoachService.configureGroq(groqKey);
+          setGroqApiKey(groqKey);
+        }
+
+        const provider = await persistence.getLlmProvider();
+        aiCoachService.setProvider(provider);
+        setLlmProvider(provider);
+
       } catch (err) {
         console.error('Failed to load credentials:', err);
       } finally {
@@ -108,6 +120,70 @@ export default function App() {
     }
   }, []);
 
+  // Dedup activities: same start_date_local (to minute) + type → keep richest entry
+  const deduplicateActivities = useCallback((acts) => {
+    if (!acts?.length) return acts;
+    const richness = (a) => {
+      const fields = [
+        a.icu_training_load, a.icu_average_watts, a.average_watts,
+        a.average_heartrate, a.moving_time, a.distance,
+        a.icu_ctl_change, a.max_heartrate, a.total_elevation_gain,
+      ];
+      return fields.filter(v => v != null && v !== 0).length;
+    };
+    const groups = new Map();
+    for (const a of acts) {
+      const key = `${(a.start_date_local || '').slice(0, 16)}_${a.type || ''}`;
+      const existing = groups.get(key);
+      if (!existing || richness(a) > richness(existing)) {
+        groups.set(key, a);
+      }
+    }
+    return Array.from(groups.values());
+  }, []);
+
+  // Build weekly journal snapshots from wellness + activities data
+  const buildJournal = useCallback(async (wellnessData, activitiesData) => {
+    if (!wellnessData?.length) return;
+    // Group activities by ISO week (Monday start)
+    const getWeekStart = (dateStr) => {
+      const d = new Date(dateStr);
+      const day = d.getDay();
+      const diff = (day === 0 ? -6 : 1 - day);
+      d.setDate(d.getDate() + diff);
+      return d.toISOString().split('T')[0];
+    };
+    const actsByWeek = {};
+    for (const a of (activitiesData || [])) {
+      if (!a.start_date_local) continue;
+      const w = getWeekStart(a.start_date_local);
+      if (!actsByWeek[w]) actsByWeek[w] = [];
+      actsByWeek[w].push(a);
+    }
+    // For each week found in wellness, save a snapshot
+    const weeksSeen = new Set();
+    for (const w of wellnessData) {
+      if (!w.id) continue;
+      const ws = getWeekStart(w.id);
+      if (weeksSeen.has(ws)) continue;
+      weeksSeen.add(ws);
+      const acts = actsByWeek[ws] || [];
+      const wellnessEntries = wellnessData.filter(x => x.id && getWeekStart(x.id) === ws);
+      const lastEntry = wellnessEntries[wellnessEntries.length - 1] || {};
+      const snapshot = {
+        ctl: lastEntry.icu_ctl ? Math.round(lastEntry.icu_ctl * 10) / 10 : null,
+        atl: lastEntry.icu_atl ? Math.round(lastEntry.icu_atl * 10) / 10 : null,
+        tsb: lastEntry.icu_ctl && lastEntry.icu_atl
+          ? Math.round((lastEntry.icu_ctl - lastEntry.icu_atl) * 10) / 10 : null,
+        totalTSS: acts.reduce((s, a) => s + (a.icu_training_load || 0), 0),
+        rides: acts.filter(a => a.type === 'Ride' || a.type === 'VirtualRide').length,
+        runs: acts.filter(a => a.type === 'Run').length,
+        notes: [],
+      };
+      await persistence.saveWeeklySnapshot(ws, snapshot);
+    }
+  }, []);
+
   // Fetch data when Intervals.icu is connected
   const fetchData = useCallback(async () => {
     if (!intervalsService.isConfigured()) return;
@@ -129,18 +205,54 @@ export default function App() {
         intervalsService.getEvents(oldest, newest),
       ]);
 
-      if (wellnessData.status === 'fulfilled') setWellness(wellnessData.value || []);
-      if (activitiesData.status === 'fulfilled') setActivities(activitiesData.value || []);
+      const wellness = wellnessData.status === 'fulfilled' ? (wellnessData.value || []) : [];
+      const rawActivities = activitiesData.status === 'fulfilled' ? (activitiesData.value || []) : [];
+      let dedupedActivities = deduplicateActivities(rawActivities);
+
+      // Enrich activities via individual endpoint — gets ICU-computed fields
+      // (NP, zone distributions, decoupling) not always in the list response.
+      // Batch in groups of 10 to avoid overloading the API.
+      if (dedupedActivities.length > 0) {
+        const sorted = [...dedupedActivities]
+          .sort((a, b) => (b.start_date_local || '') > (a.start_date_local || '') ? 1 : -1);
+        const enrichedMap = {};
+        const batchSize = 10;
+        for (let i = 0; i < Math.min(sorted.length, 60); i += batchSize) {
+          const batch = sorted.slice(i, i + batchSize);
+          const results = await Promise.allSettled(
+            batch.map(a => intervalsService.getActivity(a.id))
+          );
+          results.forEach(r => {
+            if (r.status === 'fulfilled' && r.value?.id) {
+              enrichedMap[r.value.id] = r.value;
+            }
+          });
+        }
+        dedupedActivities = dedupedActivities.map(a => {
+          if (!enrichedMap[a.id]) return a;
+          const enriched = enrichedMap[a.id];
+          const merged = { ...a };
+          for (const [key, val] of Object.entries(enriched)) {
+            // Never overwrite a non-null existing value with null/undefined/empty
+            if (val !== null && val !== undefined && val !== '') {
+              merged[key] = val;
+            }
+          }
+          return merged;
+        });
+      }
+
+      if (wellness.length) setWellness(wellness);
+      if (dedupedActivities.length) setActivities(dedupedActivities);
       if (athleteData.status === 'fulfilled') setAthlete(athleteData.value || null);
       if (eventsData.status === 'fulfilled') setEvents(eventsData.value || []);
 
+      // Build training journal for LLM memory
+      await buildJournal(wellness, dedupedActivities);
+
       // Cache for offline use
-      if (wellnessData.status === 'fulfilled') {
-        await persistence.cacheData('wellness', wellnessData.value, 30);
-      }
-      if (activitiesData.status === 'fulfilled') {
-        await persistence.cacheData('activities', activitiesData.value, 30);
-      }
+      if (wellness.length) await persistence.cacheData('wellness', wellness, 30);
+      if (dedupedActivities.length) await persistence.cacheData('activities', dedupedActivities, 30);
 
     } catch (err) {
       setError(err.message);
@@ -152,7 +264,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [deduplicateActivities, buildJournal]);
 
   useEffect(() => {
     if (connections.intervals) {
@@ -172,6 +284,13 @@ export default function App() {
     } else if (provider === 'claude') {
       aiCoachService.configure(creds.apiKey || null);
       setClaudeApiKey(creds.apiKey || null);
+    } else if (provider === 'groq') {
+      aiCoachService.configureGroq(creds.apiKey || null);
+      setGroqApiKey(creds.apiKey || null);
+    } else if (provider === 'llm-provider') {
+      aiCoachService.setProvider(creds.provider);
+      setLlmProvider(creds.provider);
+      await persistence.saveLlmProvider(creds.provider);
     }
   };
 
@@ -193,7 +312,7 @@ export default function App() {
     if (!connections.intervals && view !== VIEWS.SETTINGS) {
       return (
         <div className="loading-state">
-          <div style={{ fontSize: 32, marginBottom: 16 }}>⚡</div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: 'var(--accent-cyan)', letterSpacing: '0.1em', marginBottom: 16 }}>&gt;&gt;</div>
           <p style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Connect to Intervals.icu to get started</p>
           <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 20, maxWidth: 400, textAlign: 'center' }}>
             Coach Center uses Intervals.icu as the primary data source. 
@@ -215,6 +334,8 @@ export default function App() {
             athlete={athlete}
             events={events}
             claudeApiKey={claudeApiKey}
+            groqApiKey={groqApiKey}
+            llmProvider={llmProvider}
             onNeedApiKey={() => setView(VIEWS.SETTINGS)}
           />
         );
@@ -250,26 +371,26 @@ export default function App() {
         <nav className="sidebar-nav">
           <div className="nav-section-label">Coach</div>
           <button className={`nav-item${view === VIEWS.COACH ? ' active coach-nav-active' : ''}`} onClick={() => setView(VIEWS.COACH)}>
-            <span className="nav-icon">⚡</span><span>APEX Coach</span>
+            <span className="nav-icon nav-icon-text">&gt;&gt;</span><span>APEX Coach</span>
           </button>
 
           <div className="nav-section-label">Analysis</div>
           <button className={`nav-item ${view === VIEWS.DASHBOARD ? 'active' : ''}`} onClick={() => setView(VIEWS.DASHBOARD)}>
-            <span className="nav-icon">◈</span><span>Dashboard</span>
+            <span className="nav-icon nav-icon-text">◈</span><span>Dashboard</span>
           </button>
           <button className={`nav-item ${view === VIEWS.PMC ? 'active' : ''}`} onClick={() => setView(VIEWS.PMC)}>
-            <span className="nav-icon">📈</span><span>PMC / Form</span>
+            <span className="nav-icon nav-icon-text">△</span><span>PMC / Form</span>
           </button>
           <button className={`nav-item ${view === VIEWS.ACTIVITIES ? 'active' : ''}`} onClick={() => setView(VIEWS.ACTIVITIES)}>
-            <span className="nav-icon">🚴</span><span>Activities</span>
+            <span className="nav-icon nav-icon-text">≡</span><span>Activities</span>
           </button>
           <button className={`nav-item ${view === VIEWS.WEEKLY ? 'active' : ''}`} onClick={() => setView(VIEWS.WEEKLY)}>
-            <span className="nav-icon">📊</span><span>Weekly Load</span>
+            <span className="nav-icon nav-icon-text">▦</span><span>Weekly Load</span>
           </button>
 
           <div className="nav-section-label">System</div>
           <button className={`nav-item ${view === VIEWS.SETTINGS ? 'active' : ''}`} onClick={() => setView(VIEWS.SETTINGS)}>
-            <span className="nav-icon">⚙</span><span>Settings</span>
+            <span className="nav-icon nav-icon-text">◎</span><span>Settings</span>
           </button>
 
           <div className="nav-section-label">Connections</div>
@@ -289,7 +410,7 @@ export default function App() {
       </aside>
 
       <main className={`main-content${view === VIEWS.COACH ? ' coach-active' : ''}`}>
-        {error && view !== VIEWS.COACH && <div className="error-banner">⚠ {error}</div>}
+        {error && view !== VIEWS.COACH && <div className="error-banner"><span className="error-tag">[ERR]</span> {error}</div>}
         {renderView()}
       </main>
     </div>

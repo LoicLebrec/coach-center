@@ -15,6 +15,7 @@ const dataStore = localforage.createInstance({ name: 'coach-center', storeName: 
 const notesStore = localforage.createInstance({ name: 'coach-center', storeName: 'coach-notes' });
 const prefsStore = localforage.createInstance({ name: 'coach-center', storeName: 'preferences' });
 const coachStore = localforage.createInstance({ name: 'coach-center', storeName: 'coach' });
+const journalStore = localforage.createInstance({ name: 'coach-center', storeName: 'journal' });
 
 const persistence = {
   // ─── Credentials ──────────────────────────────────────────
@@ -100,6 +101,51 @@ const persistence = {
 
   async getClaudeApiKey() {
     return credentialsStore.getItem('claude');
+  },
+
+  // ─── Groq API Key ──────────────────────────────────────────
+  async saveGroqApiKey(key) {
+    return credentialsStore.setItem('groq', key);
+  },
+
+  async getGroqApiKey() {
+    return credentialsStore.getItem('groq');
+  },
+
+  // ─── LLM Provider ('claude' | 'groq') ─────────────────────
+  async saveLlmProvider(provider) {
+    return prefsStore.setItem('llm-provider', provider);
+  },
+
+  async getLlmProvider() {
+    return (await prefsStore.getItem('llm-provider')) || 'groq';
+  },
+
+  // ─── Training Journal ──────────────────────────────────────
+  // Structured weekly snapshots for LLM memory
+  // key: ISO week start date (YYYY-MM-DD, always Monday)
+  async saveWeeklySnapshot(weekStart, snapshot) {
+    return journalStore.setItem(weekStart, {
+      ...snapshot,
+      weekStart,
+      savedAt: new Date().toISOString(),
+    });
+  },
+
+  async getWeeklySnapshot(weekStart) {
+    return journalStore.getItem(weekStart);
+  },
+
+  // Returns last N weeks, most recent first
+  async getRecentJournal(n = 8) {
+    const keys = await journalStore.keys();
+    const sorted = keys.sort().reverse().slice(0, n);
+    const entries = await Promise.all(sorted.map(k => journalStore.getItem(k)));
+    return entries.filter(Boolean);
+  },
+
+  async clearJournal() {
+    return journalStore.clear();
   },
 
   // ─── Coach Conversation History ────────────────────────────
