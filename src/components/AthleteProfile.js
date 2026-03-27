@@ -27,6 +27,10 @@ function getAthleteWeight(athlete) {
     return asNumber(athlete?.icu_weight, athlete?.weight, athlete?.athlete_weight);
 }
 
+function getWellnessRestingHr(w) {
+    return asNumber(w?.restingHR, w?.resting_hr, w?.rhr, w?.hrRest);
+}
+
 function daysUntil(dateStr) {
     if (!dateStr) return null;
     const d = new Date(`${dateStr}T00:00:00`);
@@ -119,6 +123,10 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
         targetWeight: '',
     });
     const [saveMsg, setSaveMsg] = useState('');
+
+    // Add a helper message state for missing data
+    const hasWellnessData = wellness && wellness.length > 0;
+    const hasAthleteData = athlete && (athlete.icu_ftp || athlete.ftp || athlete.critical_power);
 
     useEffect(() => {
         (async () => {
@@ -232,6 +240,7 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
     const atl = latest?.icu_atl ?? null;
     const tsb = ctl != null && atl != null ? ctl - atl : null;
     const currentFtp = getAthleteFtp(athlete);
+    const restingHr = getWellnessRestingHr(latest);
 
     const report = useMemo(() => {
         return buildBrutalReport({
@@ -326,6 +335,15 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                         <span className="card-badge">{report.readiness != null ? `${report.readiness}%` : 'N/A'}</span>
                     </div>
 
+                    {!hasWellnessData && (
+                        <div className="info-banner" style={{ marginBottom: 12, backgroundColor: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.3)' }}>
+                            <strong>Syncing training data...</strong>
+                            <div style={{ marginTop: 6, fontSize: 12 }}>
+                                Waiting for Intervals.icu sync. If this persists, check your connection or visit the Dashboard to manually trigger a refresh. Data includes CTL/ATL (fitness/fatigue), TSB (form), and Resting HR.
+                            </div>
+                        </div>
+                    )}
+
                     <div className={`info-banner ${report.status === 'bad' ? 'error-banner' : ''}`} style={{ marginBottom: 12 }}>
                         <strong>{report.headline}</strong>
                         <div style={{ marginTop: 6 }}>{report.verdict}</div>
@@ -343,6 +361,10 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                         <div className="calendar-upcoming-item">
                             <div className="calendar-upcoming-date">CTL / ATL</div>
                             <div className="calendar-upcoming-title">{ctl != null ? ctl.toFixed(1) : '—'} / {atl != null ? atl.toFixed(1) : '—'}</div>
+                        </div>
+                        <div className="calendar-upcoming-item">
+                            <div className="calendar-upcoming-date">Resting HR</div>
+                            <div className="calendar-upcoming-title">{restingHr != null ? `${restingHr} bpm` : '—'}</div>
                         </div>
                         <div className="calendar-upcoming-item">
                             <div className="calendar-upcoming-date">Target FTP Gap</div>

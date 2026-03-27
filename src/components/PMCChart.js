@@ -13,6 +13,20 @@ const IMPRESSION_OPTIONS = [
   { value: 'very-tired', label: '⬇⬇ Very Tired', color: '#ef4444' },
 ];
 
+// Helper to extract numeric value from various field names
+function asNumber(...values) {
+  for (const v of values) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+// Helper to get resting HR from wellness record (handles different field names)
+function getWellnessRestingHr(w) {
+  return asNumber(w?.restingHR, w?.resting_hr, w?.rhr, w?.hrRest);
+}
+
 export default function PMCChart({ wellness, loading }) {
   const [range, setRange] = useState(90);
   const [formImpressions, setFormImpressions] = useState({});
@@ -43,7 +57,7 @@ export default function PMCChart({ wellness, loading }) {
         ctl: w.icu_ctl ? Math.round(w.icu_ctl * 10) / 10 : null,
         atl: w.icu_atl ? Math.round(w.icu_atl * 10) / 10 : null,
         tsb: w.icu_ctl && w.icu_atl ? Math.round((w.icu_ctl - w.icu_atl) * 10) / 10 : null,
-        rhr: w.restingHR || null,
+        rhr: getWellnessRestingHr(w),
         load: w.icu_training_load || 0,
         impressionValue: impression ? { great: 25, good: 15, neutral: 5, tired: -10, 'very-tired': -25 }[impression.impression] : null,
         impression: impression ? impression.impression : null,
