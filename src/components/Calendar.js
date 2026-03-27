@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import {
     addWeeks,
     addYears,
@@ -360,7 +360,7 @@ export default function Calendar({
         library: false,
         ai: true,
         csv: true,
-        gpx: true,
+        gpx: false,
         upcoming: false,
     });
     const [jumpDate, setJumpDate] = useState('');
@@ -387,6 +387,33 @@ export default function Calendar({
     const [importedSessions, setImportedSessions] = useState([]);
     const [plannerError, setPlannerError] = useState(null);
     const [dragOverDay, setDragOverDay] = useState(null);
+    const [selectedEvent, setSelectedEvent] = useState(null);
+
+    // ── Persist preferences to localStorage ───────────────────
+    useEffect(() => {
+        const saved = localStorage.getItem('apex-calendar-prefs');
+        if (!saved) return;
+        try {
+            const p = JSON.parse(saved);
+            if (p.gpxSport) setGpxSport(p.gpxSport);
+            if (p.gpxZone) setGpxZone(p.gpxZone);
+            if (p.gpxDuration) setGpxDuration(p.gpxDuration);
+            if (p.gpxShape) setGpxShape(p.gpxShape);
+            if (p.gpxDirection) setGpxDirection(p.gpxDirection);
+            if (p.gpxElevation) setGpxElevation(p.gpxElevation);
+            if (p.gpxLat) setGpxLat(p.gpxLat);
+            if (p.gpxLng) setGpxLng(p.gpxLng);
+            if (p.aiObjective) setAiObjective(p.aiObjective);
+            if (p.aiDays) setAiDays(p.aiDays);
+        } catch (_) {}
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem('apex-calendar-prefs', JSON.stringify({
+            gpxSport, gpxZone, gpxDuration, gpxShape, gpxDirection,
+            gpxElevation, gpxLat, gpxLng, aiObjective, aiDays,
+        }));
+    }, [gpxSport, gpxZone, gpxDuration, gpxShape, gpxDirection, gpxElevation, gpxLat, gpxLng, aiObjective, aiDays]);
 
     const allEvents = useMemo(() => {
         return [...(events || []), ...(plannedEvents || [])];
@@ -857,9 +884,9 @@ export default function Calendar({
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <div className="calendar-view-switch">
-                        <button className={`btn ${viewMode === 'week' ? 'btn-primary' : ''}`} onClick={() => setViewMode('week')}>Week</button>
-                        <button className={`btn ${viewMode === 'month' ? 'btn-primary' : ''}`} onClick={() => setViewMode('month')}>Month</button>
-                        <button className={`btn ${viewMode === 'year' ? 'btn-primary' : ''}`} onClick={() => setViewMode('year')}>Year</button>
+                        <button className={`btn ${viewMode === 'week' ? 'btn-primary' : ''}`} onClick={() => { setViewMode('week'); setCursor(new Date()); }}>Week</button>
+                        <button className={`btn ${viewMode === 'month' ? 'btn-primary' : ''}`} onClick={() => { setViewMode('month'); setCursor(new Date()); }}>Month</button>
+                        <button className={`btn ${viewMode === 'year' ? 'btn-primary' : ''}`} onClick={() => { setViewMode('year'); setCursor(new Date()); }}>Year</button>
                     </div>
                     <button className="btn btn-sm" onClick={() => { if (viewMode === 'week') setCursor(subWeeks(cursor, 4)); else if (viewMode === 'year') setCursor(subYears(cursor, 1)); else setCursor(subMonths(cursor, 3)); }}>← 3M</button>
                     <button className="btn btn-sm" onClick={movePrev}>‹</button>
@@ -915,6 +942,8 @@ export default function Calendar({
                                                     key={entry.id}
                                                     className={`calendar-pill calendar-pill-${entry.kind} calendar-pill-tone-${trainingTone(entry)}`}
                                                     title={entry.title}
+                                                    onClick={() => setSelectedEvent(entry)}
+                                                    style={{ cursor: 'pointer' }}
                                                 >
                                                     {entry.title}
                                                 </div>
@@ -951,7 +980,7 @@ export default function Calendar({
                                                 const notesPreview = String(entry.notes || '').replace(/\s+/g, ' ').slice(0, 170);
                                                 const blocksDuration = totalDuration(entry.workoutBlocks || []);
                                                 return (
-                                                    <div key={entry.id} className={`calendar-week-item calendar-week-item-${tone}`}>
+                                                    <div key={entry.id} className={`calendar-week-item calendar-week-item-${tone}`} onClick={() => setSelectedEvent(entry)} style={{ cursor: 'pointer' }}>
                                                         <div className="calendar-week-item-head">
                                                             <div className="calendar-week-item-title">{entry.title}</div>
                                                             <span className={`calendar-week-tone calendar-week-tone-${tone}`}>{toneLabel(tone)}</span>
@@ -1269,13 +1298,13 @@ export default function Calendar({
                     ) : (
                         <div className="calendar-upcoming-list">
                             {upcoming.map(event => (
-                                <div key={event.id} className="calendar-upcoming-item">
+                                <div key={event.id} className="calendar-upcoming-item" onClick={() => setSelectedEvent(event)} style={{ cursor: 'pointer' }}>
                                     <div>
                                         <div className="calendar-upcoming-date">{format(event.date, 'EEE dd MMM yyyy')}</div>
                                         <div className="calendar-upcoming-title">{event.title}</div>
                                         <WorkoutBlocksGraph blocks={event.workoutBlocks} />
                                     </div>
-                                    <div className="calendar-upcoming-actions">
+                                    <div className="calendar-upcoming-actions" onClick={e => e.stopPropagation()}>
                                         <span className={`calendar-kind-badge calendar-kind-${event.kind}`}>{kindLabel(event.kind)}</span>
                                         {eventHasWorkoutData(event) && (
                                             <button className="calendar-fit-btn" onClick={() => downloadEventFit(event)}>
@@ -1294,6 +1323,115 @@ export default function Calendar({
                     ))}
                 </div>
             </div>
+
+            {/* ── Event detail modal ───────────────────────────── */}
+            {selectedEvent && (
+                <div
+                    style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+                        zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: '16px',
+                    }}
+                    onClick={() => setSelectedEvent(null)}
+                >
+                    <div
+                        style={{
+                            background: 'var(--bg-1)', border: '1px solid var(--border)',
+                            borderRadius: 12, width: '100%', maxWidth: 520,
+                            maxHeight: '82vh', overflowY: 'auto',
+                            boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+                            padding: '24px',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                            <div>
+                                <div style={{ fontFamily: 'var(--font-sans)', fontSize: 18, fontWeight: 600, color: 'var(--text-0)', marginBottom: 4 }}>
+                                    {selectedEvent.title}
+                                </div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-2)' }}>
+                                    {format(selectedEvent.date, 'EEEE, dd MMMM yyyy')}
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setSelectedEvent(null)}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-2)', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '0 4px' }}
+                            >×</button>
+                        </div>
+
+                        {/* Badges */}
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                            {selectedEvent.type && (
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '3px 10px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
+                                    {selectedEvent.type.toUpperCase()}
+                                </span>
+                            )}
+                            <span className={`calendar-kind-badge calendar-kind-${selectedEvent.kind}`}>
+                                {kindLabel(selectedEvent.kind)}
+                            </span>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '3px 10px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
+                                {toneLabel(trainingTone(selectedEvent))}
+                            </span>
+                            {totalDuration(selectedEvent.workoutBlocks || []) > 0 && (
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '3px 10px', borderRadius: 20, background: 'rgba(59,130,246,0.12)', color: 'var(--accent-blue)', letterSpacing: '0.06em' }}>
+                                    {totalDuration(selectedEvent.workoutBlocks)} min
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Workout block graph */}
+                        {selectedEvent.workoutBlocks?.length > 0 && (
+                            <div style={{ marginBottom: 16 }}>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 6, letterSpacing: '0.06em' }}>INTENSITY PROFILE</div>
+                                <WorkoutBlocksGraph blocks={selectedEvent.workoutBlocks} />
+                                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                    {selectedEvent.workoutBlocks.map((b, i) => (
+                                        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>
+                                            <span style={{ width: 28, textAlign: 'right', color: 'var(--accent-blue)' }}>{b.zone}</span>
+                                            <span style={{ flex: 1 }}>{b.label}</span>
+                                            <span style={{ color: 'var(--text-3)' }}>{b.durationMin} min</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Notes */}
+                        <div style={{ marginBottom: 16 }}>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 6, letterSpacing: '0.06em' }}>NOTES</div>
+                            <div style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: selectedEvent.notes ? 'var(--text-1)' : 'var(--text-3)', lineHeight: 1.7, whiteSpace: 'pre-wrap', background: 'var(--bg-2)', borderRadius: 8, padding: '12px 14px' }}>
+                                {selectedEvent.notes || 'No notes for this session.'}
+                            </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                            {eventHasWorkoutData(selectedEvent) && (
+                                <button className="btn btn-primary" onClick={() => { downloadEventFit(selectedEvent); }}>
+                                    Download FIT
+                                </button>
+                            )}
+                            {gpxLat && gpxLng && (
+                                <button className="btn" onClick={() => {
+                                    const zone = inferZone({ title: selectedEvent.title, notes: selectedEvent.notes || '' });
+                                    const sport = /run/i.test(selectedEvent.type || '') ? 'Run' : 'Ride';
+                                    const dur = totalDuration(selectedEvent.workoutBlocks || []) || 90;
+                                    generateAndDownloadGpx({ lat: parseFloat(gpxLat), lng: parseFloat(gpxLng), sport, zone, durationMin: dur, shape: gpxShape, direction: gpxDirection, elevation: gpxElevation });
+                                }}>
+                                    Get GPX Route
+                                </button>
+                            )}
+                            {String(selectedEvent.id).startsWith('local_') && (
+                                <button className="btn btn-danger" onClick={() => { onRemovePlannedEvent(selectedEvent.id); setSelectedEvent(null); }}>
+                                    Remove
+                                </button>
+                            )}
+                            <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => setSelectedEvent(null)}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
