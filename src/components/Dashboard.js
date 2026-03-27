@@ -3,6 +3,40 @@ import { LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveCont
 import IntervalsService from '../services/intervals';
 import analytics from '../services/analytics';
 
+function asNumber(...values) {
+  for (const v of values) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function getAthleteFtp(athlete) {
+  return asNumber(
+    athlete?.icu_ftp,
+    athlete?.ftp,
+    athlete?.ftp_watts,
+    athlete?.critical_power,
+    athlete?.zones?.ftp
+  );
+}
+
+function getAthleteWeight(athlete) {
+  return asNumber(athlete?.icu_weight, athlete?.weight, athlete?.athlete_weight);
+}
+
+function getWellnessDate(w) {
+  return w?.id || w?.date || w?.day || null;
+}
+
+function getWellnessRestingHr(w) {
+  return asNumber(w?.restingHR, w?.resting_hr, w?.rhr, w?.hrRest);
+}
+
+function getWellnessWeight(w) {
+  return asNumber(w?.weight, w?.bodyWeight, w?.body_weight);
+}
+
 function estimatePMCFromActivities(activities = []) {
   if (!activities.length) return null;
 
@@ -87,48 +121,86 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
     ? Math.round(Math.min(100, Math.max(0, 50 + tsb * 2)))
     : null;
 
-  const ftpValue = athlete?.icu_ftp ?? null;
-  const weightValue = athlete?.icu_weight ?? latest?.weight ?? null;
+  const ftpValue = getAthleteFtp(athlete);
+  const weightValue = getAthleteWeight(athlete) ?? getWellnessWeight(latest);
   const wkgValue = (ftpValue && weightValue) ? (ftpValue / weightValue) : null;
 
   const pmcTrend = useMemo(() => analytics.computePMCTrend(wellness, 14), [wellness]);
   const efTrend = useMemo(() => analytics.computeEFTrend(activities, 14), [activities]);
 
-  // Recent 30 days for mini PMC sparkline
-  const miniPMC = useMemo(() => {
-    if (!wellness || wellness.length === 0) return [];
-    return wellness.slice(-30).map(w => ({
-      date: w.id,
-      ctl: w.icu_ctl ? Math.round(w.icu_ctl * 10) / 10 : null,
-      atl: w.icu_atl ? Math.round(w.icu_atl * 10) / 10 : null,
-      tsb: w.icu_ctl && w.icu_atl ? Math.round((w.icu_ctl - w.icu_atl) * 10) / 10 : null,
-    }));
-  }, [wellness]);
-
   const evolutionData = useMemo(() => {
-    const efByDay = new Map();
+    const wellnessByDay = new Map();
+    (wellness || []).forEach(w => {
+      const day = String(getWellnessDate(w) || '').slice(0, 10);
+      if (!day) return;
+      wellnessByDay.set(day, w);
+    });
+
+    const activityByDay = new Map();
     (activities || []).forEach(a => {
       const day = String(a.start_date_local || '').slice(0, 10);
       if (!day) return;
+
+      const load = asNumber(a.icu_training_load, a.training_load, a.tss, a.load) || 0;
       const watts = Number(a.icu_average_watts || a.average_watts || 0);
       const hr = Number(a.average_heartrate || 0);
+
+      const curr = activityByDay.get(day) || { load: 0, efSum: 0, efCount: 0 };
+      curr.load += load;
       if (watts > 0 && hr > 0) {
-        efByDay.set(day, Number((watts / hr).toFixed(3)));
+        curr.efSum += watts / hr;
+        curr.efCount += 1;
       }
+      activityByDay.set(day, curr);
     });
 
-    return (wellness || [])
-      .slice(-60)
-      .map(w => ({
-        date: w.id,
-        ctl: w.icu_ctl != null ? Number(w.icu_ctl.toFixed(1)) : null,
-        atl: w.icu_atl != null ? Number(w.icu_atl.toFixed(1)) : null,
-        tsb: (w.icu_ctl != null && w.icu_atl != null) ? Number((w.icu_ctl - w.icu_atl).toFixed(1)) : null,
-        rhr: w.restingHR != null ? Number(w.restingHR) : null,
-        weight: w.weight != null ? Number(Number(w.weight).toFixed(1)) : null,
-        ef: efByDay.get(w.id) ?? null,
-      }));
+    if (wellnessByDay.size === 0 && activityByDay.size === 0) return [];
+
+    const today = new Date();
+    let ctlEst = 0;
+    let atlEst = 0;
+    const ctlTau = 42;
+    const atlTau = 7;
+    const output = [];
+
+    for (let d = 180; d >= 0; d--) {
+      const day = new Date(today);
+      day.setDate(today.getDate() - d);
+      const key = day.toISOString().slice(0, 10);
+
+      const activity = activityByDay.get(key);
+      const load = activity?.load || 0;
+      ctlEst = ctlEst + (load - ctlEst) * (1 / ctlTau);
+      atlEst = atlEst + (load - atlEst) * (1 / atlTau);
+
+      if (d > 60) continue;
+
+      const w = wellnessByDay.get(key);
+      const ctlValue = asNumber(w?.icu_ctl, w?.ctl, ctlEst);
+      const atlValue = asNumber(w?.icu_atl, w?.atl, atlEst);
+      output.push({
+        date: key,
+        ctl: ctlValue != null ? Number(ctlValue.toFixed(1)) : null,
+        atl: atlValue != null ? Number(atlValue.toFixed(1)) : null,
+        tsb: (ctlValue != null && atlValue != null) ? Number((ctlValue - atlValue).toFixed(1)) : null,
+        rhr: getWellnessRestingHr(w),
+        weight: getWellnessWeight(w),
+        ef: activity?.efCount ? Number((activity.efSum / activity.efCount).toFixed(3)) : null,
+      });
+    }
+
+    return output;
   }, [wellness, activities]);
+
+  // Recent 30 days for mini PMC sparkline
+  const miniPMC = useMemo(() => {
+    return evolutionData.slice(-30).map(d => ({
+      date: d.date,
+      ctl: d.ctl,
+      atl: d.atl,
+      tsb: d.tsb,
+    }));
+  }, [evolutionData]);
 
   // Weekly TSS — last 8 weeks
   const weeklyTSS = useMemo(() => {
@@ -317,11 +389,11 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         <div className="metric-tile">
           <div className="metric-label">Resting HR</div>
           <div className="metric-value">
-            {latest?.restingHR || '—'}<span className="metric-unit">bpm</span>
+            {getWellnessRestingHr(latest) || '—'}<span className="metric-unit">bpm</span>
           </div>
-          {latest?.weight && (
+          {getWellnessWeight(latest) && (
             <div className="metric-delta neutral">
-              {latest.weight.toFixed(1)} kg
+              {getWellnessWeight(latest).toFixed(1)} kg
             </div>
           )}
         </div>

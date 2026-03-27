@@ -632,7 +632,7 @@ export default function App() {
               onCreate={handleAddPlannedEvent}
               onSaveToLibrary={handleSaveWorkoutToLibrary}
               onGenerateWithAi={handleGenerateAiWorkoutTemplate}
-              ftp={athlete?.icu_ftp || null}
+              ftp={athlete?.icu_ftp || athlete?.ftp || athlete?.ftp_watts || athlete?.critical_power || athlete?.zones?.ftp || null}
             />
           </div>
         );

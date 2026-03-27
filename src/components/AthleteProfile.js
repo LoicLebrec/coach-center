@@ -5,6 +5,28 @@ function clamp(v, min, max) {
     return Math.max(min, Math.min(max, v));
 }
 
+function asNumber(...values) {
+    for (const v of values) {
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+    }
+    return null;
+}
+
+function getAthleteFtp(athlete) {
+    return asNumber(
+        athlete?.icu_ftp,
+        athlete?.ftp,
+        athlete?.ftp_watts,
+        athlete?.critical_power,
+        athlete?.zones?.ftp
+    );
+}
+
+function getAthleteWeight(athlete) {
+    return asNumber(athlete?.icu_weight, athlete?.weight, athlete?.athlete_weight);
+}
+
 function daysUntil(dateStr) {
     if (!dateStr) return null;
     const d = new Date(`${dateStr}T00:00:00`);
@@ -116,11 +138,13 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
             const athleteName = [athlete?.first_name, athlete?.last_name].filter(Boolean).join(' ').trim();
             if (!next.riderName && athleteName) next.riderName = athleteName;
 
-            if (!next.targetWeight && athlete?.icu_weight) {
-                next.targetWeight = String(Math.round(Number(athlete.icu_weight) * 10) / 10);
+            const athleteWeight = getAthleteWeight(athlete);
+            if (!next.targetWeight && athleteWeight) {
+                next.targetWeight = String(Math.round(Number(athleteWeight) * 10) / 10);
             }
 
-            if (!next.primarySport && athlete?.icu_ftp) {
+            const athleteFtp = getAthleteFtp(athlete);
+            if (!next.primarySport && athleteFtp) {
                 next.primarySport = 'Road Cycling';
             }
 
@@ -207,7 +231,7 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
     const ctl = latest?.icu_ctl ?? null;
     const atl = latest?.icu_atl ?? null;
     const tsb = ctl != null && atl != null ? ctl - atl : null;
-    const currentFtp = athlete?.icu_ftp ?? null;
+    const currentFtp = getAthleteFtp(athlete);
 
     const report = useMemo(() => {
         return buildBrutalReport({

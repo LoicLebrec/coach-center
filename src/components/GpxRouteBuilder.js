@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -6,6 +6,7 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import { LIBRARY_WORKOUTS as DEFAULT_LIBRARY_WORKOUTS } from '../data/workoutLibrary';
+import persistence from '../services/persistence';
 
 // Fix default leaflet marker icons (webpack issue)
 delete L.Icon.Default.prototype._getIconUrl;
@@ -229,6 +230,8 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
   const [sport, setSport] = useState(prefs.sport || 'Ride');
   const [zone, setZone] = useState(prefs.zone || 'Z2');
   const [duration, setDuration] = useState(prefs.duration || 90);
+  const [homeLat, setHomeLat] = useState(prefs.homeLat || '');
+  const [homeLng, setHomeLng] = useState(prefs.homeLng || '');
   const [lat, setLat] = useState(prefs.lat || '');
   const [lng, setLng] = useState(prefs.lng || '');
   const [locStatus, setLocStatus] = useState(prefs.lat ? `Saved location: ${Number(prefs.lat).toFixed(4)}°, ${Number(prefs.lng).toFixed(4)}°` : '');
@@ -237,25 +240,44 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [librarySelection, setLibrarySelection] = useState('');
+  const [autoGenerationPending, setAutoGenerationPending] = useState(false);
+  const [autoGenerationDone, setAutoGenerationDone] = useState(false);
 
   const allPlanned = [...(plannedEvents || []), ...(events || [])];
   const todayTraining = getTodayTraining(allPlanned);
   const effectiveLibrary = workoutLibrary.length ? workoutLibrary : DEFAULT_LIBRARY_WORKOUTS;
 
+  useEffect(() => {
+    (async () => {
+      const profile = await persistence.getAthleteProfile();
+      const profileHomeLat = profile?.homeLat ?? profile?.homeLatitude ?? '';
+      const profileHomeLng = profile?.homeLng ?? profile?.homeLongitude ?? '';
+      if (profileHomeLat && profileHomeLng) {
+        setHomeLat(String(profileHomeLat));
+        setHomeLng(String(profileHomeLng));
+        if (!lat && !lng) {
+          setLat(String(profileHomeLat));
+          setLng(String(profileHomeLng));
+          setLocStatus(`Home location loaded: ${Number(profileHomeLat).toFixed(4)}°, ${Number(profileHomeLng).toFixed(4)}°`);
+        }
+      }
+    })();
+  }, []);
+
   // Persist prefs on change
   useEffect(() => {
-    savePrefs({ sport, zone, duration, lat, lng });
-  }, [sport, zone, duration, lat, lng]);
+    savePrefs({ sport, zone, duration, lat, lng, homeLat, homeLng });
+  }, [sport, zone, duration, lat, lng, homeLat, homeLng]);
 
   const targetKm = estimateDistanceKm(sport, zone, Number(duration));
 
-  const applyWorkoutProfile = (workout) => {
+  const applyWorkoutProfile = useCallback((workout) => {
     const profile = inferWorkoutProfile(workout);
     if (!profile) return;
     setSport(profile.sport);
     setZone(profile.zone);
     setDuration(profile.duration);
-  };
+  }, []);
 
   const handleGetLocation = async () => {
     setLocStatus('Detecting location...');
@@ -300,7 +322,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = useCallback(async () => {
     const la = parseFloat(lat);
     const ln = parseFloat(lng);
     if (isNaN(la) || isNaN(ln)) { setError('Set your starting location first.'); return; }
@@ -341,6 +363,61 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
     } finally {
       setLoading(false);
     }
+  }, [lat, lng, targetKm, sport]);
+
+  useEffect(() => {
+    if (autoGenerationDone) return;
+    if (!todayTraining) return;
+    if (!lat || !lng) return;
+
+    applyWorkoutProfile(todayTraining);
+    setAutoGenerationPending(true);
+    setAutoGenerationDone(true);
+  }, [autoGenerationDone, todayTraining, lat, lng, applyWorkoutProfile]);
+
+  useEffect(() => {
+    if (!autoGenerationPending) return;
+    if (loading) return;
+
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const alreadyGenerated = localStorage.getItem('apex-gpx-auto-day');
+    if (alreadyGenerated === todayKey) {
+      setAutoGenerationPending(false);
+      return;
+    }
+
+    setLocStatus('Auto-generating route from home + today workout...');
+    localStorage.setItem('apex-gpx-auto-day', todayKey);
+    setAutoGenerationPending(false);
+    handleGenerate();
+  }, [autoGenerationPending, loading, handleGenerate]);
+
+  const handleUseHome = () => {
+    if (!homeLat || !homeLng) {
+      setLocStatus('Set your home location first.');
+      return;
+    }
+    const latVal = Number(homeLat).toFixed(5);
+    const lngVal = Number(homeLng).toFixed(5);
+    setLat(latVal);
+    setLng(lngVal);
+    setLocStatus(`Using home location: ${Number(latVal).toFixed(4)}°, ${Number(lngVal).toFixed(4)}°`);
+  };
+
+  const handleSaveHomeFromCurrent = async () => {
+    const la = parseFloat(lat);
+    const ln = parseFloat(lng);
+    if (isNaN(la) || isNaN(ln)) {
+      setLocStatus('Set current location first, then save as home.');
+      return;
+    }
+    const latVal = Number(la).toFixed(5);
+    const lngVal = Number(ln).toFixed(5);
+    setHomeLat(latVal);
+    setHomeLng(lngVal);
+    const profile = await persistence.getAthleteProfile();
+    await persistence.saveAthleteProfile({ ...(profile || {}), homeLat: latVal, homeLng: lngVal });
+    setLocStatus(`Home location saved: ${Number(latVal).toFixed(4)}°, ${Number(lngVal).toFixed(4)}°`);
   };
 
   const handleDownload = () => {
@@ -379,6 +456,13 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
         <input className="form-input" style={{ flex: 1 }} placeholder="Latitude" value={lat} onChange={e => setLat(e.target.value)} />
         <input className="form-input" style={{ flex: 1 }} placeholder="Longitude" value={lng} onChange={e => setLng(e.target.value)} />
         <button className="btn" onClick={handleGetLocation}>My Location</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <input className="form-input" style={{ flex: 1, minWidth: 140 }} placeholder="Home latitude" value={homeLat} onChange={e => setHomeLat(e.target.value)} />
+        <input className="form-input" style={{ flex: 1, minWidth: 140 }} placeholder="Home longitude" value={homeLng} onChange={e => setHomeLng(e.target.value)} />
+        <button className="btn" onClick={handleUseHome}>Use Home</button>
+        <button className="btn" onClick={handleSaveHomeFromCurrent}>Save Home</button>
       </div>
 
       {locStatus && (

@@ -560,7 +560,7 @@ export default function Calendar({
         if (!fitText) return;
         const sportType = /run/i.test(String(event?.type || '')) ? 'running' : 'cycling';
         const label = `${format(event.date, 'yyyy-MM-dd')}-${sanitizeLabel(event.title || 'session')}`;
-        exportWorkoutFit(fitText, athlete?.icu_ftp || null, sportType, label);
+        exportWorkoutFit(fitText, athlete?.icu_ftp || athlete?.ftp || athlete?.ftp_watts || athlete?.critical_power || athlete?.zones?.ftp || null, sportType, label);
     };
 
     const handleImportCsv = async (e) => {
@@ -900,7 +900,7 @@ export default function Calendar({
                                 onCreate={onAddPlannedEvent}
                                 onSaveToLibrary={onSaveWorkoutToLibrary}
                                 onGenerateWithAi={onGenerateAiWorkoutTemplate}
-                                ftp={athlete?.icu_ftp || null}
+                                ftp={athlete?.icu_ftp || athlete?.ftp || athlete?.ftp_watts || athlete?.critical_power || athlete?.zones?.ftp || null}
                             />
                         )}
                     </div>
