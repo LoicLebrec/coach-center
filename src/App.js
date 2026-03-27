@@ -11,6 +11,9 @@ import Settings from './components/Settings';
 import WeeklyLoad from './components/WeeklyLoad';
 import CoachChat from './components/CoachChat';
 import Calendar from './components/Calendar';
+import WorkoutBuilder from './components/WorkoutBuilder';
+import GpxRouteBuilder from './components/GpxRouteBuilder';
+import { LIBRARY_WORKOUTS } from './data/workoutLibrary';
 import './styles/app.css';
 
 function extractJsonBlock(text) {
@@ -22,11 +25,16 @@ function extractJsonBlock(text) {
   const arrayMatch = text.match(/\[[\s\S]*\]/);
   if (arrayMatch?.[0]) return arrayMatch[0].trim();
 
+  const objectMatch = text.match(/\{[\s\S]*\}/);
+  if (objectMatch?.[0]) return objectMatch[0].trim();
+
   return null;
 }
 
 const VIEWS = {
   COACH: 'coach',
+  WORKOUT_BUILDER: 'workout_builder',
+  GPX_BUILDER: 'gpx_builder',
   DASHBOARD: 'dashboard',
   PMC: 'pmc',
   ACTIVITIES: 'activities',
@@ -49,6 +57,7 @@ export default function App() {
   const [athlete, setAthlete] = useState(null);
   const [events, setEvents] = useState([]);
   const [plannedEvents, setPlannedEvents] = useState([]);
+  const [customWorkoutLibrary, setCustomWorkoutLibrary] = useState([]);
 
   // LLM config
   const [claudeApiKey, setClaudeApiKey] = useState(null);
@@ -106,6 +115,9 @@ export default function App() {
 
         const localPlanned = await persistence.getPlannedEvents();
         setPlannedEvents(localPlanned || []);
+
+        const customLibrary = await persistence.getWorkoutLibrary();
+        setCustomWorkoutLibrary(customLibrary || []);
 
       } catch (err) {
         console.error('Failed to load credentials:', err);
@@ -467,6 +479,66 @@ export default function App() {
     return generated;
   }, [llmProvider, groqApiKey, claudeApiKey]);
 
+  const handleSaveWorkoutToLibrary = useCallback(async (workout) => {
+    if (!workout) return [];
+    const next = await persistence.addWorkoutToLibrary(workout);
+    setCustomWorkoutLibrary(next);
+    return next;
+  }, []);
+
+  const handleGenerateAiWorkoutTemplate = useCallback(async ({ description = '', sport = 'Ride' } = {}) => {
+    const hasProviderKey = llmProvider === 'groq' ? !!groqApiKey : !!claudeApiKey;
+    if (!hasProviderKey) {
+      throw new Error('AI provider not configured. Add your API key in Settings first.');
+    }
+
+    const prompt = [
+      'Build ONE structured workout from the short day description.',
+      'Return ONLY valid JSON object (no markdown) with keys:',
+      'title, objective, type, notes, blocks.',
+      'blocks must be an array of objects: {"label": string, "durationMin": number, "zone": "Z1"|"Z2"|"Z3"|"Z4"|"Z5"|"Z6"|"Z7"}.',
+      `Preferred sport: ${sport}.`,
+      `Day description: ${description || 'Build aerobic session with one quality block.'}`,
+      'Keep total duration between 45 and 150 minutes.',
+    ].join('\n');
+
+    const aiResponse = await aiCoachService.chat(prompt, null, [], null, []);
+    const jsonPayload = extractJsonBlock(aiResponse);
+    if (!jsonPayload) {
+      throw new Error('AI response could not be parsed as workout JSON.');
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonPayload);
+    } catch (_) {
+      throw new Error('AI returned invalid JSON workout format.');
+    }
+
+    const safeBlocks = Array.isArray(parsed?.blocks)
+      ? parsed.blocks
+        .map((b, idx) => ({
+          id: `ai_b_${Date.now()}_${idx}`,
+          label: String(b?.label || `Block ${idx + 1}`).slice(0, 60),
+          durationMin: Math.max(1, Number(b?.durationMin) || 10),
+          zone: /^Z[1-7]$/i.test(String(b?.zone || '')) ? String(b.zone).toUpperCase() : 'Z2',
+        }))
+      : [];
+
+    if (!safeBlocks.length) {
+      throw new Error('AI workout has no valid blocks. Try a more specific day description.');
+    }
+
+    const typeText = String(parsed?.type || sport || 'Ride');
+    return {
+      title: String(parsed?.title || 'AI Workout'),
+      objective: String(parsed?.objective || description || 'Day objective'),
+      type: /run/i.test(typeText) ? 'Run' : 'Ride',
+      notes: String(parsed?.notes || description || ''),
+      blocks: safeBlocks,
+    };
+  }, [llmProvider, groqApiKey, claudeApiKey]);
+
   const handleSaveSettings = async (provider, creds) => {
     if (provider === 'intervals') {
       intervalsService.configure(creds.athleteId, creds.apiKey);
@@ -534,6 +606,36 @@ export default function App() {
             onNeedApiKey={() => setView(VIEWS.SETTINGS)}
           />
         );
+      case VIEWS.WORKOUT_BUILDER:
+        return (
+          <div>
+            <div className="page-header">
+              <div className="page-title">Workout Builder</div>
+              <div className="page-subtitle">Build structured sessions with zones, blocks, and save directly to calendar</div>
+            </div>
+            <WorkoutBuilder
+              onCreate={handleAddPlannedEvent}
+              onSaveToLibrary={handleSaveWorkoutToLibrary}
+              onGenerateWithAi={handleGenerateAiWorkoutTemplate}
+              ftp={athlete?.icu_ftp || null}
+            />
+          </div>
+        );
+      case VIEWS.GPX_BUILDER:
+        return (
+          <div>
+            <div className="page-header">
+              <div className="page-title">GPX Route Builder</div>
+              <div className="page-subtitle">Generate road-following routes and export GPX for Garmin and COROS</div>
+            </div>
+            <GpxRouteBuilder
+              athlete={athlete}
+              events={events}
+              plannedEvents={plannedEvents}
+              workoutLibrary={[...LIBRARY_WORKOUTS, ...customWorkoutLibrary]}
+            />
+          </div>
+        );
       case VIEWS.DASHBOARD:
         return <Dashboard wellness={wellness} activities={activities} athlete={athlete} loading={loading} error={error} />;
       case VIEWS.PMC:
@@ -552,6 +654,9 @@ export default function App() {
             onAddPlannedEvent={handleAddPlannedEvent}
             onRemovePlannedEvent={handleRemovePlannedEvent}
             onGenerateAiWorkouts={handleGenerateAiWorkouts}
+            onSaveWorkoutToLibrary={handleSaveWorkoutToLibrary}
+            onGenerateAiWorkoutTemplate={handleGenerateAiWorkoutTemplate}
+            workoutLibrary={[...LIBRARY_WORKOUTS, ...customWorkoutLibrary]}
           />
         );
       case VIEWS.SETTINGS:
@@ -580,6 +685,12 @@ export default function App() {
           <div className="nav-section-label">Coach</div>
           <button className={`nav-item${view === VIEWS.COACH ? ' active coach-nav-active' : ''}`} onClick={() => setView(VIEWS.COACH)}>
             <span className="nav-icon nav-icon-text">&gt;&gt;</span><span>APEX Coach</span>
+          </button>
+          <button className={`nav-item ${view === VIEWS.WORKOUT_BUILDER ? 'active' : ''}`} onClick={() => setView(VIEWS.WORKOUT_BUILDER)}>
+            <span className="nav-icon nav-icon-text">▣</span><span>Workout Builder</span>
+          </button>
+          <button className={`nav-item ${view === VIEWS.GPX_BUILDER ? 'active' : ''}`} onClick={() => setView(VIEWS.GPX_BUILDER)}>
+            <span className="nav-icon nav-icon-text">◉</span><span>GPX Route Builder</span>
           </button>
 
           <div className="nav-section-label">Analysis</div>

@@ -196,6 +196,28 @@ const persistence = {
     await planningStore.setItem('planned-events', next);
     return next;
   },
+
+  // ─── Custom Workout Library ─────────────────────────────
+  async getWorkoutLibrary() {
+    return (await planningStore.getItem('workout-library')) || [];
+  },
+
+  async saveWorkoutLibrary(workouts) {
+    return planningStore.setItem('workout-library', workouts || []);
+  },
+
+  async addWorkoutToLibrary(workout) {
+    const list = (await planningStore.getItem('workout-library')) || [];
+    const safeId = workout?.id || `lib_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    const normalized = {
+      ...workout,
+      id: safeId,
+      savedAt: new Date().toISOString(),
+    };
+    const next = [normalized, ...list];
+    await planningStore.setItem('workout-library', next);
+    return next;
+  },
 };
 
 export default persistence;

@@ -5,6 +5,7 @@ import L from 'leaflet';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+import { LIBRARY_WORKOUTS as DEFAULT_LIBRARY_WORKOUTS } from '../data/workoutLibrary';
 
 // Fix default leaflet marker icons (webpack issue)
 delete L.Icon.Default.prototype._getIconUrl;
@@ -17,13 +18,73 @@ L.Icon.Default.mergeOptions({
 // ── Helpers ─────────────────────────────────────────────────
 const SPEED_KMPH = {
   Ride: { Z1: 20, Z2: 27, Z3: 32, Z4: 36, Z5: 40 },
-  Run:  { Z1: 7,  Z2: 10, Z3: 13, Z4: 15, Z5: 17 },
+  Run: { Z1: 7, Z2: 10, Z3: 13, Z4: 15, Z5: 17 },
 };
 
 function estimateDistanceKm(sport, zone, durationMin) {
   const speeds = SPEED_KMPH[sport] || SPEED_KMPH.Ride;
   const speed = speeds[zone] || 27;
   return Math.round((speed * durationMin) / 60 * 10) / 10;
+}
+
+function parseDurationFromText(text) {
+  const raw = String(text || '');
+  const range = raw.match(/(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)/);
+  if (range) return Math.max(0, Math.round((Number(range[1]) + Number(range[2])) / 2));
+
+  const min = raw.match(/(\d+(?:\.\d+)?)\s*(?:min|mins|minutes)\b/i);
+  if (min) return Math.max(0, Math.round(Number(min[1])));
+
+  const hour = raw.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hour|hours)\b/i);
+  if (hour) return Math.max(0, Math.round(Number(hour[1]) * 60));
+
+  const numeric = raw.match(/\b(\d{2,3})\b/);
+  if (numeric) return Math.max(0, Math.round(Number(numeric[1])));
+  return 0;
+}
+
+function inferZoneFromText(text = '') {
+  const t = String(text).toLowerCase();
+  const z = t.match(/\b(z[1-5])\b/i);
+  if (z) return z[1].toUpperCase();
+  if (/vo2|max|anaerobic|sprint/i.test(t)) return 'Z5';
+  if (/threshold|ftp test|over-?under/i.test(t)) return 'Z4';
+  if (/tempo|sweet.?spot/i.test(t)) return 'Z3';
+  if (/endurance|aerobic|long ride/i.test(t)) return 'Z2';
+  if (/recovery|rest|easy/i.test(t)) return 'Z1';
+  return 'Z2';
+}
+
+function inferWorkoutProfile(workout) {
+  if (!workout) return null;
+  const blocks = Array.isArray(workout.workoutBlocks) ? workout.workoutBlocks : Array.isArray(workout.blocks) ? workout.blocks : [];
+  const blockDur = blocks.reduce((s, b) => s + (Number(b.durationMin) || 0), 0);
+  const text = `${workout.title || workout.name || ''} ${workout.notes || ''}`;
+
+  const typeText = String(workout.type || workout.event_type || '').toLowerCase();
+  const sport = /run/i.test(typeText) ? 'Run' : 'Ride';
+  const duration = blockDur || parseDurationFromText(text) || 90;
+  const zone = blocks[0]?.zone || inferZoneFromText(text);
+
+  return {
+    title: workout.title || workout.name || 'Selected workout',
+    sport,
+    zone,
+    duration,
+  };
+}
+
+function getTodayTraining(events = []) {
+  const today = new Date().toISOString().slice(0, 10);
+  const candidates = events.filter(e => {
+    const raw = e.start_date_local || e.start_date || e.date || e.event_date;
+    if (!raw) return false;
+    const day = String(raw).slice(0, 10);
+    if (day !== today) return false;
+    const text = `${e.title || e.name || ''} ${e.notes || ''}`.toLowerCase();
+    return !/\brest\b|off day|no riding|full recovery/.test(text);
+  });
+  return candidates[0] || null;
 }
 
 // Move point by bearing (degrees) and distance (km)
@@ -145,7 +206,7 @@ function FitBounds({ candidates }) {
     if (!candidates?.length) return;
     const allCoords = candidates.flatMap(c => c.coords.map(([lng, lat]) => [lat, lng]));
     if (allCoords.length > 0) {
-      try { map.fitBounds(allCoords, { padding: [24, 24] }); } catch (_) {}
+      try { map.fitBounds(allCoords, { padding: [24, 24] }); } catch (_) { }
     }
   }, [candidates, map]);
   return null;
@@ -159,10 +220,10 @@ function loadPrefs() {
   try { return JSON.parse(localStorage.getItem('apex-gpx-prefs') || '{}'); } catch (_) { return {}; }
 }
 function savePrefs(prefs) {
-  try { localStorage.setItem('apex-gpx-prefs', JSON.stringify(prefs)); } catch (_) {}
+  try { localStorage.setItem('apex-gpx-prefs', JSON.stringify(prefs)); } catch (_) { }
 }
 
-export default function GpxRouteBuilder({ athlete }) {
+export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = [], workoutLibrary = [] }) {
   const prefs = loadPrefs();
 
   const [sport, setSport] = useState(prefs.sport || 'Ride');
@@ -175,6 +236,11 @@ export default function GpxRouteBuilder({ athlete }) {
   const [selected, setSelected] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [librarySelection, setLibrarySelection] = useState('');
+
+  const allPlanned = [...(plannedEvents || []), ...(events || [])];
+  const todayTraining = getTodayTraining(allPlanned);
+  const effectiveLibrary = workoutLibrary.length ? workoutLibrary : DEFAULT_LIBRARY_WORKOUTS;
 
   // Persist prefs on change
   useEffect(() => {
@@ -183,19 +249,55 @@ export default function GpxRouteBuilder({ athlete }) {
 
   const targetKm = estimateDistanceKm(sport, zone, Number(duration));
 
-  const handleGetLocation = () => {
-    if (!navigator.geolocation) { setLocStatus('Geolocation not supported.'); return; }
-    setLocStatus('Detecting...');
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        const la = pos.coords.latitude.toFixed(5);
-        const ln = pos.coords.longitude.toFixed(5);
-        setLat(la); setLng(ln);
-        setLocStatus(`Location set: ${Number(la).toFixed(4)}°, ${Number(ln).toFixed(4)}°`);
-      },
-      () => setLocStatus('Could not get location — enter coordinates manually.'),
-      { timeout: 8000 }
-    );
+  const applyWorkoutProfile = (workout) => {
+    const profile = inferWorkoutProfile(workout);
+    if (!profile) return;
+    setSport(profile.sport);
+    setZone(profile.zone);
+    setDuration(profile.duration);
+  };
+
+  const handleGetLocation = async () => {
+    setLocStatus('Detecting location...');
+    const setLoc = (la, ln, label = 'Location set') => {
+      const latVal = Number(la).toFixed(5);
+      const lngVal = Number(ln).toFixed(5);
+      setLat(latVal);
+      setLng(lngVal);
+      setLocStatus(`${label}: ${Number(latVal).toFixed(4)}°, ${Number(lngVal).toFixed(4)}°`);
+    };
+
+    const browserGeo = () => new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocation not supported by browser.'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve(pos),
+        err => reject(err),
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+      );
+    });
+
+    try {
+      const pos = await browserGeo();
+      setLoc(pos.coords.latitude, pos.coords.longitude, 'GPS location set');
+      return;
+    } catch (_) {
+      // fallback on IP-based geolocation when browser GPS is blocked/denied.
+    }
+
+    try {
+      const res = await fetch('https://ipapi.co/json/');
+      if (!res.ok) throw new Error('IP fallback unavailable');
+      const data = await res.json();
+      if (typeof data.latitude !== 'number' || typeof data.longitude !== 'number') {
+        throw new Error('Invalid fallback payload');
+      }
+      setLoc(data.latitude, data.longitude, 'Approximate location set');
+    } catch (_) {
+      setLocStatus('Could not detect location. Enter coordinates manually.');
+    }
   };
 
   const handleGenerate = async () => {
@@ -285,6 +387,51 @@ export default function GpxRouteBuilder({ athlete }) {
 
       <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 12 }}>
         Target: <strong style={{ color: 'var(--accent-blue)' }}>{targetKm} km</strong> — {sport} {zone} · {duration} min
+      </div>
+
+      {todayTraining && (
+        <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-2)' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-2)', marginBottom: 6 }}>
+            Training of the day: {todayTraining.title || todayTraining.name}
+          </div>
+          <button className="btn" onClick={() => applyWorkoutProfile(todayTraining)}>
+            Use Today Training
+          </button>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-2)', marginBottom: 6 }}>
+          Workout Library
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select
+            className="form-input"
+            style={{ flex: 1 }}
+            value={librarySelection}
+            onChange={(e) => {
+              const idx = Number(e.target.value);
+              if (Number.isNaN(idx)) {
+                setLibrarySelection('');
+                return;
+              }
+              setLibrarySelection(String(idx));
+              applyWorkoutProfile(effectiveLibrary[idx]);
+            }}
+          >
+            <option value="">Select workout from library</option>
+            {effectiveLibrary.map((w, i) => (
+              <option key={`${w.title}_${i}`} value={String(i)}>{w.title}</option>
+            ))}
+          </select>
+          <button className="btn" onClick={() => {
+            if (!librarySelection) return;
+            const idx = Number(librarySelection);
+            if (!Number.isNaN(idx)) applyWorkoutProfile(effectiveLibrary[idx]);
+          }}>
+            Apply
+          </button>
+        </div>
       </div>
 
       <button className="btn btn-primary" onClick={handleGenerate} disabled={loading} style={{ width: '100%', marginBottom: 12 }}>

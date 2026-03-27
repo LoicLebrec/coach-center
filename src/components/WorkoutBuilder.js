@@ -58,7 +58,7 @@ function zoneText(zone, ftp) {
     return `${z.id} (${z.pct[0]}-${z.pct[1]}% FTP, ${lo}-${hi}W)`;
 }
 
-export default function WorkoutBuilder({ onCreate, ftp }) {
+export default function WorkoutBuilder({ onCreate, onSaveToLibrary, onGenerateWithAi, ftp }) {
     const [title, setTitle] = useState('Structured Workout');
     const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [sport, setSport] = useState('Ride');
@@ -68,6 +68,9 @@ export default function WorkoutBuilder({ onCreate, ftp }) {
         makeBlock('Main Set', 30, 'Z3'),
         makeBlock('Cool-down', 10, 'Z1'),
     ]);
+    const [aiDayDescription, setAiDayDescription] = useState('Endurance day with one quality block but keep fatigue controlled.');
+    const [aiBuilding, setAiBuilding] = useState(false);
+    const [builderMessage, setBuilderMessage] = useState('');
 
     const totalMin = useMemo(() => blocks.reduce((s, b) => s + (Number(b.durationMin) || 0), 0), [blocks]);
 
@@ -112,6 +115,7 @@ export default function WorkoutBuilder({ onCreate, ftp }) {
     };
 
     const saveWorkout = async () => {
+        setBuilderMessage('');
         if (!title.trim() || blocks.length === 0) return;
         await onCreate({
             title: title.trim(),
@@ -125,6 +129,59 @@ export default function WorkoutBuilder({ onCreate, ftp }) {
             workoutBlocks: blocks,
             objective,
         });
+        setBuilderMessage('Saved to calendar.');
+    };
+
+    const saveToLibrary = async () => {
+        setBuilderMessage('');
+        if (!title.trim() || blocks.length === 0) {
+            setBuilderMessage('Add a title and at least one block.');
+            return;
+        }
+        if (typeof onSaveToLibrary !== 'function') {
+            setBuilderMessage('Library save is not available.');
+            return;
+        }
+
+        await onSaveToLibrary({
+            title: title.trim(),
+            type: sport,
+            kind: 'training',
+            objective,
+            notes: buildNotes(),
+            blocks,
+        });
+        setBuilderMessage('Saved to workout library.');
+    };
+
+    const generateFromAi = async () => {
+        setBuilderMessage('');
+        if (typeof onGenerateWithAi !== 'function') {
+            setBuilderMessage('AI generation is not available.');
+            return;
+        }
+
+        setAiBuilding(true);
+        try {
+            const result = await onGenerateWithAi({ description: aiDayDescription, sport });
+            if (!result || !Array.isArray(result.blocks) || result.blocks.length === 0) {
+                throw new Error('AI did not return a valid workout.');
+            }
+
+            setTitle(result.title || 'AI Workout');
+            setObjective(result.objective || 'AI generated objective');
+            setSport(result.type || sport);
+            setBlocks(result.blocks.map((b, idx) => makeBlock(
+                b.label || `Block ${idx + 1}`,
+                Number(b.durationMin) || 10,
+                b.zone || 'Z2'
+            )));
+            setBuilderMessage('AI workout generated. Review and save.');
+        } catch (err) {
+            setBuilderMessage(err.message || 'AI generation failed.');
+        } finally {
+            setAiBuilding(false);
+        }
     };
 
     return (
@@ -151,6 +208,17 @@ export default function WorkoutBuilder({ onCreate, ftp }) {
 
             <input className="form-input calendar-form-input" placeholder="Workout title" value={title} onChange={e => setTitle(e.target.value)} />
             <input className="form-input calendar-form-input" placeholder="Objective (e.g. threshold build)" value={objective} onChange={e => setObjective(e.target.value)} />
+
+            <div className="card-title" style={{ marginBottom: 6, fontSize: 12 }}>AI Builder (from day description)</div>
+            <input
+                className="form-input calendar-form-input"
+                placeholder="Describe the day in one sentence (example: hard VO2 day, 75min max)"
+                value={aiDayDescription}
+                onChange={e => setAiDayDescription(e.target.value)}
+            />
+            <button className="btn" disabled={aiBuilding} onClick={generateFromAi}>
+                {aiBuilding ? 'Building with AI...' : 'Build Workout With AI'}
+            </button>
 
             <div className="workout-presets">
                 <button className="btn" onClick={() => applyPreset('endurance')}>Endurance</button>
@@ -197,7 +265,14 @@ export default function WorkoutBuilder({ onCreate, ftp }) {
                 <span>{ftp ? `FTP context: ${ftp}W` : 'Set FTP in profile for watt targets'}</span>
             </div>
 
-            <button className="btn btn-primary" onClick={saveWorkout}>Save Workout To Calendar</button>
+            <div className="workout-presets">
+                <button className="btn btn-primary" onClick={saveWorkout}>Save Workout To Calendar</button>
+                <button className="btn" onClick={saveToLibrary}>Save Workout To Library</button>
+            </div>
+
+            {builderMessage && (
+                <div className="calendar-helper" style={{ marginTop: 6 }}>{builderMessage}</div>
+            )}
         </div>
     );
 }

@@ -19,6 +19,7 @@ import {
 } from 'date-fns';
 import WorkoutBuilder from './WorkoutBuilder';
 import { exportWorkoutFit, hasWorkoutContent } from '../services/workout-exporter';
+import { LIBRARY_WORKOUTS as DEFAULT_LIBRARY_WORKOUTS } from '../data/workoutLibrary';
 import GpxRouteBuilder from './GpxRouteBuilder';
 
 const ZONE_STYLE = {
@@ -240,108 +241,6 @@ function looksLikeSessionWorkout(title = '', notes = '') {
     return /(vo2|interval|threshold|tempo|sweet.?spot|endurance|race|ride|run|ftp test|openers|sprint|workout|session|z\d)/i.test(haystack);
 }
 
-const LIBRARY_WORKOUTS = [
-    {
-        title: 'Z2 Endurance Ride',
-        type: 'Ride',
-        kind: 'training',
-        objective: 'Aerobic base and fat oxidation',
-        notes: 'Long steady aerobic work with minimal drift.',
-        blocks: [
-            { label: 'Warmup', durationMin: 12, zone: 'Z2' },
-            { label: 'Endurance', durationMin: 70, zone: 'Z2' },
-            { label: 'Cadence Skills', durationMin: 8, zone: 'Z3' },
-            { label: 'Cooldown', durationMin: 10, zone: 'Z1' },
-        ],
-    },
-    {
-        title: 'VO2 Max 5x5',
-        type: 'Ride',
-        kind: 'training',
-        objective: 'Increase aerobic ceiling (VO2)',
-        notes: 'High-intensity repeats with equal recovery.',
-        blocks: [
-            { label: 'Warmup', durationMin: 15, zone: 'Z2' },
-            { label: 'VO2 #1', durationMin: 5, zone: 'Z5' },
-            { label: 'Recover', durationMin: 5, zone: 'Z1' },
-            { label: 'VO2 #2', durationMin: 5, zone: 'Z5' },
-            { label: 'Recover', durationMin: 5, zone: 'Z1' },
-            { label: 'VO2 #3', durationMin: 5, zone: 'Z5' },
-            { label: 'Recover', durationMin: 5, zone: 'Z1' },
-            { label: 'VO2 #4', durationMin: 5, zone: 'Z5' },
-            { label: 'Recover', durationMin: 5, zone: 'Z1' },
-            { label: 'VO2 #5', durationMin: 5, zone: 'Z5' },
-            { label: 'Cooldown', durationMin: 10, zone: 'Z1' },
-        ],
-    },
-    {
-        title: 'Threshold 2x20',
-        type: 'Ride',
-        kind: 'training',
-        objective: 'Raise FTP durability',
-        notes: 'Classic threshold workout with controlled execution.',
-        blocks: [
-            { label: 'Warmup', durationMin: 15, zone: 'Z2' },
-            { label: 'Threshold #1', durationMin: 20, zone: 'Z4' },
-            { label: 'Recover', durationMin: 10, zone: 'Z1' },
-            { label: 'Threshold #2', durationMin: 20, zone: 'Z4' },
-            { label: 'Cooldown', durationMin: 10, zone: 'Z1' },
-        ],
-    },
-    {
-        title: 'Sweet Spot 3x12',
-        type: 'Ride',
-        kind: 'training',
-        objective: 'Build sub-threshold aerobic power',
-        notes: 'Efficient quality session with moderate strain.',
-        blocks: [
-            { label: 'Warmup', durationMin: 12, zone: 'Z2' },
-            { label: 'SS #1', durationMin: 12, zone: 'Z3' },
-            { label: 'Recover', durationMin: 5, zone: 'Z1' },
-            { label: 'SS #2', durationMin: 12, zone: 'Z3' },
-            { label: 'Recover', durationMin: 5, zone: 'Z1' },
-            { label: 'SS #3', durationMin: 12, zone: 'Z3' },
-            { label: 'Cooldown', durationMin: 8, zone: 'Z1' },
-        ],
-    },
-    {
-        title: 'Long Run Aerobic',
-        type: 'Run',
-        kind: 'training',
-        objective: 'Running aerobic durability',
-        notes: 'Steady easy pace with cadence consistency.',
-        blocks: [
-            { label: 'Warmup Jog', durationMin: 10, zone: 'Z1' },
-            { label: 'Aerobic Run', durationMin: 70, zone: 'Z2' },
-            { label: 'Strides', durationMin: 6, zone: 'Z5' },
-            { label: 'Easy Jog', durationMin: 8, zone: 'Z1' },
-        ],
-    },
-    {
-        title: 'A-Race Objective',
-        type: 'Race',
-        kind: 'race',
-        objective: 'Season peak race',
-        notes: 'Primary event objective. Protect taper and freshness.',
-        blocks: [
-            { label: 'Pre-race Prep', durationMin: 20, zone: 'Z2' },
-            { label: 'Openers', durationMin: 10, zone: 'Z4' },
-            { label: 'Race', durationMin: 90, zone: 'Z4' },
-        ],
-    },
-    {
-        title: 'Recovery Spin + Mobility',
-        type: 'Ride',
-        kind: 'training',
-        objective: 'Absorb load and improve freshness',
-        notes: 'Low-intensity neural reset and mobility block.',
-        blocks: [
-            { label: 'Easy Spin', durationMin: 35, zone: 'Z1' },
-            { label: 'Mobility', durationMin: 20, zone: 'Z1' },
-        ],
-    },
-];
-
 export default function Calendar({
     events,
     plannedEvents,
@@ -350,6 +249,9 @@ export default function Calendar({
     onAddPlannedEvent,
     onRemovePlannedEvent,
     onGenerateAiWorkouts,
+    onSaveWorkoutToLibrary,
+    onGenerateAiWorkoutTemplate,
+    workoutLibrary,
 }) {
     const csvInputRef = useRef(null);
     const [cursor, setCursor] = useState(startOfMonth(new Date()));
@@ -386,7 +288,7 @@ export default function Calendar({
             const p = JSON.parse(saved);
             if (p.aiObjective) setAiObjective(p.aiObjective);
             if (p.aiDays) setAiDays(p.aiDays);
-        } catch (_) {}
+        } catch (_) { }
     }, []);
 
     useEffect(() => {
@@ -398,6 +300,11 @@ export default function Calendar({
     const allEvents = useMemo(() => {
         return [...(events || []), ...(plannedEvents || [])];
     }, [events, plannedEvents]);
+
+    const libraryWorkouts = useMemo(() => {
+        if (Array.isArray(workoutLibrary) && workoutLibrary.length > 0) return workoutLibrary;
+        return DEFAULT_LIBRARY_WORKOUTS;
+    }, [workoutLibrary]);
 
     const normalizedAllEvents = useMemo(() => {
         return allEvents
@@ -850,129 +757,129 @@ export default function Calendar({
 
             <div className="calendar-layout">
                 <div>
-                <div className="card" style={{ marginBottom: 0 }}>
-                    <div className="card-header">
-                        <span className="card-title">{periodLabel}</span>
-                        <span className="card-badge">{futureEvents.length} future events</span>
+                    <div className="card" style={{ marginBottom: 0 }}>
+                        <div className="card-header">
+                            <span className="card-title">{periodLabel}</span>
+                            <span className="card-badge">{futureEvents.length} future events</span>
+                        </div>
+
+                        {viewMode !== 'year' && (
+                            <div className="calendar-weekdays">
+                                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+                                    <div key={day} className="calendar-weekday">{day}</div>
+                                ))}
+                            </div>
+                        )}
+
+                        {viewMode === 'month' && (
+                            <div className="calendar-grid">
+                                {days.map(day => {
+                                    const dayKey = format(day, 'yyyy-MM-dd');
+                                    const entries = byDay.get(dayKey) || [];
+                                    return (
+                                        <div
+                                            key={dayKey}
+                                            className={`calendar-day ${!isSameMonth(day, cursor) ? 'calendar-day-muted' : ''} ${isToday(day) ? 'calendar-day-today' : ''} ${dragOverDay === dayKey ? 'calendar-day-drop' : ''}`}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                setDragOverDay(dayKey);
+                                            }}
+                                            onDragLeave={() => setDragOverDay(null)}
+                                            onDrop={handleDropOnDay(dayKey)}
+                                        >
+                                            <div className="calendar-day-num">{format(day, 'd')}</div>
+                                            <div className="calendar-day-events">
+                                                {entries.slice(0, 2).map(entry => (
+                                                    <div
+                                                        key={entry.id}
+                                                        className={`calendar-pill calendar-pill-${entry.kind} calendar-pill-tone-${trainingTone(entry)}`}
+                                                        title={entry.title}
+                                                        onClick={() => setSelectedEvent(entry)}
+                                                        style={{ cursor: 'pointer' }}
+                                                    >
+                                                        {entry.title}
+                                                    </div>
+                                                ))}
+                                                {entries.length > 2 && <div className="calendar-more">+{entries.length - 2} more</div>}
+                                                {entries.length === 0 && <div className="calendar-drop-hint">Drop workout</div>}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {viewMode === 'week' && (
+                            <div className="calendar-grid calendar-grid-week">
+                                {weekDays.map(day => {
+                                    const dayKey = format(day, 'yyyy-MM-dd');
+                                    const entries = byDayAll.get(dayKey) || [];
+                                    return (
+                                        <div
+                                            key={dayKey}
+                                            className={`calendar-day ${isToday(day) ? 'calendar-day-today' : ''} ${dragOverDay === dayKey ? 'calendar-day-drop' : ''}`}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                setDragOverDay(dayKey);
+                                            }}
+                                            onDragLeave={() => setDragOverDay(null)}
+                                            onDrop={handleDropOnDay(dayKey)}
+                                        >
+                                            <div className="calendar-day-num">{format(day, 'EEE d')}</div>
+                                            <div className="calendar-week-events">
+                                                {entries.map(entry => {
+                                                    const tone = trainingTone(entry);
+                                                    const notesPreview = String(entry.notes || '').replace(/\s+/g, ' ').slice(0, 170);
+                                                    const blocksDuration = totalDuration(entry.workoutBlocks || []);
+                                                    return (
+                                                        <div key={entry.id} className={`calendar-week-item calendar-week-item-${tone}`} onClick={() => setSelectedEvent(entry)} style={{ cursor: 'pointer' }}>
+                                                            <div className="calendar-week-item-head">
+                                                                <div className="calendar-week-item-title">{entry.title}</div>
+                                                                <span className={`calendar-week-tone calendar-week-tone-${tone}`}>{toneLabel(tone)}</span>
+                                                            </div>
+                                                            <div className="calendar-week-meta">
+                                                                <span>{entry.type || kindLabel(entry.kind)}</span>
+                                                                {blocksDuration > 0 && <span>{blocksDuration} min</span>}
+                                                                <span>{kindLabel(entry.kind)}</span>
+                                                            </div>
+                                                            <WorkoutBlocksGraph blocks={entry.workoutBlocks} />
+                                                            {!!notesPreview && (
+                                                                <div className="calendar-week-notes">{notesPreview}</div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {entries.length === 0 && (
+                                                    <div className="calendar-drop-hint">Drop workout</div>
+                                                )}
+                                                {entries.length > 0 && entries.length >= 6 && (
+                                                    <div className="calendar-more">{entries.length} sessions</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {viewMode === 'year' && (
+                            <div className="calendar-year-grid">
+                                {yearMonths.map(m => (
+                                    <div key={format(m.monthDate, 'yyyy-MM')} className="calendar-year-card">
+                                        <div className="calendar-year-title">{format(m.monthDate, 'MMM')}</div>
+                                        <div className="calendar-year-metric">{m.total} events</div>
+                                        <div className="calendar-year-split">
+                                            <span className="calendar-kind-training">{m.trainings} T</span>
+                                            <span className="calendar-kind-objective">{m.objectives} O</span>
+                                            <span className="calendar-kind-race">{m.races} R</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
-                    {viewMode !== 'year' && (
-                        <div className="calendar-weekdays">
-                            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-                                <div key={day} className="calendar-weekday">{day}</div>
-                            ))}
-                        </div>
-                    )}
-
-                    {viewMode === 'month' && (
-                        <div className="calendar-grid">
-                            {days.map(day => {
-                                const dayKey = format(day, 'yyyy-MM-dd');
-                                const entries = byDay.get(dayKey) || [];
-                                return (
-                                    <div
-                                        key={dayKey}
-                                        className={`calendar-day ${!isSameMonth(day, cursor) ? 'calendar-day-muted' : ''} ${isToday(day) ? 'calendar-day-today' : ''} ${dragOverDay === dayKey ? 'calendar-day-drop' : ''}`}
-                                        onDragOver={(e) => {
-                                            e.preventDefault();
-                                            setDragOverDay(dayKey);
-                                        }}
-                                        onDragLeave={() => setDragOverDay(null)}
-                                        onDrop={handleDropOnDay(dayKey)}
-                                    >
-                                        <div className="calendar-day-num">{format(day, 'd')}</div>
-                                        <div className="calendar-day-events">
-                                            {entries.slice(0, 2).map(entry => (
-                                                <div
-                                                    key={entry.id}
-                                                    className={`calendar-pill calendar-pill-${entry.kind} calendar-pill-tone-${trainingTone(entry)}`}
-                                                    title={entry.title}
-                                                    onClick={() => setSelectedEvent(entry)}
-                                                    style={{ cursor: 'pointer' }}
-                                                >
-                                                    {entry.title}
-                                                </div>
-                                            ))}
-                                            {entries.length > 2 && <div className="calendar-more">+{entries.length - 2} more</div>}
-                                            {entries.length === 0 && <div className="calendar-drop-hint">Drop workout</div>}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {viewMode === 'week' && (
-                        <div className="calendar-grid calendar-grid-week">
-                            {weekDays.map(day => {
-                                const dayKey = format(day, 'yyyy-MM-dd');
-                                const entries = byDayAll.get(dayKey) || [];
-                                return (
-                                    <div
-                                        key={dayKey}
-                                        className={`calendar-day ${isToday(day) ? 'calendar-day-today' : ''} ${dragOverDay === dayKey ? 'calendar-day-drop' : ''}`}
-                                        onDragOver={(e) => {
-                                            e.preventDefault();
-                                            setDragOverDay(dayKey);
-                                        }}
-                                        onDragLeave={() => setDragOverDay(null)}
-                                        onDrop={handleDropOnDay(dayKey)}
-                                    >
-                                        <div className="calendar-day-num">{format(day, 'EEE d')}</div>
-                                        <div className="calendar-week-events">
-                                            {entries.map(entry => {
-                                                const tone = trainingTone(entry);
-                                                const notesPreview = String(entry.notes || '').replace(/\s+/g, ' ').slice(0, 170);
-                                                const blocksDuration = totalDuration(entry.workoutBlocks || []);
-                                                return (
-                                                    <div key={entry.id} className={`calendar-week-item calendar-week-item-${tone}`} onClick={() => setSelectedEvent(entry)} style={{ cursor: 'pointer' }}>
-                                                        <div className="calendar-week-item-head">
-                                                            <div className="calendar-week-item-title">{entry.title}</div>
-                                                            <span className={`calendar-week-tone calendar-week-tone-${tone}`}>{toneLabel(tone)}</span>
-                                                        </div>
-                                                        <div className="calendar-week-meta">
-                                                            <span>{entry.type || kindLabel(entry.kind)}</span>
-                                                            {blocksDuration > 0 && <span>{blocksDuration} min</span>}
-                                                            <span>{kindLabel(entry.kind)}</span>
-                                                        </div>
-                                                        <WorkoutBlocksGraph blocks={entry.workoutBlocks} />
-                                                        {!!notesPreview && (
-                                                            <div className="calendar-week-notes">{notesPreview}</div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                            {entries.length === 0 && (
-                                                <div className="calendar-drop-hint">Drop workout</div>
-                                            )}
-                                            {entries.length > 0 && entries.length >= 6 && (
-                                                <div className="calendar-more">{entries.length} sessions</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {viewMode === 'year' && (
-                        <div className="calendar-year-grid">
-                            {yearMonths.map(m => (
-                                <div key={format(m.monthDate, 'yyyy-MM')} className="calendar-year-card">
-                                    <div className="calendar-year-title">{format(m.monthDate, 'MMM')}</div>
-                                    <div className="calendar-year-metric">{m.total} events</div>
-                                    <div className="calendar-year-split">
-                                        <span className="calendar-kind-training">{m.trainings} T</span>
-                                        <span className="calendar-kind-objective">{m.objectives} O</span>
-                                        <span className="calendar-kind-race">{m.races} R</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                <GpxRouteBuilder athlete={athlete} />
+                    <GpxRouteBuilder athlete={athlete} events={events} plannedEvents={plannedEvents} workoutLibrary={libraryWorkouts} />
                 </div>
 
                 <div className="card" style={{ marginBottom: 0 }}>
@@ -991,7 +898,14 @@ export default function Calendar({
                             <span>Workout Builder</span>
                             <span>{collapsed.builder ? '+' : '-'}</span>
                         </button>
-                        {!collapsed.builder && <WorkoutBuilder onCreate={onAddPlannedEvent} ftp={athlete?.icu_ftp || null} />}
+                        {!collapsed.builder && (
+                            <WorkoutBuilder
+                                onCreate={onAddPlannedEvent}
+                                onSaveToLibrary={onSaveWorkoutToLibrary}
+                                onGenerateWithAi={onGenerateAiWorkoutTemplate}
+                                ftp={athlete?.icu_ftp || null}
+                            />
+                        )}
                     </div>
 
                     <div className="planner-section">
@@ -1029,7 +943,7 @@ export default function Calendar({
                         {!collapsed.library && <div className="calendar-planner-box">
                             <div className="card-title" style={{ marginBottom: 8 }}>Training Library</div>
                             <div className="calendar-library-list">
-                                {LIBRARY_WORKOUTS.map((workout, idx) => (
+                                {libraryWorkouts.map((workout, idx) => (
                                     <div
                                         key={workout.title}
                                         className="library-workout-card"
