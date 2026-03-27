@@ -177,8 +177,15 @@ function parseBlocksColumn(value) {
         });
 }
 
+function normalizeCsvHeader(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '');
+}
+
 function eventHasWorkoutData(event) {
-    return (event?.workoutBlocks?.length > 0) || hasWorkoutContent(event?.notes || '');
+    const combinedText = `${event?.title || ''}\n${event?.notes || ''}`;
+    return (event?.workoutBlocks?.length > 0) || hasWorkoutContent(combinedText);
 }
 
 const LIBRARY_WORKOUTS = [
@@ -312,7 +319,6 @@ export default function Calendar({
     const [aiDays, setAiDays] = useState(7);
     const [isGenerating, setIsGenerating] = useState(false);
     const [isImportingCsv, setIsImportingCsv] = useState(false);
-    const [lastImportedIds, setLastImportedIds] = useState([]);
     const [csvImportSummary, setCsvImportSummary] = useState(null);
     const [plannerError, setPlannerError] = useState(null);
     const [dragOverDay, setDragOverDay] = useState(null);
@@ -321,14 +327,19 @@ export default function Calendar({
         return [...(events || []), ...(plannedEvents || [])];
     }, [events, plannedEvents]);
 
-    const futureEvents = useMemo(() => {
-        const today = startOfDay(new Date());
+    const normalizedAllEvents = useMemo(() => {
         return allEvents
             .map(normalizeEvent)
             .filter(Boolean)
-            .filter(e => e.date >= today)
             .sort((a, b) => a.date - b.date);
     }, [allEvents]);
+
+    const futureEvents = useMemo(() => {
+        const today = startOfDay(new Date());
+        return normalizedAllEvents
+            .filter(e => e.date >= today)
+            .sort((a, b) => a.date - b.date);
+    }, [normalizedAllEvents]);
 
     const monthStart = startOfMonth(cursor);
     const monthEnd = endOfMonth(cursor);
@@ -457,8 +468,19 @@ export default function Calendar({
         return 'Workout';
     };
 
+    const inferZone = ({ title = '', notes = '' }) => {
+        const haystack = `${title} ${notes}`.toLowerCase();
+        if (/(vo2|max|anaerobic|sprint)/i.test(haystack)) return 'Z5';
+        if (/(threshold|ftp test|over-under)/i.test(haystack)) return 'Z4';
+        if (/(tempo|sweet.?spot)/i.test(haystack)) return 'Z3';
+        if (/(z2|endurance|long ride)/i.test(haystack)) return 'Z2';
+        if (/(rest|recovery|easy)/i.test(haystack)) return 'Z1';
+        return 'Z2';
+    };
+
     const findColumnIndex = (headers, aliases) => {
-        return headers.findIndex(h => aliases.includes(String(h || '').toLowerCase().trim()));
+        const aliasSet = new Set(aliases.map(normalizeCsvHeader));
+        return headers.findIndex(h => aliasSet.has(normalizeCsvHeader(h)));
     };
 
     const addEvent = async ({ id, title, type, kind, notes, date, workoutBlocks = [] }) => {
@@ -565,18 +587,6 @@ export default function Calendar({
         exportWorkoutFit(fitText, athlete?.icu_ftp || null, sportType, label);
     };
 
-    const handleDownloadImportedFits = () => {
-        if (!lastImportedIds.length) return;
-        const importedById = new Set(lastImportedIds);
-        const importedEvents = futureEvents.filter(e => importedById.has(String(e.id)));
-        const candidates = importedEvents.filter(eventHasWorkoutData);
-        if (!candidates.length) {
-            setPlannerError('No workout content detected in the last CSV import.');
-            return;
-        }
-        candidates.forEach(downloadEventFit);
-    };
-
     const handleImportCsv = async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -597,18 +607,32 @@ export default function Calendar({
             }
 
             const headers = splitCsvLine(rows[0]).map(h => String(h || '').toLowerCase().trim());
-            const dateIdx = findColumnIndex(headers, ['date', 'day', 'start_date', 'start_date_local', 'start']);
-            const titleIdx = findColumnIndex(headers, ['title', 'name', 'session', 'workout', 'event', 'description']);
+            const dateIdx = findColumnIndex(headers, ['date', 'day', 'start_date', 'start_date_local', 'start', 'session_date', 'workout_date']);
+            const titleIdx = findColumnIndex(headers, ['title', 'name', 'session', 'workout', 'event', 'workout_name']);
+            const sessionTypeIdx = findColumnIndex(headers, ['session_type', 'session type', 'workout_type']);
             const typeIdx = findColumnIndex(headers, ['type', 'sport', 'event_type']);
             const kindIdx = findColumnIndex(headers, ['kind', 'category']);
             const notesIdx = findColumnIndex(headers, ['notes', 'details', 'comment', 'objective']);
+            const descriptionIdx = findColumnIndex(headers, ['description', 'session_description']);
+            const nutritionIdx = findColumnIndex(headers, ['nutrition_notes', 'nutrition', 'fueling', 'fuel', 'carb_notes']);
             const blocksIdx = findColumnIndex(headers, ['blocks', 'workout_blocks', 'steps', 'intervals']);
-            const durationIdx = findColumnIndex(headers, ['duration', 'duration_min', 'minutes']);
+            const durationIdx = findColumnIndex(headers, ['duration', 'duration_min', 'duration (min)', 'minutes']);
             const zoneIdx = findColumnIndex(headers, ['zone', 'intensity_zone']);
+            const powerIdx = findColumnIndex(headers, ['target_power', 'target power (w)', 'power', 'power_w']);
+            const cadenceIdx = findColumnIndex(headers, ['target_cadence', 'target cadence (rpm)', 'cadence']);
+            const hrIdx = findColumnIndex(headers, ['target_hr', 'target hr (bpm)', 'hr', 'heart_rate']);
 
-            if (dateIdx < 0) {
-                throw new Error('CSV must include a date column (date/day/start_date).');
-            }
+            const getDateFromRow = (cells) => {
+                if (dateIdx >= 0) {
+                    const parsed = toIsoDate(cells[dateIdx]);
+                    if (parsed) return parsed;
+                }
+                for (const cell of cells) {
+                    const parsed = toIsoDate(cell);
+                    if (parsed) return parsed;
+                }
+                return null;
+            };
 
             let imported = 0;
             let detectedWorkouts = 0;
@@ -616,27 +640,49 @@ export default function Calendar({
 
             for (let i = 1; i < rows.length; i++) {
                 const cells = splitCsvLine(rows[i]);
-                const isoDate = toIsoDate(cells[dateIdx]);
+                const isoDate = getDateFromRow(cells);
                 if (!isoDate) continue;
 
                 const titleRaw = titleIdx >= 0 ? cells[titleIdx] : '';
+                const sessionTypeRaw = sessionTypeIdx >= 0 ? cells[sessionTypeIdx] : '';
                 const typeRaw = typeIdx >= 0 ? cells[typeIdx] : '';
                 const kindRaw = kindIdx >= 0 ? cells[kindIdx] : '';
                 const notesRaw = notesIdx >= 0 ? cells[notesIdx] : '';
+                const descriptionRaw = descriptionIdx >= 0 ? cells[descriptionIdx] : '';
+                const nutritionRaw = nutritionIdx >= 0 ? cells[nutritionIdx] : '';
                 const durationRaw = durationIdx >= 0 ? Number(cells[durationIdx]) : 0;
                 const zoneRaw = zoneIdx >= 0 ? String(cells[zoneIdx] || '').toUpperCase() : '';
+                const powerRaw = powerIdx >= 0 ? String(cells[powerIdx] || '').trim() : '';
+                const cadenceRaw = cadenceIdx >= 0 ? String(cells[cadenceIdx] || '').trim() : '';
+                const hrRaw = hrIdx >= 0 ? String(cells[hrIdx] || '').trim() : '';
 
-                const title = String(titleRaw || '').trim() || 'Planned Session';
-                const type = inferType({ type: typeRaw, title, notes: notesRaw });
-                const kind = inferKind({ title, type, kind: kindRaw, notes: notesRaw });
+                const title = String(sessionTypeRaw || titleRaw || '').trim() || 'Planned Session';
+                const mergedDescription = [notesRaw, descriptionRaw].filter(Boolean).join(' | ');
+                const type = inferType({ type: typeRaw, title, notes: mergedDescription });
+                const kind = inferKind({ title, type, kind: kindRaw, notes: mergedDescription });
 
                 let workoutBlocks = blocksIdx >= 0 ? parseBlocksColumn(cells[blocksIdx]) : [];
                 if (!workoutBlocks.length && durationRaw > 0 && /^Z[1-7]$/i.test(zoneRaw)) {
                     workoutBlocks = [{ label: 'Main Block', durationMin: durationRaw, zone: zoneRaw }];
                 }
+                if (!workoutBlocks.length && durationRaw > 0) {
+                    workoutBlocks = [{
+                        label: String(descriptionRaw || sessionTypeRaw || 'Main Block').slice(0, 60),
+                        durationMin: durationRaw,
+                        zone: inferZone({ title, notes: mergedDescription }),
+                    }];
+                }
 
-                let notes = String(notesRaw || '').trim();
-                if (workoutBlocks.length && !hasWorkoutContent(notes)) {
+                let notes = [
+                    String(descriptionRaw || '').trim(),
+                    powerRaw ? `Target Power: ${powerRaw}` : '',
+                    cadenceRaw ? `Target Cadence: ${cadenceRaw}` : '',
+                    hrRaw ? `Target HR: ${hrRaw}` : '',
+                    nutritionRaw ? `Nutrition: ${nutritionRaw}` : '',
+                    String(notesRaw || '').trim(),
+                ].filter(Boolean).join('\n');
+
+                if (workoutBlocks.length && !hasWorkoutContent(`${title}\n${notes}`)) {
                     notes = [notes, buildBlocksNotes(workoutBlocks)].filter(Boolean).join('\n\n');
                 }
 
@@ -652,7 +698,7 @@ export default function Calendar({
                 });
 
                 imported += 1;
-                if (eventHasWorkoutData({ notes, workoutBlocks })) {
+                if (eventHasWorkoutData({ title, notes, workoutBlocks })) {
                     detectedWorkouts += 1;
                 }
                 importedIds.push(localId);
@@ -662,7 +708,6 @@ export default function Calendar({
                 throw new Error('No valid rows found. Check date format and required columns.');
             }
 
-            setLastImportedIds(importedIds);
             setCsvImportSummary({
                 fileName: file.name,
                 imported,
@@ -926,20 +971,12 @@ export default function Calendar({
                                     <div>File: {csvImportSummary.fileName}</div>
                                     <div>Imported events: {csvImportSummary.imported}</div>
                                     <div>Detected workouts: {csvImportSummary.detectedWorkouts}</div>
+                                    <div>Use "Download FIT" on each session card.</div>
                                 </div>
                             )}
-                            <div className="calendar-form-row">
-                                <button className="btn" disabled={isImportingCsv} onClick={() => csvInputRef.current?.click()}>
-                                    {isImportingCsv ? 'Importing...' : 'Choose CSV'}
-                                </button>
-                                <button
-                                    className="btn btn-primary"
-                                    onClick={handleDownloadImportedFits}
-                                    disabled={!lastImportedIds.length}
-                                >
-                                    Download FIT (Last Import)
-                                </button>
-                            </div>
+                            <button className="btn" disabled={isImportingCsv} onClick={() => csvInputRef.current?.click()}>
+                                {isImportingCsv ? 'Importing...' : 'Choose CSV'}
+                            </button>
                         </div>}
                     </div>
 
@@ -958,6 +995,11 @@ export default function Calendar({
                     ) : upcoming.length === 0 ? (
                         <div className="info-banner" style={{ marginBottom: 0 }}>
                             No future events found. Add planned workouts or race objectives in Intervals.icu events.
+                            {csvImportSummary?.imported > 0 && (
+                                <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                                    CSV import succeeded, but imported dates may be in the past relative to today.
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div className="calendar-upcoming-list">
