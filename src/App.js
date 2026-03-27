@@ -10,6 +10,7 @@ import PMCChart from './components/PMCChart';
 import Settings from './components/Settings';
 import WeeklyLoad from './components/WeeklyLoad';
 import CoachChat from './components/CoachChat';
+import AthleteProfile from './components/AthleteProfile';
 import Calendar from './components/Calendar';
 import WorkoutBuilder from './components/WorkoutBuilder';
 import GpxRouteBuilder from './components/GpxRouteBuilder';
@@ -33,6 +34,7 @@ function extractJsonBlock(text) {
 
 const VIEWS = {
   COACH: 'coach',
+  ATHLETE_PROFILE: 'athlete_profile',
   WORKOUT_BUILDER: 'workout_builder',
   GPX_BUILDER: 'gpx_builder',
   DASHBOARD: 'dashboard',
@@ -355,8 +357,8 @@ export default function App() {
         dedupedActivities = await enrichActivitiesProgressive(dedupedActivities, maxToEnrich);
       }
 
-      if (wellness.length) setWellness(wellness);
-      if (dedupedActivities.length) setActivities(dedupedActivities);
+      if (wellnessData.status === 'fulfilled') setWellness(wellness);
+      if (activitiesData.status === 'fulfilled') setActivities(dedupedActivities);
       if (athleteData.status === 'fulfilled') setAthlete(athleteData.value || null);
       if (eventsData.status === 'fulfilled') setEvents(eventsData.value || []);
 
@@ -386,9 +388,22 @@ export default function App() {
   }, [deduplicateActivities, normalizeActivities, buildJournal, enrichActivitiesProgressive]);
 
   useEffect(() => {
-    if (connections.intervals) {
+    if (!connections.intervals) return;
+
+    fetchData({ mode: 'incremental' });
+
+    // Keep dashboard and activities in sync with newly uploaded rides in Intervals.
+    const pollId = setInterval(() => {
       fetchData({ mode: 'incremental' });
-    }
+    }, 120000);
+
+    const onFocus = () => fetchData({ mode: 'incremental' });
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(pollId);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [connections.intervals, fetchData]);
 
   const handleRepairHistory = useCallback(async () => {
@@ -621,6 +636,8 @@ export default function App() {
             />
           </div>
         );
+      case VIEWS.ATHLETE_PROFILE:
+        return <AthleteProfile wellness={wellness} athlete={athlete} events={events} />;
       case VIEWS.GPX_BUILDER:
         return (
           <div>
@@ -685,6 +702,9 @@ export default function App() {
           <div className="nav-section-label">Coach</div>
           <button className={`nav-item${view === VIEWS.COACH ? ' active coach-nav-active' : ''}`} onClick={() => setView(VIEWS.COACH)}>
             <span className="nav-icon nav-icon-text">&gt;&gt;</span><span>APEX Coach</span>
+          </button>
+          <button className={`nav-item ${view === VIEWS.ATHLETE_PROFILE ? 'active' : ''}`} onClick={() => setView(VIEWS.ATHLETE_PROFILE)}>
+            <span className="nav-icon nav-icon-text">◌</span><span>Athlete Profile</span>
           </button>
           <button className={`nav-item ${view === VIEWS.WORKOUT_BUILDER ? 'active' : ''}`} onClick={() => setView(VIEWS.WORKOUT_BUILDER)}>
             <span className="nav-icon nav-icon-text">▣</span><span>Workout Builder</span>

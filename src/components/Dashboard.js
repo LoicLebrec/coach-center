@@ -3,6 +3,35 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceL
 import IntervalsService from '../services/intervals';
 import analytics from '../services/analytics';
 
+function estimatePMCFromActivities(activities = []) {
+  if (!activities.length) return null;
+
+  const dailyLoad = new Map();
+  activities.forEach(a => {
+    const day = String(a.start_date_local || '').slice(0, 10);
+    if (!day) return;
+    const load = Number(a.icu_training_load || a.training_load || 0);
+    dailyLoad.set(day, (dailyLoad.get(day) || 0) + (Number.isFinite(load) ? load : 0));
+  });
+
+  const today = new Date();
+  let ctl = 0;
+  let atl = 0;
+  const ctlTau = 42;
+  const atlTau = 7;
+
+  for (let d = 90; d >= 0; d--) {
+    const day = new Date(today);
+    day.setDate(today.getDate() - d);
+    const key = day.toISOString().slice(0, 10);
+    const load = dailyLoad.get(key) || 0;
+    ctl = ctl + (load - ctl) * (1 / ctlTau);
+    atl = atl + (load - atl) * (1 / atlTau);
+  }
+
+  return { ctl, atl, tsb: ctl - atl };
+}
+
 // ── FormGauge: horizontal gradient bar with TSB indicator ────────────────────
 function FormGauge({ tsb }) {
   if (tsb == null) return null;
@@ -48,14 +77,19 @@ function FormGauge({ tsb }) {
 
 export default function Dashboard({ wellness, activities, athlete, loading, error }) {
   const latest = wellness?.[wellness.length - 1];
-  const ctl = latest?.icu_ctl || 0;
-  const atl = latest?.icu_atl || 0;
-  const tsb = ctl - atl;
+  const estimatedPMC = useMemo(() => estimatePMCFromActivities(activities), [activities]);
+  const ctl = latest?.icu_ctl ?? estimatedPMC?.ctl ?? null;
+  const atl = latest?.icu_atl ?? estimatedPMC?.atl ?? null;
+  const tsb = ctl != null && atl != null ? ctl - atl : null;
   const formState = IntervalsService.assessFormState(tsb);
 
-  const readiness = (ctl || atl)
+  const readiness = (ctl != null || atl != null)
     ? Math.round(Math.min(100, Math.max(0, 50 + tsb * 2)))
     : null;
+
+  const ftpValue = athlete?.icu_ftp ?? null;
+  const weightValue = athlete?.icu_weight ?? latest?.weight ?? null;
+  const wkgValue = (ftpValue && weightValue) ? (ftpValue / weightValue) : null;
 
   const pmcTrend = useMemo(() => analytics.computePMCTrend(wellness, 14), [wellness]);
   const efTrend = useMemo(() => analytics.computeEFTrend(activities, 14), [activities]);
@@ -188,10 +222,10 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
             {readiness != null ? `${readiness}%` : '—'}
           </div>
           <div style={{ paddingBottom: 6, fontSize: 12, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' }}>
-            TSB {tsb >= 0 ? '+' : ''}{tsb.toFixed(1)}
+            TSB {tsb != null ? `${tsb >= 0 ? '+' : ''}${tsb.toFixed(1)}` : '—'}
           </div>
         </div>
-        <FormGauge tsb={tsb} />
+        <FormGauge tsb={tsb ?? 0} />
       </div>
 
       {/* ─── Card 2: PMC Metrics Row ─── */}
@@ -199,7 +233,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         <div className="metric-tile">
           <div className="metric-label">Fitness (CTL)</div>
           <div className="metric-value" style={{ color: 'var(--ctl-color)' }}>
-            {ctl ? ctl.toFixed(1) : '—'}
+            {ctl != null ? ctl.toFixed(1) : '—'}
           </div>
           {pmcTrend && (
             <div className={`metric-delta ${pmcTrend.ctlTrend >= 0 ? 'positive' : 'negative'}`}>
@@ -211,7 +245,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         <div className="metric-tile">
           <div className="metric-label">Fatigue (ATL)</div>
           <div className="metric-value" style={{ color: 'var(--atl-color)' }}>
-            {atl ? atl.toFixed(1) : '—'}
+            {atl != null ? atl.toFixed(1) : '—'}
           </div>
           {pmcTrend && (
             <div className={`metric-delta ${pmcTrend.atlTrend >= 0 ? 'negative' : 'positive'}`}>
@@ -223,7 +257,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         <div className="metric-tile">
           <div className="metric-label">Form (TSB)</div>
           <div className="metric-value" style={{ color: tsb >= 0 ? 'var(--tsb-color)' : 'var(--tsb-negative)' }}>
-            {tsb ? (tsb >= 0 ? '+' : '') + tsb.toFixed(1) : '—'}
+            {tsb != null ? (tsb >= 0 ? '+' : '') + tsb.toFixed(1) : '—'}
           </div>
           <div className="form-indicator" style={{ marginTop: 6, background: `${formState.color}15`, color: formState.color }}>
             <span className="form-dot" style={{ background: formState.color }}></span>
@@ -234,11 +268,11 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         <div className="metric-tile">
           <div className="metric-label">FTP</div>
           <div className="metric-value">
-            {athlete?.icu_ftp || '—'}<span className="metric-unit">W</span>
+            {ftpValue || '—'}<span className="metric-unit">W</span>
           </div>
-          {athlete?.icu_weight && (
+          {wkgValue != null && Number.isFinite(wkgValue) && (
             <div className="metric-delta neutral">
-              {(athlete.icu_ftp / athlete.icu_weight).toFixed(2)} W/kg
+              {wkgValue.toFixed(2)} W/kg
             </div>
           )}
         </div>
