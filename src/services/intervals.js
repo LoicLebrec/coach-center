@@ -16,8 +16,19 @@ class IntervalsService {
     this.apiKey = null;
   }
 
+  normalizeAthleteId(athleteId) {
+    if (!athleteId) return null;
+    const cleaned = String(athleteId).trim();
+    // Accept both forms in settings:
+    // - 12345  -> i12345
+    // - i12345 -> i12345
+    if (/^i\d+$/i.test(cleaned)) return `i${cleaned.slice(1)}`;
+    if (/^\d+$/.test(cleaned)) return `i${cleaned}`;
+    return cleaned;
+  }
+
   configure(athleteId, apiKey) {
-    this.athleteId = athleteId;
+    this.athleteId = this.normalizeAthleteId(athleteId);
     this.apiKey = apiKey;
   }
 

@@ -22,6 +22,9 @@ const VIEWS = {
 };
 
 export default function App() {
+  const INCREMENTAL_SYNC_DAYS = 120;
+  const REPAIR_SYNC_DAYS = 730;
+
   const [view, setView] = useState(VIEWS.COACH);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -142,6 +145,36 @@ export default function App() {
     return Array.from(groups.values());
   }, []);
 
+  // Normalize payload variants from Intervals endpoints into one canonical shape.
+  const normalizeActivities = useCallback((acts) => {
+    if (!Array.isArray(acts)) return [];
+
+    return acts.map((a, idx) => {
+      const rawDate = a.start_date_local || a.startDateLocal || a.start_date || a.startDate || a.date || null;
+      const normalizedDate = rawDate && String(rawDate).includes('T')
+        ? rawDate
+        : (rawDate ? `${rawDate}T00:00:00` : null);
+
+      const syntheticId = `__local_${normalizedDate || 'unknown'}_${a.type || a.sport || idx}`;
+
+      return {
+        ...a,
+        id: a.id ?? a.activity_id ?? a.activityId ?? syntheticId,
+        name: a.name || a.activity_name || a.title || a.workout_name || a.description || '',
+        type: a.type || a.sport_type || a.sport || a.activity_type || a.activityType || '',
+        start_date_local: normalizedDate,
+        moving_time: a.moving_time ?? a.movingTime ?? a.duration ?? a.elapsed_time ?? a.elapsedTime ?? 0,
+        elapsed_time: a.elapsed_time ?? a.elapsedTime ?? a.duration ?? a.moving_time ?? a.movingTime ?? 0,
+        distance: a.distance ?? a.total_distance ?? a.dist ?? null,
+        total_elevation_gain: a.total_elevation_gain ?? a.elevation_gain ?? a.elev_gain ?? null,
+        icu_training_load: a.icu_training_load ?? a.training_load ?? a.tss ?? a.load ?? null,
+        icu_average_watts: a.icu_average_watts ?? a.average_watts ?? a.avg_power ?? a.power ?? null,
+        average_watts: a.average_watts ?? a.avg_power ?? a.icu_average_watts ?? null,
+        average_heartrate: a.average_heartrate ?? a.avg_hr ?? a.heart_rate ?? null,
+      };
+    });
+  }, []);
+
   // Build weekly journal snapshots from wellness + activities data
   const buildJournal = useCallback(async (wellnessData, activitiesData) => {
     if (!wellnessData?.length) return;
@@ -184,18 +217,83 @@ export default function App() {
     }
   }, []);
 
+  // Data completeness score used to prioritize enrichment for sparse activities.
+  const computeActivityCompleteness = useCallback((a) => {
+    const signals = [
+      a.name,
+      a.type || a.sport_type,
+      a.start_date_local,
+      a.moving_time || a.elapsed_time,
+      a.distance,
+      a.icu_training_load || a.training_load,
+      a.icu_average_watts || a.average_watts,
+      a.average_heartrate,
+      a.total_elevation_gain,
+    ];
+    return signals.filter(v => v != null && v !== 0 && v !== '').length;
+  }, []);
+
+  const enrichActivitiesProgressive = useCallback(async (activities, maxToEnrich) => {
+    if (!activities?.length) return [];
+
+    const prioritized = [...activities]
+      .sort((a, b) => {
+        // First enrich sparse records, then most recent.
+        const scoreDelta = computeActivityCompleteness(a) - computeActivityCompleteness(b);
+        if (scoreDelta !== 0) return scoreDelta;
+        return (b.start_date_local || '').localeCompare(a.start_date_local || '');
+      })
+      .slice(0, maxToEnrich);
+
+    const enrichedMap = {};
+    const batchSize = 10;
+
+    for (let i = 0; i < prioritized.length; i += batchSize) {
+      const batch = prioritized
+        .slice(i, i + batchSize)
+        .filter(a => a.id && !String(a.id).startsWith('__local_'));
+      if (batch.length === 0) continue;
+      const results = await Promise.allSettled(
+        batch.map(a => intervalsService.getActivity(a.id))
+      );
+
+      results.forEach(r => {
+        if (r.status === 'fulfilled' && r.value?.id) {
+          enrichedMap[r.value.id] = r.value;
+        }
+      });
+    }
+
+    return activities.map(a => {
+      const enriched = enrichedMap[a.id];
+      if (!enriched) return a;
+
+      const merged = { ...a };
+      for (const [key, val] of Object.entries(enriched)) {
+        // Merge only useful values to avoid degrading a previously complete record.
+        if (val !== null && val !== undefined && val !== '') {
+          merged[key] = val;
+        }
+      }
+      return merged;
+    });
+  }, [computeActivityCompleteness]);
+
   // Fetch data when Intervals.icu is connected
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (options = {}) => {
     if (!intervalsService.isConfigured()) return;
+
+    const mode = options.mode || 'incremental';
+    const syncDays = mode === 'repair' ? REPAIR_SYNC_DAYS : INCREMENTAL_SYNC_DAYS;
 
     setLoading(true);
     setError(null);
 
     try {
       const now = new Date();
-      const ninetyDaysAgo = new Date(now);
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-      const oldest = ninetyDaysAgo.toISOString().split('T')[0];
+      const oldestDate = new Date(now);
+      oldestDate.setDate(oldestDate.getDate() - syncDays);
+      const oldest = oldestDate.toISOString().split('T')[0];
       const newest = now.toISOString().split('T')[0];
 
       const [wellnessData, activitiesData, athleteData, eventsData] = await Promise.allSettled([
@@ -207,39 +305,17 @@ export default function App() {
 
       const wellness = wellnessData.status === 'fulfilled' ? (wellnessData.value || []) : [];
       const rawActivities = activitiesData.status === 'fulfilled' ? (activitiesData.value || []) : [];
-      let dedupedActivities = deduplicateActivities(rawActivities);
+      const normalizedActivities = normalizeActivities(rawActivities);
+      let dedupedActivities = deduplicateActivities(normalizedActivities);
 
-      // Enrich activities via individual endpoint — gets ICU-computed fields
-      // (NP, zone distributions, decoupling) not always in the list response.
-      // Batch in groups of 10 to avoid overloading the API.
+      // Progressive enrichment from per-activity endpoint:
+      // - incremental mode: enrich top sparse records while staying fast.
+      // - repair mode: deep enrichment of full fetched history.
       if (dedupedActivities.length > 0) {
-        const sorted = [...dedupedActivities]
-          .sort((a, b) => (b.start_date_local || '') > (a.start_date_local || '') ? 1 : -1);
-        const enrichedMap = {};
-        const batchSize = 10;
-        for (let i = 0; i < Math.min(sorted.length, 60); i += batchSize) {
-          const batch = sorted.slice(i, i + batchSize);
-          const results = await Promise.allSettled(
-            batch.map(a => intervalsService.getActivity(a.id))
-          );
-          results.forEach(r => {
-            if (r.status === 'fulfilled' && r.value?.id) {
-              enrichedMap[r.value.id] = r.value;
-            }
-          });
-        }
-        dedupedActivities = dedupedActivities.map(a => {
-          if (!enrichedMap[a.id]) return a;
-          const enriched = enrichedMap[a.id];
-          const merged = { ...a };
-          for (const [key, val] of Object.entries(enriched)) {
-            // Never overwrite a non-null existing value with null/undefined/empty
-            if (val !== null && val !== undefined && val !== '') {
-              merged[key] = val;
-            }
-          }
-          return merged;
-        });
+        const maxToEnrich = mode === 'repair'
+          ? dedupedActivities.length
+          : Math.min(dedupedActivities.length, 180);
+        dedupedActivities = await enrichActivitiesProgressive(dedupedActivities, maxToEnrich);
       }
 
       if (wellness.length) setWellness(wellness);
@@ -253,6 +329,12 @@ export default function App() {
       // Cache for offline use
       if (wellness.length) await persistence.cacheData('wellness', wellness, 30);
       if (dedupedActivities.length) await persistence.cacheData('activities', dedupedActivities, 30);
+      await persistence.savePref('last-sync-meta', {
+        mode,
+        syncDays,
+        syncedAt: new Date().toISOString(),
+        activityCount: dedupedActivities.length,
+      });
 
     } catch (err) {
       setError(err.message);
@@ -264,13 +346,17 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [deduplicateActivities, buildJournal]);
+  }, [deduplicateActivities, normalizeActivities, buildJournal, enrichActivitiesProgressive]);
 
   useEffect(() => {
     if (connections.intervals) {
-      fetchData();
+      fetchData({ mode: 'incremental' });
     }
   }, [connections.intervals, fetchData]);
+
+  const handleRepairHistory = useCallback(async () => {
+    await fetchData({ mode: 'repair' });
+  }, [fetchData]);
 
   const handleSaveSettings = async (provider, creds) => {
     if (provider === 'intervals') {
@@ -315,7 +401,7 @@ export default function App() {
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: 'var(--accent-cyan)', letterSpacing: '0.1em', marginBottom: 16 }}>&gt;&gt;</div>
           <p style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Connect to Intervals.icu to get started</p>
           <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 20, maxWidth: 400, textAlign: 'center' }}>
-            Coach Center uses Intervals.icu as the primary data source. 
+            Coach Center uses Intervals.icu as the primary data source.
             Your Garmin Connect data also flows through this connection.
           </p>
           <button className="btn btn-primary" onClick={() => setView(VIEWS.SETTINGS)}>
@@ -354,6 +440,7 @@ export default function App() {
             onSave={handleSaveSettings}
             onDisconnect={handleDisconnect}
             onRefresh={fetchData}
+            onRepairHistory={handleRepairHistory}
           />
         );
       default:

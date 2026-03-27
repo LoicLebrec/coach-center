@@ -18,9 +18,9 @@
 
   /* ─── Text ─── */
   --text-0: #eceef5;
-  --text-1: #b8bdd0;
-  --text-2: #7d849e;
-  --text-3: #545a78;
+  --text-1: #c9cfdf;
+  --text-2: #a0a8bf;
+  --text-3: #7d87a5;
 
   /* ─── Accents ─── */
   --accent-blue: #3b82f6;
@@ -52,13 +52,15 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   background: var(--bg-0);
   color: var(--text-0);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 16px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -116,7 +118,7 @@ html, body, #root {
 
 .nav-section-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -132,7 +134,7 @@ html, body, #root {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-1);
   text-decoration: none;
   border: none;
@@ -165,7 +167,7 @@ html, body, #root {
 
 .nav-icon-text {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -191,7 +193,7 @@ html, body, #root {
 }
 
 .page-subtitle {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-2);
   margin-top: 4px;
 }
@@ -215,7 +217,7 @@ html, body, #root {
 
 .card-title {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -224,7 +226,7 @@ html, body, #root {
 
 .card-badge {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   padding: 3px 8px;
   border-radius: 4px;
@@ -249,7 +251,7 @@ html, body, #root {
 
 .metric-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -266,7 +268,7 @@ html, body, #root {
 }
 
 .metric-unit {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
   color: var(--text-2);
   margin-left: 4px;
@@ -274,14 +276,22 @@ html, body, #root {
 
 .metric-delta {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   margin-top: 6px;
 }
 
-.metric-delta.positive { color: var(--accent-green); }
-.metric-delta.negative { color: var(--accent-red); }
-.metric-delta.neutral { color: var(--text-2); }
+.metric-delta.positive {
+  color: var(--accent-green);
+}
+
+.metric-delta.negative {
+  color: var(--accent-red);
+}
+
+.metric-delta.neutral {
+  color: var(--text-2);
+}
 
 /* ─── Form State Indicator ───────────────────────────────── */
 .form-indicator {
@@ -303,8 +313,15 @@ html, body, #root {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* ─── Charts ─────────────────────────────────────────────── */
@@ -321,7 +338,7 @@ html, body, #root {
 .chart-container .recharts-text {
   fill: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 /* ─── Activity List ──────────────────────────────────────── */
@@ -333,7 +350,7 @@ html, body, #root {
   padding: 10px 16px;
   border-radius: 6px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 14px;
   transition: background 0.1s;
 }
 
@@ -343,7 +360,7 @@ html, body, #root {
 
 .activity-row-header {
   color: var(--text-3);
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   border-bottom: 1px solid var(--border);
@@ -357,7 +374,7 @@ html, body, #root {
 }
 
 .activity-name .type-badge {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--accent-cyan);
   margin-left: 6px;
 }
@@ -381,7 +398,7 @@ html, body, #root {
 }
 
 .settings-section-desc {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-2);
   margin-bottom: 16px;
 }
@@ -393,7 +410,7 @@ html, body, #root {
 .form-label {
   display: block;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -410,7 +427,7 @@ html, body, #root {
   border-radius: 6px;
   color: var(--text-0);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 15px;
   outline: none;
   transition: border-color 0.15s;
 }
@@ -433,7 +450,7 @@ html, body, #root {
   background: var(--bg-2);
   color: var(--text-0);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
@@ -482,13 +499,21 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-.conn-dot.connected { background: var(--accent-green); }
-.conn-dot.disconnected { background: var(--text-3); }
-.conn-dot.partial { background: var(--accent-yellow); }
+.conn-dot.connected {
+  background: var(--accent-green);
+}
+
+.conn-dot.disconnected {
+  background: var(--text-3);
+}
+
+.conn-dot.partial {
+  background: var(--accent-yellow);
+}
 
 .conn-label {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-1);
 }
 
@@ -517,7 +542,9 @@ html, body, #root {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .error-banner {
@@ -527,7 +554,7 @@ html, body, #root {
   padding: 12px 16px;
   color: var(--accent-red);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 14px;
   margin-bottom: 16px;
 }
 
@@ -543,7 +570,7 @@ html, body, #root {
   border-radius: var(--radius);
   padding: 14px 18px;
   color: var(--text-1);
-  font-size: 13px;
+  font-size: 15px;
   margin-bottom: 16px;
 }
 
@@ -562,24 +589,32 @@ html, body, #root {
     width: 60px;
     min-width: 60px;
   }
-  .sidebar-logo, .sidebar-version, .nav-section-label,
+
+  .sidebar-logo,
+  .sidebar-version,
+  .nav-section-label,
   .nav-item span:not(.nav-icon) {
     display: none;
   }
+
   .nav-item {
     justify-content: center;
     padding: 10px;
   }
+
   .main-content {
     padding: 16px;
   }
+
   .metrics-row {
     grid-template-columns: repeat(2, 1fr);
   }
+
   .activity-row {
     grid-template-columns: 2fr 1fr 1fr;
   }
-  .activity-row > :nth-child(n+4) {
+
+  .activity-row> :nth-child(n+4) {
     display: none;
   }
 }
@@ -601,6 +636,7 @@ html, body, #root {
   border-left: 2px solid var(--accent-blue) !important;
   padding-left: 10px !important;
 }
+
 .nav-item.coach-nav-active .nav-icon {
   color: var(--accent-blue);
 }
@@ -647,7 +683,7 @@ html, body, #root {
 
 .apex-header-sub {
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-2);
   letter-spacing: 0.02em;
   align-self: flex-end;
@@ -657,7 +693,7 @@ html, body, #root {
 .apex-header-right {
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-3);
   letter-spacing: 0.06em;
 }
@@ -684,7 +720,7 @@ html, body, #root {
 
 .hud-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   color: var(--text-3);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -708,7 +744,7 @@ html, body, #root {
 
 .hud-form-badge {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
   padding: 3px 9px;
@@ -725,7 +761,7 @@ html, body, #root {
 
 .hud-clear-btn {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--text-3);
@@ -745,12 +781,29 @@ html, body, #root {
 }
 
 /* ─── Form state HUD colors ─── */
-.form-fresh         { color: #4ade80; }
-.form-race-ready    { color: #22c55e; }
-.form-neutral       { color: #facc15; }
-.form-fatigued      { color: #fb923c; }
-.form-overreaching  { color: #ef4444; }
-.form-transition    { color: #94a3b8; }
+.form-fresh {
+  color: #4ade80;
+}
+
+.form-race-ready {
+  color: #22c55e;
+}
+
+.form-neutral {
+  color: #facc15;
+}
+
+.form-fatigued {
+  color: #fb923c;
+}
+
+.form-overreaching {
+  color: #ef4444;
+}
+
+.form-transition {
+  color: #94a3b8;
+}
 
 /* ─── Messages area ─── */
 .coach-messages {
@@ -784,7 +837,7 @@ html, body, #root {
 
 .msg-meta {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-3);
   letter-spacing: 0.08em;
   text-align: right;
@@ -792,7 +845,7 @@ html, body, #root {
 
 .msg-prefix {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--accent-blue);
   letter-spacing: 0.1em;
@@ -810,7 +863,7 @@ html, body, #root {
   border-radius: 10px 10px 2px 10px;
   padding: 12px 18px;
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 16px;
   color: var(--text-1);
   white-space: pre-wrap;
   line-height: 1.65;
@@ -824,7 +877,7 @@ html, body, #root {
   border-radius: 0 10px 10px 10px;
   padding: 16px 20px;
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 16px;
   color: var(--text-0);
   line-height: 1.8;
   white-space: pre-wrap;
@@ -837,7 +890,7 @@ html, body, #root {
   border-radius: 0 8px 8px 8px;
   padding: 12px 18px;
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 15px;
   color: var(--accent-red);
   white-space: pre-wrap;
 }
@@ -854,8 +907,15 @@ html, body, #root {
 }
 
 @keyframes blink-cursor {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
 }
 
 /* ─── Thinking dots ─── */
@@ -874,12 +934,27 @@ html, body, #root {
   animation: thinking-pulse 1.2s ease-in-out infinite;
 }
 
-.coach-thinking span:nth-child(2) { animation-delay: 0.2s; }
-.coach-thinking span:nth-child(3) { animation-delay: 0.4s; }
+.coach-thinking span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.coach-thinking span:nth-child(3) {
+  animation-delay: 0.4s;
+}
 
 @keyframes thinking-pulse {
-  0%, 80%, 100% { opacity: 0.2; transform: scale(0.75); }
-  40%            { opacity: 1;   transform: scale(1); }
+
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.75);
+  }
+
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* ─── Empty / init state ─── */
@@ -895,7 +970,7 @@ html, body, #root {
 
 .phosphor-text {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 14px;
   color: var(--accent-blue);
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -927,7 +1002,7 @@ html, body, #root {
 
 .apex-logo-sub {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-2);
   letter-spacing: 0.42em;
   text-transform: uppercase;
@@ -936,7 +1011,7 @@ html, body, #root {
 
 .empty-hint {
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 16px;
   color: var(--text-2);
   text-align: center;
   line-height: 1.8;
@@ -967,7 +1042,7 @@ html, body, #root {
 }
 
 .no-key-body {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-2);
   line-height: 1.6;
 }
@@ -984,7 +1059,7 @@ html, body, #root {
 
 .action-btn {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--text-2);
@@ -1035,7 +1110,7 @@ html, body, #root {
 .coach-prompt-symbol {
   color: var(--accent-blue);
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 16px;
   user-select: none;
   flex-shrink: 0;
 }
@@ -1047,7 +1122,7 @@ html, body, #root {
   outline: none;
   color: var(--text-0);
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 16px;
   caret-color: var(--accent-blue);
 }
 
@@ -1061,7 +1136,7 @@ html, body, #root {
 
 .coach-send-btn {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   color: #fff;
@@ -1110,7 +1185,7 @@ html, body, #root {
 }
 
 .onboarding-title {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--text-0);
   letter-spacing: 0.12em;
@@ -1138,14 +1213,14 @@ html, body, #root {
 }
 
 .onboarding-step-counter {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-3);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .onboarding-question {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--text-0);
   line-height: 1.6;
   margin-bottom: 20px;
@@ -1171,7 +1246,7 @@ html, body, #root {
 
 .option-btn {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-2);
   background: transparent;
   border: 1px solid var(--coach-border);
@@ -1199,7 +1274,7 @@ html, body, #root {
 }
 
 .option-checkbox {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-3);
   font-weight: 700;
   min-width: 28px;
@@ -1218,7 +1293,7 @@ html, body, #root {
 
 .onboarding-skip {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-3);
   background: none;
   border: none;
@@ -1233,7 +1308,7 @@ html, body, #root {
 
 .onboarding-nav-btn {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
   padding: 8px 20px;
@@ -1275,13 +1350,16 @@ html, body, #root {
 ::-webkit-scrollbar {
   width: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   background: var(--bg-3);
   border-radius: 3px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-accent);
 }
@@ -1295,7 +1373,7 @@ html, body, #root {
 
 .coach-avatar-small {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.35;
   color: var(--phosphor-dim);
   white-space: pre;
@@ -1307,7 +1385,7 @@ html, body, #root {
 
 .coach-avatar-large {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--phosphor-dim);
   white-space: pre;
@@ -1322,7 +1400,7 @@ html, body, #root {
   display: inline-block;
   margin-top: 10px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--accent-cyan);

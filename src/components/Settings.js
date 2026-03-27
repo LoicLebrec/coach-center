@@ -3,7 +3,7 @@ import persistence from '../services/persistence';
 import { stravaService } from '../services/strava';
 import { garminService } from '../services/garmin';
 
-export default function Settings({ connections, onSave, onDisconnect, onRefresh }) {
+export default function Settings({ connections, onSave, onDisconnect, onRefresh, onRepairHistory }) {
   // Intervals.icu
   const [intAthleteId, setIntAthleteId] = useState('');
   const [intApiKey, setIntApiKey] = useState('');
@@ -59,7 +59,7 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
     try {
       await onSave('intervals', { athleteId: intAthleteId.trim(), apiKey: intApiKey.trim() });
       showMessage('Intervals.icu connected. Fetching data...');
-      setTimeout(() => onRefresh(), 500);
+      setTimeout(() => onRefresh({ mode: 'incremental' }), 500);
     } catch (err) {
       showMessage('Failed to save: ' + err.message, true);
     } finally {
@@ -145,7 +145,7 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
           {connections.intervals && <span style={{ color: 'var(--accent-green)', fontSize: 12, marginLeft: 8 }}>● Connected</span>}
         </div>
         <div className="settings-section-desc">
-          Primary data source. Provides PMC metrics (CTL/ATL/TSB), activities with power/HR data, 
+          Primary data source. Provides PMC metrics (CTL/ATL/TSB), activities with power/HR data,
           and wellness metrics. Also receives Garmin Connect data when linked.
         </div>
 
@@ -153,7 +153,8 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
           <strong>How to get your credentials:</strong><br />
           1. Go to <code>intervals.icu/settings</code><br />
           2. Scroll to "Developer Settings" near the bottom<br />
-          3. Copy your <strong>Athlete ID</strong> (the number in your URL, e.g., <code>i12345</code>)<br />
+          3. Copy your <strong>Athlete ID</strong> from your profile URL (e.g., <code>i12345</code>)<br />
+          &nbsp;&nbsp;&nbsp;Entering <code>12345</code> or <code>i12345</code> both work<br />
           4. Generate an <strong>API Key</strong> and copy it
         </div>
 
@@ -185,7 +186,7 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
           </button>
           {connections.intervals && (
             <>
-              <button className="btn" onClick={onRefresh}>Refresh Data</button>
+              <button className="btn" onClick={() => onRefresh({ mode: 'incremental' })}>Refresh Data</button>
               <button className="btn btn-danger" onClick={() => onDisconnect('intervals')}>Disconnect</button>
             </>
           )}
@@ -257,12 +258,12 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
 
         <div className="info-banner">
           <strong>How Garmin integration works:</strong><br />
-          Garmin's official API requires server-side OAuth and business approval — it's not compatible 
+          Garmin's official API requires server-side OAuth and business approval — it's not compatible
           with a static GitHub Pages app. Instead, Coach Center receives your Garmin data through Intervals.icu:<br /><br />
           1. In <strong>Intervals.icu Settings</strong>, link your Garmin Connect account<br />
           2. Activities, HR, sleep, steps, and wellness data sync automatically<br />
           3. Coach Center reads this data via the Intervals.icu API<br /><br />
-          This is the most reliable path. All Garmin-sourced metrics (RHR, sleep, body weight, HRV) 
+          This is the most reliable path. All Garmin-sourced metrics (RHR, sleep, body weight, HRV)
           appear in the Wellness and Dashboard views.
         </div>
 
@@ -416,10 +417,15 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
       <div className="settings-section">
         <div className="settings-section-title">Data Management</div>
         <div className="settings-section-desc">
-          All data is stored locally in your browser (IndexedDB). Nothing is sent to any server beyond the 
+          All data is stored locally in your browser (IndexedDB). Nothing is sent to any server beyond the
           API calls to Intervals.icu, Strava, and (future) Claude.
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {connections.intervals && (
+            <button className="btn btn-primary" onClick={onRepairHistory}>
+              Repair History (Deep Sync)
+            </button>
+          )}
           <button className="btn" onClick={async () => {
             await persistence.clearCache();
             showMessage('Cache cleared. Data will be re-fetched on next load.');
@@ -443,7 +449,7 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh 
       <div className="settings-section">
         <div className="settings-section-title">Module Architecture</div>
         <div className="settings-section-desc">
-          Coach Center is built with a modular service layer. Each integration is a separate module 
+          Coach Center is built with a modular service layer. Each integration is a separate module
           in <code>src/services/</code>. To add new features:
         </div>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-2)', lineHeight: 2, background: 'var(--bg-2)', padding: 16, borderRadius: 8 }}>
