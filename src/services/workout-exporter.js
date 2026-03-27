@@ -6,6 +6,7 @@
  * Minimal workout encoder — supports time-based steps with
  * power or open targets.
  */
+import JSZip from 'jszip';
 
 // ─── FIT CRC ────────────────────────────────────────────────
 const CRC_TABLE = [
@@ -325,6 +326,63 @@ export function hasWorkoutContent(text) {
   );
 }
 
+// Zone midpoint percentages for direct block-to-FIT conversion
+const BLOCK_ZONE_MID = {
+  Z1: 0.50, Z2: 0.65, Z3: 0.83, Z4: 0.97,
+  Z5: 1.13, Z6: 1.35, Z7: 1.75,
+};
+
+function blockIntensityCode(label) {
+  const l = String(label || '').toLowerCase();
+  if (/warm.?up/.test(l)) return 2;       // warmup
+  if (/cool.?down|cooldown/.test(l)) return 3; // cooldown
+  if (/recovery|rest|easy spin/.test(l)) return 1; // rest
+  return 0; // active
+}
+
+/**
+ * Export a Garmin FIT workout from structured blocks (no text parsing needed).
+ * @param {Array} blocks - [{label, durationMin, zone}]
+ * @param {number|null} ftp - athlete FTP in watts
+ * @param {string} sport - 'cycling' | 'running'
+ * @param {string} label - filename label
+ */
+export function exportWorkoutFitFromBlocks(blocks, ftp = null, sport = 'cycling', label = '') {
+  if (!blocks?.length) {
+    alert('No workout blocks to export.');
+    return;
+  }
+
+  const steps = blocks.map(b => {
+    const zoneId = String(b.zone || 'Z2').toUpperCase();
+    const mid = BLOCK_ZONE_MID[zoneId] ?? BLOCK_ZONE_MID.Z2;
+    const durationSec = Math.max(30, Math.round((Number(b.durationMin) || 5) * 60));
+    const intensity = blockIntensityCode(b.label);
+    const targetType = ftp ? 3 : 6; // 3=power, 6=open
+    const targetValue = ftp ? (Math.round(mid * ftp) >>> 0) : 0;
+
+    return {
+      name: String(b.label || 'Block').slice(0, 16),
+      durationSec,
+      targetType,
+      targetValue,
+      intensity,
+    };
+  });
+
+  const garminSport = /run/i.test(String(sport)) ? 1 : 2;
+  const workoutName = String(`APEX ${label || ''}`.trim()).slice(0, 20);
+  const fitBytes = buildFitWorkout(workoutName, steps, garminSport);
+
+  const blob = new Blob([fitBytes], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `apex-${label || 'workout'}-${new Date().toISOString().split('T')[0]}.fit`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /**
  * Generate a .fit file and trigger browser download.
  * @param {string} messageText - APEX prescription text
@@ -351,4 +409,68 @@ export function exportWorkoutFit(messageText, ftp = null, sport = 'cycling', lab
   a.download = `apex-workout-${label || new Date().toISOString().split('T')[0]}.fit`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Exports a training plan (array of planned events with workoutBlocks) as a
+ * ZIP archive containing one .fit file per structured workout session.
+ * Sessions without workoutBlocks are skipped (races, rest days, plain notes).
+ *
+ * @param {Array} events      - planned event objects with optional workoutBlocks
+ * @param {number} ftp        - athlete FTP for power targets (watts)
+ * @param {string} planName   - base name for the ZIP file
+ */
+export async function exportPlanAsZip(events = [], ftp = 200, planName = 'training-plan') {
+  const zip = new JSZip();
+  const folder = zip.folder('workouts');
+  let count = 0;
+
+  const sortedEvents = [...events].sort((a, b) =>
+    String(a.start_date_local || '').localeCompare(String(b.start_date_local || ''))
+  );
+
+  for (const event of sortedEvents) {
+    if (!event.workoutBlocks?.length) continue;
+
+    const date = String(event.start_date_local || event.date || '').slice(0, 10);
+    const title = (event.title || event.name || 'Workout').slice(0, 40);
+    const sport = event.type || event.event_type || 'Ride';
+    const garminSport = sport.toLowerCase() === 'run' ? 1 : 2;
+
+    try {
+      const fitBytes = exportWorkoutFitFromBlocks(event.workoutBlocks, ftp, sport, title);
+      const safeTitle = title.replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `${date}_${safeTitle}.fit`;
+      folder.file(filename, fitBytes);
+      count++;
+    } catch (_) {
+      // skip malformed blocks silently
+    }
+  }
+
+  if (count === 0) {
+    throw new Error('No structured workouts found. Build workouts using the workout wizard first.');
+  }
+
+  // Add a simple README
+  folder.file('_README.txt', [
+    `APEX Training Plan — ${planName}`,
+    `Exported: ${new Date().toLocaleDateString()}`,
+    `Workouts: ${count}`,
+    '',
+    'HOW TO USE:',
+    '1. Go to connect.garmin.com → Training → Workouts',
+    '2. Click "Import" and upload each .fit file',
+    '3. Open the Garmin Connect app and schedule workouts to your device',
+    'OR sync Intervals.icu (if connected) — workouts appear on your device automatically.',
+  ].join('\n'));
+
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${planName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+  return count;
 }

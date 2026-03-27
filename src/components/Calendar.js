@@ -18,7 +18,10 @@ import {
     subMonths,
 } from 'date-fns';
 import WorkoutBuilder from './WorkoutBuilder';
-import { exportWorkoutFit, hasWorkoutContent } from '../services/workout-exporter';
+import SmartWorkoutWizard from './SmartWorkoutWizard';
+import { exportWorkoutFit, exportWorkoutFitFromBlocks, hasWorkoutContent, exportPlanAsZip } from '../services/workout-exporter';
+import { intervalsService, buildIcuEventPayload } from '../services/intervals';
+import { buildRuleBasedWorkout, inferTrainingType } from '../services/workout-rules';
 import { LIBRARY_WORKOUTS as DEFAULT_LIBRARY_WORKOUTS } from '../data/workoutLibrary';
 import GpxRouteBuilder from './GpxRouteBuilder';
 
@@ -62,6 +65,87 @@ function WorkoutBlocksGraph({ blocks }) {
                     />
                 );
             })}
+        </div>
+    );
+}
+
+const ZONE_COLORS_DETAIL = {
+    Z1: '#475569', Z2: '#22c55e', Z3: '#eab308',
+    Z4: '#f97316', Z5: '#ef4444', Z6: '#a855f7', Z7: '#ec4899',
+};
+const ZONE_LABELS_DETAIL = {
+    Z1: 'Recovery', Z2: 'Endurance', Z3: 'Tempo',
+    Z4: 'Threshold', Z5: 'VO2 Max', Z6: 'Anaerobic', Z7: 'Sprint',
+};
+const ZONE_PCT_DETAIL = {
+    Z1: [45, 55], Z2: [56, 75], Z3: [76, 90],
+    Z4: [91, 105], Z5: [106, 120], Z6: [121, 150], Z7: [151, 200],
+};
+
+function zoneFromIF(intensity) {
+    if (!intensity || intensity <= 0) return null;
+    if (intensity < 0.55) return 'Z1';
+    if (intensity < 0.75) return 'Z2';
+    if (intensity < 0.90) return 'Z3';
+    if (intensity < 1.05) return 'Z4';
+    if (intensity < 1.20) return 'Z5';
+    if (intensity < 1.50) return 'Z6';
+    return 'Z7';
+}
+
+function WorkoutDetailVisual({ blocks, ftp }) {
+    if (!blocks?.length) return null;
+    const total = Math.max(1, blocks.reduce((s, b) => s + (Number(b.durationMin) || 0), 0));
+
+    return (
+        <div>
+            {/* Power profile bar */}
+            <div style={{ display: 'flex', height: 52, borderRadius: 8, overflow: 'hidden', marginBottom: 12, gap: 2 }}>
+                {blocks.map((b, i) => {
+                    const pct = ((Number(b.durationMin) || 0) / total) * 100;
+                    const zId = String(b.zone || 'Z2').toUpperCase();
+                    const color = ZONE_COLORS_DETAIL[zId] || ZONE_COLORS_DETAIL.Z2;
+                    const zonePct = ZONE_PCT_DETAIL[zId] || ZONE_PCT_DETAIL.Z2;
+                    const barHeight = Math.max(20, Math.round(((zonePct[0] + zonePct[1]) / 2) / 2));
+                    return (
+                        <div key={i} style={{ width: `${Math.max(2, pct)}%`, display: 'flex', alignItems: 'flex-end' }}
+                            title={`${b.label} — ${b.durationMin}min @ ${zId}`}>
+                            <div style={{ width: '100%', height: `${barHeight}%`, background: color, opacity: 0.85, borderRadius: '3px 3px 0 0' }} />
+                        </div>
+                    );
+                })}
+            </div>
+            {/* Block list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {blocks.map((b, i) => {
+                    const zId = String(b.zone || 'Z2').toUpperCase();
+                    const color = ZONE_COLORS_DETAIL[zId] || ZONE_COLORS_DETAIL.Z2;
+                    const pct = ZONE_PCT_DETAIL[zId] || ZONE_PCT_DETAIL.Z2;
+                    const loW = ftp ? Math.round((pct[0] / 100) * ftp) : null;
+                    const hiW = ftp ? Math.round((pct[1] / 100) * ftp) : null;
+                    return (
+                        <div key={i} style={{
+                            display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '8px 12px', background: 'var(--bg-2)',
+                            borderRadius: 6, borderLeft: `3px solid ${color}`,
+                        }}>
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-0)' }}>{b.label}</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+                                    {zId} · {ZONE_LABELS_DETAIL[zId]} · {pct[0]}–{pct[1]}% FTP
+                                    {loW ? ` · ${loW}–${hiW}W` : ''}
+                                </div>
+                            </div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color }}>
+                                {b.durationMin}min
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)' }}>
+                Total: {total} min
+            </div>
         </div>
     );
 }
@@ -263,6 +347,7 @@ export default function Calendar({
         library: false,
         ai: true,
         csv: true,
+        garmin: true,
         upcoming: false,
     });
     const [jumpDate, setJumpDate] = useState('');
@@ -274,13 +359,26 @@ export default function Calendar({
     const [aiObjective, setAiObjective] = useState('Build aerobic fitness and prepare for next race block');
     const [aiDays, setAiDays] = useState(7);
     const [isGenerating, setIsGenerating] = useState(false);
+    // AI plan wizard
+    const [aiPlanStep, setAiPlanStep] = useState(1);
+    const [aiPlanGoal, setAiPlanGoal] = useState(null);
+    const [aiPlanWeeks, setAiPlanWeeks] = useState(null);
+    const [aiPlanLoad, setAiPlanLoad] = useState(null);
     const [isImportingCsv, setIsImportingCsv] = useState(false);
     const [csvImportSummary, setCsvImportSummary] = useState(null);
     const [importedSessions, setImportedSessions] = useState([]);
+    const [isExportingZip, setIsExportingZip] = useState(false);
+    const [isSyncingIcu, setIsSyncingIcu] = useState(false);
+    const [garminMsg, setGarminMsg] = useState(null); // { type: 'ok'|'err', text }
     const [plannerError, setPlannerError] = useState(null);
     const [dragOverDay, setDragOverDay] = useState(null);
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [selectedActivityDay, setSelectedActivityDay] = useState(null);
+    const [dayQuickTitle, setDayQuickTitle] = useState('');
+    const [dayQuickType, setDayQuickType] = useState('Workout');
+    const [dayQuickKind, setDayQuickKind] = useState('training');
+    const [dayQuickNotes, setDayQuickNotes] = useState('');
+    const [dayModalTab, setDayModalTab] = useState('quick'); // 'quick' | 'builder'
 
     // ── Persist preferences to localStorage ───────────────────
     useEffect(() => {
@@ -391,6 +489,27 @@ export default function Calendar({
         return colorMap;
     }, [activities]);
 
+    // ── Activities mapped by day (for calendar pills) ───────────────
+    const activitiesByDay = useMemo(() => {
+        const map = new Map();
+        if (!activities || activities.length === 0) return map;
+        activities.forEach(activity => {
+            const dateStr = activity.start_date_local || activity.start_date || activity.date;
+            if (!dateStr) return;
+            let dateObj;
+            if (typeof dateStr === 'string') {
+                dateObj = dateStr.includes('T') ? parseISO(dateStr) : parseISO(`${dateStr}T00:00:00`);
+            } else {
+                dateObj = new Date(dateStr);
+            }
+            if (Number.isNaN(dateObj.getTime())) return;
+            const key = format(dateObj, 'yyyy-MM-dd');
+            if (!map.has(key)) map.set(key, []);
+            map.get(key).push(activity);
+        });
+        return map;
+    }, [activities]);
+
     // ── Get activities for selected day ─────────────────────────────
     const currentDayActivities = useMemo(() => {
         if (!selectedActivityDay || !activities) return [];
@@ -450,6 +569,43 @@ export default function Calendar({
             .sort((a, b) => b.date - a.date)
             .slice(0, 60);
     }, [normalizedAllEvents]);
+
+    // Weekly kilometers and average watts
+    const weeklyMetrics = useMemo(() => {
+        if (!activities?.length) return [];
+        const result = [];
+        const now = new Date();
+        for (let i = 7; i >= 0; i--) {
+            const end = new Date(now);
+            end.setDate(now.getDate() - i * 7);
+            end.setHours(23, 59, 59, 999);
+            const start = new Date(end);
+            start.setDate(end.getDate() - 6);
+            start.setHours(0, 0, 0, 0);
+            const label = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+            const weekActivities = activities.filter(a => {
+                if (!a.start_date_local) return false;
+                const d = new Date(a.start_date_local);
+                return d >= start && d <= end;
+            });
+
+            const distance = weekActivities.reduce((s, a) => {
+                const raw = Number(a.distance || 0);
+                if (!Number.isFinite(raw) || raw <= 0) return s;
+                return s + (raw > 1000 ? raw / 1000 : raw);
+            }, 0);
+            const wattsSamples = weekActivities
+                .map(a => Number(a.icu_average_watts || a.average_watts || 0))
+                .filter(w => Number.isFinite(w) && w > 0);
+            const avgWatts = wattsSamples.length > 0
+                ? Math.round(wattsSamples.reduce((s, w) => s + w, 0) / wattsSamples.length)
+                : 0;
+
+            result.push({ label, distance: Number(distance.toFixed(1)), avgWatts, current: i === 0 });
+        }
+        return result;
+    }, [activities]);
 
     const periodLabel = useMemo(() => {
         if (viewMode === 'week') {
@@ -561,6 +717,28 @@ export default function Calendar({
         setManualNotes('');
     };
 
+    const openDayDetails = (dayKey) => {
+        setSelectedActivityDay(dayKey);
+        setDayQuickTitle('');
+        setDayQuickType('Workout');
+        setDayQuickKind('training');
+        setDayQuickNotes('');
+        setDayModalTab('quick');
+    };
+
+    const handleDayQuickAdd = async () => {
+        if (!selectedActivityDay) return;
+        const title = dayQuickTitle.trim() || (dayQuickType === 'Note' ? 'Note' : 'Workout');
+        await addEvent({
+            title,
+            type: dayQuickType,
+            kind: dayQuickKind,
+            notes: dayQuickNotes.trim(),
+            date: selectedActivityDay,
+        });
+        setSelectedActivityDay(null);
+    };
+
     const addLibraryWorkout = async (workout, offset) => {
         const date = new Date();
         date.setDate(date.getDate() + offset);
@@ -626,11 +804,18 @@ export default function Calendar({
     };
 
     const downloadEventFit = (event) => {
-        const fitText = buildFitText(event);
-        if (!fitText) return;
+        const ftp = athlete?.ftp || athlete?.icu_ftp || athlete?.ftp_watts || athlete?.critical_power || 200;
         const sportType = /run/i.test(String(event?.type || '')) ? 'running' : 'cycling';
         const label = `${format(event.date, 'yyyy-MM-dd')}-${sanitizeLabel(event.title || 'session')}`;
-        exportWorkoutFit(fitText, athlete?.icu_ftp || athlete?.ftp || athlete?.ftp_watts || athlete?.critical_power || athlete?.zones?.ftp || null, sportType, label);
+
+        // Prefer block-based export (structured, accurate); fall back to text parsing
+        if (event.workoutBlocks?.length > 0) {
+            exportWorkoutFitFromBlocks(event.workoutBlocks, ftp, sportType, label);
+            return;
+        }
+        const fitText = buildFitText(event);
+        if (!fitText) return;
+        exportWorkoutFit(fitText, ftp, sportType, label);
     };
 
     const handleImportCsv = async (e) => {
@@ -710,9 +895,20 @@ export default function Calendar({
                 const kind = inferKind({ title, type, kind: kindRaw, notes: mergedDescription });
 
                 let workoutBlocks = blocksIdx >= 0 ? parseBlocksColumn(cells[blocksIdx]) : [];
-                if (!workoutBlocks.length && durationRaw > 0 && /^Z[1-7]$/i.test(zoneRaw)) {
-                    workoutBlocks = [{ label: 'Main Block', durationMin: durationRaw, zone: zoneRaw }];
+
+                // If no explicit blocks column, build a full structured workout from the session info
+                if (!workoutBlocks.length && durationRaw >= 20 && kind !== 'race') {
+                    const trainingType = inferTrainingType(title, mergedDescription);
+                    if (trainingType !== 'rest') {
+                        try {
+                            const ftp = athlete?.ftp || athlete?.icu_ftp || 200;
+                            const built = buildRuleBasedWorkout(trainingType, durationRaw, 'good', ftp);
+                            workoutBlocks = built.blocks || [];
+                        } catch (_) {}
+                    }
                 }
+
+                // Last resort: single block for very short sessions or when blocks still empty
                 if (!workoutBlocks.length && durationRaw > 0) {
                     workoutBlocks = [{
                         label: String(descriptionRaw || sessionTypeRaw || 'Main Block').slice(0, 60),
@@ -784,12 +980,65 @@ export default function Calendar({
         if (!onGenerateAiWorkouts) return;
         setPlannerError(null);
         setIsGenerating(true);
+        const goalLabels = {
+            race: 'Race preparation — sharpen speed and peak for competition',
+            ftp: 'FTP build — increase threshold power and lactate tolerance',
+            base: 'Base aerobic fitness — build endurance foundation with Z2 volume',
+            recovery: 'Recovery week — reduce fatigue and absorb recent training load',
+        };
+        const loadLabels = { easy: 'easy/low', moderate: 'moderate', hard: 'hard/high' };
+        const objective = aiPlanGoal
+            ? `${goalLabels[aiPlanGoal] || aiPlanGoal} at ${loadLabels[aiPlanLoad] || 'moderate'} intensity`
+            : aiObjective;
+        const days = aiPlanWeeks ? aiPlanWeeks * 7 : Math.max(3, Math.min(21, Number(aiDays) || 7));
         try {
-            await onGenerateAiWorkouts({ objective: aiObjective, days: Math.max(3, Math.min(21, Number(aiDays) || 7)) });
+            await onGenerateAiWorkouts({ objective, days });
         } catch (err) {
             setPlannerError(err.message || 'AI workout generation failed.');
         } finally {
             setIsGenerating(false);
+        }
+    };
+
+    // ── Garmin export helpers ──────────────────────────────────────────────
+
+    const upcomingStructured = useMemo(() => {
+        const today = startOfDay(new Date());
+        return plannedEvents.filter(e => {
+            const d = new Date(String(e.start_date_local || e.date || '').slice(0, 10));
+            return !isNaN(d) && d >= today && e.workoutBlocks?.length > 0;
+        });
+    }, [plannedEvents]);
+
+    const handleExportPlanZip = async () => {
+        setIsExportingZip(true);
+        setGarminMsg(null);
+        try {
+            const ftp = athlete?.ftp || athlete?.icu_ftp || 200;
+            const count = await exportPlanAsZip(upcomingStructured, ftp, 'apex-plan');
+            setGarminMsg({ type: 'ok', text: `Downloaded ZIP with ${count} workout${count !== 1 ? 's' : ''}. Import each .fit into Garmin Connect.` });
+        } catch (err) {
+            setGarminMsg({ type: 'err', text: err.message });
+        } finally {
+            setIsExportingZip(false);
+        }
+    };
+
+    const handleSyncAllToIcu = async () => {
+        setIsSyncingIcu(true);
+        setGarminMsg(null);
+        try {
+            if (!intervalsService.isConfigured()) {
+                throw new Error('Intervals.icu not connected. Add your Athlete ID and API key in Settings.');
+            }
+            const payloads = upcomingStructured.map(e => buildIcuEventPayload(e));
+            if (!payloads.length) throw new Error('No upcoming structured workouts to sync.');
+            await intervalsService.createEvent(payloads);
+            setGarminMsg({ type: 'ok', text: `Synced ${payloads.length} workout${payloads.length !== 1 ? 's' : ''} to Intervals.icu. Enable Garmin sync in Intervals.icu settings to push to your device.` });
+        } catch (err) {
+            setGarminMsg({ type: 'err', text: err.message });
+        } finally {
+            setIsSyncingIcu(false);
         }
     };
 
@@ -845,6 +1094,9 @@ export default function Calendar({
                                     const entries = byDay.get(dayKey) || [];
                                     const activityData = pastActivityColor.get(dayKey);
                                     const dayActivities = currentDayActivities.length > 0 && selectedActivityDay === dayKey ? currentDayActivities : [];
+                                    const dayActPills = activitiesByDay.get(dayKey) || [];
+                                    const ftp = athlete?.icu_ftp || athlete?.ftp || athlete?.ftp_watts || null;
+                                    const totalPills = entries.length + dayActPills.length;
 
                                     return (
                                         <div
@@ -856,32 +1108,66 @@ export default function Calendar({
                                             }}
                                             onDragLeave={() => setDragOverDay(null)}
                                             onDrop={handleDropOnDay(dayKey)}
-                                            onClick={() => {
-                                                if (activityData && activityData.tss > 0) {
-                                                    setSelectedActivityDay(selectedActivityDay === dayKey ? null : dayKey);
-                                                }
-                                            }}
+                                            onClick={() => openDayDetails(dayKey)}
                                             style={{
                                                 ...(activityData ? { backgroundColor: activityData.color } : {}),
-                                                cursor: activityData && activityData.tss > 0 ? 'pointer' : 'default',
+                                                cursor: 'pointer',
                                             }}
-                                            title={activityData ? `${Math.round(activityData.tss)} TSS - Click to view` : ''}
+                                            title={activityData ? `${Math.round(activityData.tss)} TSS - Click for details` : 'Click to add workout or note'}
                                         >
-                                            <div className="calendar-day-num">{format(day, 'd')}</div>
+                                            <div className="calendar-day-num" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span>{format(day, 'd')}</span>
+                                                {activityData && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--accent-green)', opacity: 0.8 }}>{Math.round(activityData.tss)}tss</span>}
+                                            </div>
                                             <div className="calendar-day-events">
-                                                {entries.slice(0, 2).map(entry => (
-                                                    <div
-                                                        key={entry.id}
-                                                        className={`calendar-pill calendar-pill-${entry.kind} calendar-pill-tone-${trainingTone(entry)}`}
-                                                        title={entry.title}
-                                                        onClick={() => setSelectedEvent(entry)}
-                                                        style={{ cursor: 'pointer' }}
-                                                    >
-                                                        {entry.title}
-                                                    </div>
-                                                ))}
-                                                {entries.length > 2 && <div className="calendar-more">+{entries.length - 2} more</div>}
-                                                {entries.length === 0 && <div className="calendar-drop-hint">Drop workout</div>}
+                                                {entries.slice(0, 3).map(entry => {
+                                                    const tone = trainingTone(entry);
+                                                    return (
+                                                        <div
+                                                            key={entry.id}
+                                                            className={`calendar-pill calendar-pill-${entry.kind} calendar-pill-tone-${tone}`}
+                                                            title={entry.title}
+                                                            onClick={(e) => { e.stopPropagation(); setSelectedEvent(entry); }}
+                                                            style={{ cursor: 'pointer' }}
+                                                        >
+                                                            <span className="calendar-pill-text">{entry.title}</span>
+                                                            {entry.workoutBlocks?.length > 0 && <WorkoutBlocksGraph blocks={entry.workoutBlocks} />}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {dayActPills.slice(0, Math.max(0, 3 - entries.length)).map((act, i) => {
+                                                    const watts = act.icu_average_watts || act.average_watts || null;
+                                                    const nwatts = act.icu_normalized_watts || act.weighted_average_watts || watts;
+                                                    const intensity = act.icu_intensity || (nwatts && ftp ? nwatts / ftp : null);
+                                                    const zone = zoneFromIF(intensity);
+                                                    const zoneColor = zone ? ZONE_COLORS_DETAIL[zone] : '#22c55e';
+                                                    const name = act.name || act.type || 'Activity';
+                                                    return (
+                                                        <div
+                                                            key={`act_${act.id || i}`}
+                                                            style={{
+                                                                fontSize: 10,
+                                                                padding: '2px 5px',
+                                                                borderRadius: 4,
+                                                                background: `${zoneColor}1a`,
+                                                                borderLeft: `3px solid ${zoneColor}`,
+                                                                color: zoneColor,
+                                                                overflow: 'hidden',
+                                                                whiteSpace: 'nowrap',
+                                                                textOverflow: 'ellipsis',
+                                                                fontFamily: 'var(--font-mono)',
+                                                                cursor: 'pointer',
+                                                                marginBottom: 2,
+                                                            }}
+                                                            title={`${name} — completed`}
+                                                            onClick={(e) => { e.stopPropagation(); openDayDetails(dayKey); }}
+                                                        >
+                                                            ✓ {name}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {totalPills > 3 && <div className="calendar-more">+{totalPills - 3} more</div>}
+                                                {totalPills === 0 && isSameMonth(day, cursor) && <div className="calendar-drop-hint">+ add</div>}
                                             </div>
                                         </div>
                                     );
@@ -905,8 +1191,9 @@ export default function Calendar({
                                             }}
                                             onDragLeave={() => setDragOverDay(null)}
                                             onDrop={handleDropOnDay(dayKey)}
+                                            onClick={() => openDayDetails(dayKey)}
                                             style={activityData ? { backgroundColor: activityData.color } : {}}
-                                            title={activityData ? `${Math.round(activityData.tss)} TSS` : ''}
+                                            title={activityData ? `${Math.round(activityData.tss)} TSS - Click for details` : 'Click to add workout or note'}
                                         >
                                             <div className="calendar-day-num">{format(day, 'EEE d')}</div>
                                             <div className="calendar-week-events">
@@ -915,7 +1202,7 @@ export default function Calendar({
                                                     const notesPreview = String(entry.notes || '').replace(/\s+/g, ' ').slice(0, 170);
                                                     const blocksDuration = totalDuration(entry.workoutBlocks || []);
                                                     return (
-                                                        <div key={entry.id} className={`calendar-week-item calendar-week-item-${tone}`} onClick={() => setSelectedEvent(entry)} style={{ cursor: 'pointer' }}>
+                                                        <div key={entry.id} className={`calendar-week-item calendar-week-item-${tone}`} onClick={(e) => { e.stopPropagation(); setSelectedEvent(entry); }} style={{ cursor: 'pointer' }}>
                                                             <div className="calendar-week-item-head">
                                                                 <div className="calendar-week-item-title">{entry.title}</div>
                                                                 <span className={`calendar-week-tone calendar-week-tone-${tone}`}>{toneLabel(tone)}</span>
@@ -932,10 +1219,46 @@ export default function Calendar({
                                                         </div>
                                                     );
                                                 })}
-                                                {entries.length === 0 && (
+                                                {(activitiesByDay.get(dayKey) || []).map((act, i) => {
+                                                    const ftp = athlete?.icu_ftp || athlete?.ftp || athlete?.ftp_watts || null;
+                                                    const watts = act.icu_average_watts || act.average_watts || null;
+                                                    const nwatts = act.icu_normalized_watts || act.weighted_average_watts || watts;
+                                                    const intensity = act.icu_intensity || (nwatts && ftp ? nwatts / ftp : null);
+                                                    const zone = zoneFromIF(intensity);
+                                                    const zoneColor = zone ? ZONE_COLORS_DETAIL[zone] : '#22c55e';
+                                                    const name = act.name || act.type || 'Activity';
+                                                    const duration = act.moving_time || act.elapsed_time || 0;
+                                                    const durationStr = duration > 0 ? (Math.floor(duration / 3600) > 0 ? `${Math.floor(duration / 3600)}h${String(Math.floor((duration % 3600) / 60)).padStart(2, '0')}` : `${Math.floor(duration / 60)}min`) : null;
+                                                    const tss = act.icu_training_load || act.training_load || null;
+                                                    return (
+                                                        <div
+                                                            key={`act_${act.id || i}`}
+                                                            style={{
+                                                                borderRadius: 6,
+                                                                padding: '6px 8px',
+                                                                background: `${zoneColor}15`,
+                                                                borderLeft: `3px solid ${zoneColor}`,
+                                                                cursor: 'pointer',
+                                                                marginBottom: 4,
+                                                            }}
+                                                            onClick={(e) => { e.stopPropagation(); openDayDetails(dayKey); }}
+                                                        >
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                                                                <div style={{ fontSize: 12, fontWeight: 600, color: zoneColor, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>✓ {name}</div>
+                                                                {tss != null && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--accent-cyan)' }}>{Math.round(tss)} TSS</span>}
+                                                            </div>
+                                                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                                                {zone && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: zoneColor }}>{zone}</span>}
+                                                                {durationStr && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)' }}>{durationStr}</span>}
+                                                                {watts && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)' }}>{Math.round(watts)}W</span>}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                                {entries.length === 0 && (activitiesByDay.get(dayKey) || []).length === 0 && (
                                                     <div className="calendar-drop-hint">Drop workout</div>
                                                 )}
-                                                {entries.length > 0 && entries.length >= 6 && (
+                                                {entries.length >= 6 && (
                                                     <div className="calendar-more">{entries.length} sessions</div>
                                                 )}
                                             </div>
@@ -964,6 +1287,55 @@ export default function Calendar({
 
                     <GpxRouteBuilder athlete={athlete} events={events} plannedEvents={plannedEvents} workoutLibrary={libraryWorkouts} />
                 </div>
+
+                {/* ── Weekly metrics (Kilometers & Avg Watts) ── */}
+                {weeklyMetrics.length > 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10, marginBottom: 10 }}>
+                        {/* Weekly Distance Card */}
+                        <div className="card">
+                            <div className="card-header">
+                                <span className="card-title">Weekly Distance — Last 8 Weeks</span>
+                                <span className="card-badge">KM</span>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, minmax(0, 1fr))', gap: 6, marginTop: 10 }}>
+                                {weeklyMetrics.map((week, idx) => (
+                                    <div key={idx} style={{
+                                        padding: '8px 4px',
+                                        background: 'var(--bg-2)',
+                                        borderRadius: 6,
+                                        textAlign: 'center',
+                                        border: week.current ? '2px solid #22c55e' : '1px solid var(--border)',
+                                    }}>
+                                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>{week.label}</div>
+                                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: '#22c55e' }}>{week.distance}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Weekly Avg Power Card */}
+                        <div className="card">
+                            <div className="card-header">
+                                <span className="card-title">Weekly Avg Power — Last 8 Weeks</span>
+                                <span className="card-badge">W</span>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, minmax(0, 1fr))', gap: 6, marginTop: 10 }}>
+                                {weeklyMetrics.map((week, idx) => (
+                                    <div key={idx} style={{
+                                        padding: '8px 4px',
+                                        background: 'var(--bg-2)',
+                                        borderRadius: 6,
+                                        textAlign: 'center',
+                                        border: week.current ? '2px solid var(--accent-blue)' : '1px solid var(--border)',
+                                    }}>
+                                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>{week.label}</div>
+                                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: week.avgWatts > 0 ? 'var(--accent-blue)' : 'var(--text-3)' }}>{week.avgWatts || '—'}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="card" style={{ marginBottom: 0 }}>
                     <div className="card-header">
@@ -1058,15 +1430,165 @@ export default function Calendar({
                             <span>{collapsed.ai ? '+' : '-'}</span>
                         </button>
                         {!collapsed.ai && <div className="calendar-planner-box">
-                            <div className="card-title" style={{ marginBottom: 8 }}>Generate From AI</div>
-                            <input className="form-input calendar-form-input" placeholder="Objective (race prep, FTP build, etc.)" value={aiObjective} onChange={e => setAiObjective(e.target.value)} />
-                            <div className="calendar-form-row">
-                                <input className="form-input calendar-form-input" type="number" min="3" max="21" value={aiDays} onChange={e => setAiDays(e.target.value)} />
-                                <button className="btn btn-primary" disabled={isGenerating} onClick={handleGenerateAi}>
-                                    {isGenerating ? 'Generating...' : 'Generate Plan'}
-                                </button>
+                            <div className="card-title" style={{ marginBottom: 12 }}>AI Plan Builder</div>
+
+                            {/* Step progress */}
+                            <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
+                                {['Goal', 'Duration', 'Load', 'Generate'].map((label, i) => {
+                                    const stepNum = i + 1;
+                                    const active = aiPlanStep === stepNum;
+                                    const done = aiPlanStep > stepNum;
+                                    return (
+                                        <div
+                                            key={label}
+                                            onClick={() => done && setAiPlanStep(stepNum)}
+                                            style={{
+                                                flex: 1, textAlign: 'center', fontSize: 9,
+                                                fontFamily: 'var(--font-mono)', fontWeight: 600,
+                                                padding: '4px 2px', borderRadius: 4,
+                                                background: active ? 'var(--accent-cyan)' : done ? 'rgba(34,197,94,0.15)' : 'var(--bg-3)',
+                                                color: active ? '#000' : done ? 'var(--accent-green)' : 'var(--text-3)',
+                                                cursor: done ? 'pointer' : 'default',
+                                                letterSpacing: '0.03em',
+                                                transition: 'all 0.2s',
+                                            }}
+                                        >
+                                            {done ? '✓ ' : ''}{label}
+                                        </div>
+                                    );
+                                })}
                             </div>
-                            <div className="calendar-helper">AI creates a JSON micro-cycle and inserts sessions directly into your calendar.</div>
+
+                            {/* Step 1: Goal */}
+                            {aiPlanStep === 1 && (
+                                <div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 8 }}>What's your training goal?</div>
+                                    {[
+                                        { id: 'race', icon: '🏁', label: 'Race Prep', sub: 'Peak for an upcoming event' },
+                                        { id: 'ftp', icon: '⚡', label: 'FTP Build', sub: 'Raise threshold power' },
+                                        { id: 'base', icon: '🌱', label: 'Build Base', sub: 'Aerobic foundation & volume' },
+                                        { id: 'recovery', icon: '💤', label: 'Recovery', sub: 'Absorb & rebuild' },
+                                    ].map(opt => (
+                                        <div
+                                            key={opt.id}
+                                            onClick={() => { setAiPlanGoal(opt.id); setAiPlanStep(2); }}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 10,
+                                                padding: '10px 12px', borderRadius: 8, marginBottom: 6,
+                                                border: `1px solid ${aiPlanGoal === opt.id ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                                                background: aiPlanGoal === opt.id ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
+                                                cursor: 'pointer', transition: 'all 0.15s',
+                                            }}
+                                        >
+                                            <span style={{ fontSize: 18 }}>{opt.icon}</span>
+                                            <div>
+                                                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>{opt.label}</div>
+                                                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{opt.sub}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Step 2: Duration */}
+                            {aiPlanStep === 2 && (
+                                <div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 8 }}>How long is this block?</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                        {[
+                                            { id: 1, label: '1 week', sub: '7 sessions max' },
+                                            { id: 2, label: '2 weeks', sub: 'Classic micro-cycle' },
+                                            { id: 3, label: '3 weeks', sub: 'Progressive overload' },
+                                            { id: 4, label: '4 weeks', sub: 'Full mesocycle' },
+                                        ].map(opt => (
+                                            <div
+                                                key={opt.id}
+                                                onClick={() => { setAiPlanWeeks(opt.id); setAiPlanStep(3); }}
+                                                style={{
+                                                    padding: '10px 12px', borderRadius: 8,
+                                                    border: `1px solid ${aiPlanWeeks === opt.id ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                                                    background: aiPlanWeeks === opt.id ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
+                                                    cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
+                                                }}
+                                            >
+                                                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{opt.label}</div>
+                                                <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{opt.sub}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button className="btn" style={{ marginTop: 10, fontSize: 10 }} onClick={() => setAiPlanStep(1)}>← Back</button>
+                                </div>
+                            )}
+
+                            {/* Step 3: Load level */}
+                            {aiPlanStep === 3 && (
+                                <div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 8 }}>What training load?</div>
+                                    {[
+                                        { id: 'easy', icon: '🟢', label: 'Easy', sub: 'Low stress — ideal for recovery block or returning from break' },
+                                        { id: 'moderate', icon: '🟡', label: 'Moderate', sub: 'Balanced — solid progression without excessive fatigue' },
+                                        { id: 'hard', icon: '🔴', label: 'Hard', sub: 'High load — push limits, accumulate significant CTL' },
+                                    ].map(opt => (
+                                        <div
+                                            key={opt.id}
+                                            onClick={() => { setAiPlanLoad(opt.id); setAiPlanStep(4); }}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 10,
+                                                padding: '10px 12px', borderRadius: 8, marginBottom: 6,
+                                                border: `1px solid ${aiPlanLoad === opt.id ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                                                background: aiPlanLoad === opt.id ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
+                                                cursor: 'pointer', transition: 'all 0.15s',
+                                            }}
+                                        >
+                                            <span style={{ fontSize: 16 }}>{opt.icon}</span>
+                                            <div>
+                                                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>{opt.label}</div>
+                                                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{opt.sub}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <button className="btn" style={{ marginTop: 6, fontSize: 10 }} onClick={() => setAiPlanStep(2)}>← Back</button>
+                                </div>
+                            )}
+
+                            {/* Step 4: Generate */}
+                            {aiPlanStep === 4 && (
+                                <div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 10 }}>Ready to generate your plan:</div>
+                                    <div style={{
+                                        background: 'var(--bg-3)', borderRadius: 8, padding: '10px 14px',
+                                        fontFamily: 'var(--font-mono)', fontSize: 11, marginBottom: 12,
+                                        borderLeft: '3px solid var(--accent-cyan)',
+                                    }}>
+                                        <div><span style={{ color: 'var(--text-3)' }}>Goal</span> — {{
+                                            race: 'Race Prep', ftp: 'FTP Build', base: 'Build Base', recovery: 'Recovery'
+                                        }[aiPlanGoal]}</div>
+                                        <div style={{ marginTop: 4 }}><span style={{ color: 'var(--text-3)' }}>Duration</span> — {aiPlanWeeks} week{aiPlanWeeks > 1 ? 's' : ''}</div>
+                                        <div style={{ marginTop: 4 }}><span style={{ color: 'var(--text-3)' }}>Load</span> — {{
+                                            easy: 'Easy', moderate: 'Moderate', hard: 'Hard'
+                                        }[aiPlanLoad]}</div>
+                                    </div>
+                                    <button
+                                        className="btn btn-primary"
+                                        style={{ width: '100%', padding: '10px 0', fontSize: 12 }}
+                                        disabled={isGenerating}
+                                        onClick={handleGenerateAi}
+                                    >
+                                        {isGenerating ? 'Building plan...' : 'Generate Plan →'}
+                                    </button>
+                                    <button
+                                        className="btn"
+                                        style={{ width: '100%', marginTop: 6, fontSize: 10 }}
+                                        onClick={() => { setAiPlanStep(1); setAiPlanGoal(null); setAiPlanWeeks(null); setAiPlanLoad(null); }}
+                                    >
+                                        Start over
+                                    </button>
+                                </div>
+                            )}
+
+                            <div className="calendar-helper" style={{ marginTop: 10 }}>
+                                AI creates a training block and inserts sessions directly into your calendar.
+                            </div>
                         </div>}
                     </div>
 
@@ -1126,6 +1648,81 @@ export default function Calendar({
                         </div>}
                     </div>
 
+                    {/* ── Send to Garmin ───────────────────────────────── */}
+                    <div className="planner-section">
+                        <button className="planner-toggle" onClick={() => toggleSection('garmin')}>
+                            <span>Send to Garmin</span>
+                            <span>{collapsed.garmin ? '+' : '-'}</span>
+                        </button>
+                        {!collapsed.garmin && (
+                            <div className="calendar-planner-box">
+                                <div className="card-title" style={{ marginBottom: 4 }}>Send to Garmin</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 12 }}>
+                                    {upcomingStructured.length} structured workout{upcomingStructured.length !== 1 ? 's' : ''} ready to export
+                                </div>
+
+                                {/* Option A — Intervals.icu sync */}
+                                <div style={{
+                                    background: 'var(--bg-3)', borderRadius: 8, padding: '10px 12px', marginBottom: 10,
+                                    borderLeft: '3px solid var(--accent-cyan)',
+                                }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>
+                                        Via Intervals.icu (recommended)
+                                    </div>
+                                    <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 8 }}>
+                                        Pushes workouts to Intervals.icu calendar. If you have Garmin Connect sync enabled in Intervals.icu, they appear on your device automatically.
+                                    </div>
+                                    <button
+                                        className="btn btn-primary"
+                                        style={{ width: '100%', fontSize: 11 }}
+                                        disabled={isSyncingIcu || !upcomingStructured.length}
+                                        onClick={handleSyncAllToIcu}
+                                    >
+                                        {isSyncingIcu ? 'Syncing...' : `Sync ${upcomingStructured.length} Workout${upcomingStructured.length !== 1 ? 's' : ''} to Intervals.icu`}
+                                    </button>
+                                </div>
+
+                                {/* Option B — ZIP download */}
+                                <div style={{
+                                    background: 'var(--bg-3)', borderRadius: 8, padding: '10px 12px',
+                                    borderLeft: '3px solid var(--accent-purple)',
+                                }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>
+                                        Download as ZIP (.fit files)
+                                    </div>
+                                    <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 8 }}>
+                                        One .fit file per workout. Import manually into Garmin Connect website or Garmin Express.
+                                    </div>
+                                    <button
+                                        className="btn"
+                                        style={{ width: '100%', fontSize: 11 }}
+                                        disabled={isExportingZip || !upcomingStructured.length}
+                                        onClick={handleExportPlanZip}
+                                    >
+                                        {isExportingZip ? 'Building ZIP...' : `Download ZIP (${upcomingStructured.length} file${upcomingStructured.length !== 1 ? 's' : ''})`}
+                                    </button>
+                                </div>
+
+                                {garminMsg && (
+                                    <div style={{
+                                        marginTop: 10, padding: '8px 12px', borderRadius: 6, fontSize: 11,
+                                        background: garminMsg.type === 'ok' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+                                        color: garminMsg.type === 'ok' ? 'var(--accent-green)' : 'var(--accent-red)',
+                                        border: `1px solid ${garminMsg.type === 'ok' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                                    }}>
+                                        {garminMsg.text}
+                                    </div>
+                                )}
+
+                                {upcomingStructured.length === 0 && (
+                                    <div className="calendar-helper">
+                                        Build workouts using the Smart Workout Wizard — only workouts with structured blocks can be exported as FIT files.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {plannerError && (
                         <div className="error-banner" style={{ marginBottom: 12 }}>
                             <span className="error-tag">[ERR]</span>
@@ -1180,7 +1777,7 @@ export default function Calendar({
             </div>
 
             {/* ── Activity details modal ───────────────────────────── */}
-            {selectedActivityDay && currentDayActivities.length > 0 && (
+            {selectedActivityDay && (
                 <div
                     style={{
                         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
@@ -1192,8 +1789,8 @@ export default function Calendar({
                     <div
                         style={{
                             background: 'var(--bg-1)', border: '1px solid var(--border)',
-                            borderRadius: 12, width: '100%', maxWidth: 600,
-                            maxHeight: '82vh', overflowY: 'auto',
+                            borderRadius: 12, width: '100%', maxWidth: 860,
+                            maxHeight: '94vh', overflowY: 'auto',
                             boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
                             padding: '24px',
                         }}
@@ -1202,7 +1799,7 @@ export default function Calendar({
                         {/* Header */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
                             <div>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>ACTIVITIES</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>DAY DETAILS</div>
                                 <div style={{ fontFamily: 'var(--font-sans)', fontSize: 18, fontWeight: 600, color: 'var(--text-0)' }}>
                                     {format(parseISO(`${selectedActivityDay}T00:00:00`), 'EEEE, dd MMMM yyyy')}
                                 </div>
@@ -1213,7 +1810,79 @@ export default function Calendar({
                             >×</button>
                         </div>
 
+                        {/* Tab selector */}
+                        <div style={{ display: 'flex', gap: 4, marginBottom: 16, padding: 4, background: 'var(--bg-2)', borderRadius: 8 }}>
+                            {[{ id: 'quick', label: 'Quick Add' }, { id: 'builder', label: 'Build Workout' }].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setDayModalTab(tab.id)}
+                                    style={{
+                                        flex: 1, padding: '8px 12px', borderRadius: 6,
+                                        border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                                        background: dayModalTab === tab.id ? 'var(--bg-3)' : 'transparent',
+                                        color: dayModalTab === tab.id ? 'var(--text-0)' : 'var(--text-3)',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {dayModalTab === 'quick' && (
+                            <div style={{ marginBottom: 16, padding: 12, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-2)' }}>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 8, letterSpacing: '0.06em' }}>ADD WORKOUT OR NOTE</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+                                    <input className="form-input calendar-form-input" placeholder="Title (optional)" value={dayQuickTitle} onChange={e => setDayQuickTitle(e.target.value)} />
+                                    <select className="form-input calendar-form-input" value={dayQuickType} onChange={e => setDayQuickType(e.target.value)}>
+                                        <option value="Workout">Workout</option>
+                                        <option value="Ride">Ride</option>
+                                        <option value="Run">Run</option>
+                                        <option value="Note">Note</option>
+                                    </select>
+                                    <select className="form-input calendar-form-input" value={dayQuickKind} onChange={e => setDayQuickKind(e.target.value)}>
+                                        <option value="training">Training</option>
+                                        <option value="objective">Objective</option>
+                                        <option value="race">Race</option>
+                                    </select>
+                                </div>
+                                <input className="form-input calendar-form-input" placeholder="Notes / targets" value={dayQuickNotes} onChange={e => setDayQuickNotes(e.target.value)} />
+                                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                                    <button className="btn btn-primary" onClick={handleDayQuickAdd}>Add To Calendar</button>
+                                    <button className="btn" onClick={() => {
+                                        setDayQuickType('Note');
+                                        setDayQuickKind('objective');
+                                        if (!dayQuickTitle.trim()) setDayQuickTitle('Note');
+                                    }}>Note Preset</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {dayModalTab === 'builder' && (
+                            <div style={{ marginBottom: 16 }}>
+                                <SmartWorkoutWizard
+                                    athlete={athlete}
+                                    events={events}
+                                    plannedEvents={plannedEvents}
+                                    onAddToCalendar={async (eventData) => {
+                                        await onAddPlannedEvent(eventData);
+                                        setSelectedActivityDay(null);
+                                    }}
+                                    onGenerateWithAi={onGenerateAiWorkoutTemplate}
+                                    initialDate={selectedActivityDay}
+                                />
+                            </div>
+                        )}
+
                         {/* Activities list */}
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 8, letterSpacing: '0.06em' }}>
+                            ACTIVITIES ({currentDayActivities.length})
+                        </div>
+                        {currentDayActivities.length === 0 && (
+                            <div style={{ marginBottom: 14, padding: 10, borderRadius: 8, background: 'var(--bg-2)', color: 'var(--text-2)', fontSize: 12 }}>
+                                No synced activity found on this day. You can still add a workout or note above.
+                            </div>
+                        )}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                             {currentDayActivities.map((activity, idx) => {
                                 const duration = activity.moving_time ? Math.round(activity.moving_time / 60) : 0;
@@ -1329,8 +1998,8 @@ export default function Calendar({
                     <div
                         style={{
                             background: 'var(--bg-1)', border: '1px solid var(--border)',
-                            borderRadius: 12, width: '100%', maxWidth: 520,
-                            maxHeight: '82vh', overflowY: 'auto',
+                            borderRadius: 12, width: '100%', maxWidth: 640,
+                            maxHeight: '92vh', overflowY: 'auto',
                             boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
                             padding: '24px',
                         }}
@@ -1372,20 +2041,14 @@ export default function Calendar({
                             )}
                         </div>
 
-                        {/* Workout block graph */}
+                        {/* Workout block visual */}
                         {selectedEvent.workoutBlocks?.length > 0 && (
                             <div style={{ marginBottom: 16 }}>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 6, letterSpacing: '0.06em' }}>INTENSITY PROFILE</div>
-                                <WorkoutBlocksGraph blocks={selectedEvent.workoutBlocks} />
-                                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                    {selectedEvent.workoutBlocks.map((b, i) => (
-                                        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>
-                                            <span style={{ width: 28, textAlign: 'right', color: 'var(--accent-blue)' }}>{b.zone}</span>
-                                            <span style={{ flex: 1 }}>{b.label}</span>
-                                            <span style={{ color: 'var(--text-3)' }}>{b.durationMin} min</span>
-                                        </div>
-                                    ))}
-                                </div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 8, letterSpacing: '0.06em' }}>WORKOUT STRUCTURE</div>
+                                <WorkoutDetailVisual
+                                    blocks={selectedEvent.workoutBlocks}
+                                    ftp={athlete?.ftp || athlete?.icu_ftp || null}
+                                />
                             </div>
                         )}
 

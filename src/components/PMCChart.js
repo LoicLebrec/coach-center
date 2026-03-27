@@ -27,7 +27,57 @@ function getWellnessRestingHr(w) {
   return asNumber(w?.restingHR, w?.resting_hr, w?.rhr, w?.hrRest);
 }
 
-export default function PMCChart({ wellness, loading }) {
+// Compute full PMC time-series from raw activities (fallback when Intervals.icu not connected)
+function computePMCSeriesFromActivities(activities = [], days = 120) {
+  if (!activities.length) return [];
+
+  const dailyLoad = new Map();
+  activities.forEach(a => {
+    const day = String(a.start_date_local || '').slice(0, 10);
+    if (!day) return;
+    const load = Number(a.icu_training_load || a.training_load || a.tss || 0);
+    if (Number.isFinite(load) && load > 0) {
+      dailyLoad.set(day, (dailyLoad.get(day) || 0) + load);
+    }
+  });
+
+  const today = new Date();
+  let ctl = 0;
+  let atl = 0;
+  const ctlTau = 42;
+  const atlTau = 7;
+
+  // Prime the model with 90 days before our window
+  for (let d = days + 90; d > days; d--) {
+    const day = new Date(today);
+    day.setDate(today.getDate() - d);
+    const key = day.toISOString().slice(0, 10);
+    const load = dailyLoad.get(key) || 0;
+    ctl = ctl + (load - ctl) * (1 / ctlTau);
+    atl = atl + (load - atl) * (1 / atlTau);
+  }
+
+  const series = [];
+  for (let d = days; d >= 0; d--) {
+    const day = new Date(today);
+    day.setDate(today.getDate() - d);
+    const key = day.toISOString().slice(0, 10);
+    const load = dailyLoad.get(key) || 0;
+    ctl = ctl + (load - ctl) * (1 / ctlTau);
+    atl = atl + (load - atl) * (1 / atlTau);
+    series.push({
+      date: key,
+      shortDate: key.slice(5),
+      ctl: Math.round(ctl * 10) / 10,
+      atl: Math.round(atl * 10) / 10,
+      tsb: Math.round((ctl - atl) * 10) / 10,
+      load,
+    });
+  }
+  return series;
+}
+
+export default function PMCChart({ wellness, activities, loading }) {
   const [range, setRange] = useState(90);
   const [formImpressions, setFormImpressions] = useState({});
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -47,23 +97,38 @@ export default function PMCChart({ wellness, loading }) {
     })();
   }, [selectedDate]);
 
+  const isEstimated = !wellness || wellness.length === 0;
+
+  const estimatedSeries = useMemo(
+    () => computePMCSeriesFromActivities(activities || [], 120),
+    [activities]
+  );
+
   const data = useMemo(() => {
-    if (!wellness || wellness.length === 0) return [];
-    return wellness.slice(-range).map(w => {
-      const impression = formImpressions[w.id];
-      return {
-        date: w.id,
-        shortDate: w.id ? w.id.slice(5) : '',
-        ctl: w.icu_ctl ? Math.round(w.icu_ctl * 10) / 10 : null,
-        atl: w.icu_atl ? Math.round(w.icu_atl * 10) / 10 : null,
-        tsb: w.icu_ctl && w.icu_atl ? Math.round((w.icu_ctl - w.icu_atl) * 10) / 10 : null,
-        rhr: getWellnessRestingHr(w),
-        load: w.icu_training_load || 0,
-        impressionValue: impression ? { great: 25, good: 15, neutral: 5, tired: -10, 'very-tired': -25 }[impression.impression] : null,
-        impression: impression ? impression.impression : null,
-      };
-    });
-  }, [wellness, range, formImpressions]);
+    if (!isEstimated) {
+      return wellness.slice(-range).map(w => {
+        const impression = formImpressions[w.id];
+        return {
+          date: w.id,
+          shortDate: w.id ? w.id.slice(5) : '',
+          ctl: w.icu_ctl ? Math.round(w.icu_ctl * 10) / 10 : null,
+          atl: w.icu_atl ? Math.round(w.icu_atl * 10) / 10 : null,
+          tsb: w.icu_ctl && w.icu_atl ? Math.round((w.icu_ctl - w.icu_atl) * 10) / 10 : null,
+          rhr: getWellnessRestingHr(w),
+          load: w.icu_training_load || 0,
+          impressionValue: impression ? { great: 25, good: 15, neutral: 5, tired: -10, 'very-tired': -25 }[impression.impression] : null,
+          impression: impression ? impression.impression : null,
+        };
+      });
+    }
+    // Fallback: estimated from activities
+    return estimatedSeries.slice(-range).map(p => ({
+      ...p,
+      rhr: null,
+      impressionValue: null,
+      impression: formImpressions[p.date]?.impression || null,
+    }));
+  }, [wellness, activities, range, formImpressions, isEstimated, estimatedSeries]);
 
   const stats = useMemo(() => {
     if (data.length === 0) return null;
@@ -128,9 +193,9 @@ export default function PMCChart({ wellness, loading }) {
     return (
       <div className="page-header">
         <div className="info-banner" style={{ marginTop: 16, backgroundColor: 'rgba(249,115,22,0.1)', borderColor: 'rgba(249,115,22,0.3)' }}>
-          <strong>⚠ No PMC data available</strong>
+          <strong>No PMC data available</strong>
           <div style={{ marginTop: 6, fontSize: 12 }}>
-            PMC requires Intervals.icu data sync. Visit Settings to connect Intervals.icu, then return to Dashboard to trigger a sync. CTL, ATL, and TSB will appear once training data is loaded.
+            No activities found to estimate training load. Sync activities or connect Intervals.icu in Settings for accurate CTL/ATL/TSB data.
           </div>
         </div>
       </div>
@@ -188,6 +253,12 @@ export default function PMCChart({ wellness, loading }) {
         TSB (green area) = form. Positive TSB = fresh for competition. Negative TSB = productive overload.
         TSB below −25 = risk of overtraining.
       </div>
+
+      {isEstimated && (
+        <div className="info-banner" style={{ backgroundColor: 'rgba(250,204,21,0.08)', borderColor: 'rgba(250,204,21,0.3)', marginTop: 8 }}>
+          <strong>Estimated from activities</strong> — Intervals.icu not connected. CTL/ATL/TSB are computed from your activity training load data. Connect Intervals.icu in Settings for more accurate values.
+        </div>
+      )}
 
       {/* Main PMC chart */}
       <div className="card">

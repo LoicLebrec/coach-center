@@ -128,6 +128,7 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
         longTermGoalDate: '',
     });
     const [saveMsg, setSaveMsg] = useState('');
+    const [showSettings, setShowSettings] = useState(false);
 
     // Add a helper message state for missing data
     const hasWellnessData = wellness && wellness.length > 0;
@@ -350,106 +351,333 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
         return weekends;
     }, [upcomingRaces]);
 
+    // ── Rider type analysis ─────────────────────────────────────
+    const wkg = currentFtp && getAthleteWeight(athlete)
+        ? (currentFtp / getAthleteWeight(athlete)).toFixed(2)
+        : null;
+
+    const riderLevel = (() => {
+        const w = Number(wkg);
+        if (!w) return null;
+        if (w >= 5.0) return { label: 'Elite / Pro', color: 'var(--accent-cyan)', tier: 5 };
+        if (w >= 4.5) return { label: 'Cat A / Semi-pro', color: 'var(--accent-blue)', tier: 4 };
+        if (w >= 4.0) return { label: 'Competitive Cat A', color: 'var(--accent-green)', tier: 3 };
+        if (w >= 3.5) return { label: 'Strong Cat B', color: 'var(--accent-yellow)', tier: 2 };
+        if (w >= 3.0) return { label: 'Cat C / Improving', color: 'var(--accent-orange)', tier: 1 };
+        return { label: 'Recreational', color: 'var(--text-2)', tier: 0 };
+    })();
+
+    const riderArchetype = (() => {
+        const hours = profile.weeklyHours || '';
+        const isHighVolume = /16\+|12-16/.test(hours);
+        const isModVolume = /8-12/.test(hours);
+        const w = Number(wkg);
+        if (!w) return null;
+        if (w >= 4.5 && isHighVolume) return { label: 'GC / Climber', icon: '⛰', desc: 'High volume, strong W/kg. Built for hills and general classification.' };
+        if (w >= 4.0 && !isHighVolume) return { label: 'Time Trialist', icon: '⏱', desc: 'High power output relative to volume. Strong solo effort capacity.' };
+        if (w >= 3.8 && isModVolume) return { label: 'Breakaway Specialist', icon: '💨', desc: 'Sustained power with race IQ. Made for the right move at the right time.' };
+        if (isHighVolume) return { label: 'Endurance / Diesel', icon: '🔋', desc: 'Built on volume. Gets stronger as races get longer.' };
+        return { label: 'All-Rounder', icon: '⚡', desc: 'Balanced profile. Develop a speciality or keep diversifying.' };
+    })();
+
+    // ── Performance insights ────────────────────────────────────
+    const insights = (() => {
+        const items = [];
+        const tsbVal = tsb ?? 0;
+        const ctlVal = ctl ?? 0;
+        const daysLeft = report.daysLeft;
+        const reqW = report.reqPerWeek;
+
+        if (tsbVal < -25) {
+            items.push({ type: 'warning', title: 'High Fatigue Load', body: `TSB is ${tsbVal.toFixed(0)}. You are deep in fatigue. Prioritize recovery before any intensity work.` });
+        } else if (tsbVal > 15) {
+            items.push({ type: 'good', title: 'Fresh and Ready', body: `TSB is +${tsbVal.toFixed(0)}. You have good form. This is the time to race or hit quality sessions.` });
+        }
+
+        if (ctlVal > 0 && ctlVal < 50) {
+            items.push({ type: 'focus', title: 'Build Your Aerobic Base', body: 'CTL is below 50 — volume is your primary limiter. More Z2 hours will unlock everything else.' });
+        } else if (ctlVal >= 80) {
+            items.push({ type: 'good', title: 'Strong Fitness Base', body: `CTL at ${ctlVal.toFixed(0)} — solid fitness foundation. Focus on quality and race-specific efforts.` });
+        }
+
+        if (report.delta != null && report.delta > 20) {
+            items.push({ type: 'focus', title: 'FTP Gap to Target', body: `${report.delta.toFixed(0)}W gap to target. ${reqW != null ? `Requires ${reqW.toFixed(1)}W/week — ` : ''}structured threshold sessions are key.` });
+        } else if (report.delta != null && report.delta <= 0) {
+            items.push({ type: 'good', title: 'Target FTP Reached', body: 'You are at or above your FTP target. Now prove it consistently in training and racing.' });
+        }
+
+        if (daysLeft != null && daysLeft > 0 && daysLeft <= 14) {
+            items.push({ type: 'warning', title: 'Race Taper Zone', body: `${daysLeft} days to target event. Reduce volume, keep intensity sharp. Don't add fitness now — show what you have.` });
+        }
+
+        if (restingHr != null && restingHr > 55) {
+            items.push({ type: 'info', title: 'Monitor Recovery', body: `Resting HR at ${restingHr} bpm. Track trend daily — rising RHR is often the first signal of overtraining.` });
+        }
+
+        if (items.length === 0) {
+            items.push({ type: 'info', title: 'Connect Intervals.icu', body: 'Link your training data to get personalised insights, FTP readiness scores, and recovery tracking.' });
+        }
+
+        return items;
+    })();
+
+    const insightColor = { good: 'var(--accent-green)', warning: 'var(--accent-red)', focus: 'var(--accent-cyan)', info: 'var(--text-3)' };
+    const insightBg = { good: 'rgba(34,197,94,0.08)', warning: 'rgba(239,68,68,0.08)', focus: 'rgba(6,182,212,0.08)', info: 'var(--bg-2)' };
+    const insightBorder = { good: 'rgba(34,197,94,0.25)', warning: 'rgba(239,68,68,0.25)', focus: 'rgba(6,182,212,0.25)', info: 'var(--border)' };
+
     return (
         <div>
-            <div className="page-header">
-                <div className="page-title">Athlete Profile</div>
-                <div className="page-subtitle">{profile.riderName || 'Racer'} — Power targets, racing calendar, and race-specific readiness</div>
+            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                    <div className="page-title">{profile.riderName || 'Athlete Profile'}</div>
+                    <div className="page-subtitle">
+                        {profile.primarySport || 'Road Cycling'}
+                        {currentFtp && ` · FTP ${currentFtp}W`}
+                        {wkg && ` · ${wkg} W/kg`}
+                        {riderLevel && <span style={{ marginLeft: 12, color: riderLevel.color, fontWeight: 600 }}>{riderLevel.label}</span>}
+                    </div>
+                </div>
+                <button className="btn" onClick={() => setShowSettings(s => !s)}>
+                    {showSettings ? 'Hide Settings' : 'Settings'}
+                </button>
             </div>
 
-            {/* ─── UPCOMING RACES (Race-Focused) ─── */}
-            {upcomingRaces.length > 0 && (
-                <div className="card" style={{ marginBottom: 16 }}>
-                    <div className="card-header">
-                        <span className="card-title">🏁 Upcoming Races ({upcomingRaces.length})</span>
-                        <span className="card-badge">Next {daysToNextRace != null ? `${daysToNextRace}d` : '—'}</span>
+            {/* ─── KEY METRICS ROW ─── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
+                {[
+                    { label: 'FTP', value: currentFtp ? `${currentFtp}W` : '—', sub: wkg ? `${wkg} W/kg` : null, color: 'var(--accent-blue)' },
+                    { label: 'FITNESS (CTL)', value: ctl != null ? ctl.toFixed(0) : '—', sub: 'chronic load', color: 'var(--ctl-color)' },
+                    { label: 'FATIGUE (ATL)', value: atl != null ? atl.toFixed(0) : '—', sub: 'acute load', color: 'var(--atl-color)' },
+                    { label: 'FORM (TSB)', value: tsb != null ? (tsb > 0 ? '+' : '') + tsb.toFixed(0) : '—', sub: tsb != null ? (tsb > 5 ? 'Fresh' : tsb < -20 ? 'Tired' : 'Neutral') : null, color: tsb != null && tsb > 5 ? 'var(--accent-green)' : tsb != null && tsb < -20 ? 'var(--accent-red)' : 'var(--tsb-color)' },
+                    { label: 'RESTING HR', value: restingHr != null ? `${restingHr} bpm` : '—', sub: 'recovery proxy', color: 'var(--accent-orange)' },
+                    { label: 'READINESS', value: report.readiness != null ? `${report.readiness}%` : '—', sub: report.status, color: report.status === 'good' ? 'var(--accent-green)' : report.status === 'bad' ? 'var(--accent-red)' : 'var(--accent-yellow)' },
+                ].map(m => (
+                    <div key={m.label} style={{ padding: '14px 16px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', letterSpacing: '0.1em', marginBottom: 8 }}>{m.label}</div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: m.color, lineHeight: 1 }}>{m.value}</div>
+                        {m.sub && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>{m.sub}</div>}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-                        {upcomingRaces.map((race, idx) => {
-                            const raceDate = new Date(String(race.start_date_local || race.start_date || race.date || race.event_date).slice(0, 10));
-                            const daysUntilRace = Math.ceil((raceDate.getTime() - new Date().getTime()) / 86400000);
-                            const isNextRace = idx === 0;
-                            return (
-                                <div
-                                    key={idx}
-                                    style={{
-                                        padding: 12,
-                                        borderRadius: 6,
+                ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                {/* ─── RIDER PROFILE ─── */}
+                <div className="card" style={{ marginBottom: 0 }}>
+                    <div className="card-header">
+                        <span className="card-title">Rider Profile</span>
+                        {riderLevel && <span className="card-badge" style={{ color: riderLevel.color }}>{riderLevel.label}</span>}
+                    </div>
+
+                    {riderArchetype ? (
+                        <div style={{ marginBottom: 16, padding: '16px', background: 'var(--bg-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                            <div style={{ fontSize: 28, marginBottom: 8 }}>{riderArchetype.icon}</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-0)', marginBottom: 6 }}>{riderArchetype.label}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>{riderArchetype.desc}</div>
+                        </div>
+                    ) : (
+                        <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 8, fontSize: 12, color: 'var(--text-3)' }}>
+                            Connect Intervals.icu and set your FTP to see your rider profile.
+                        </div>
+                    )}
+
+                    {wkg && (
+                        <div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 8 }}>W/KG BENCHMARK</div>
+                            <div style={{ position: 'relative', height: 8, background: 'var(--bg-3)', borderRadius: 4, marginBottom: 6, overflow: 'hidden' }}>
+                                {[
+                                    { label: 'Rec', pct: 0, color: 'var(--text-3)' },
+                                    { label: 'Cat C', pct: 33, color: 'var(--accent-orange)' },
+                                    { label: 'Cat B', pct: 50, color: 'var(--accent-yellow)' },
+                                    { label: 'Cat A', pct: 67, color: 'var(--accent-green)' },
+                                    { label: 'Elite', pct: 84, color: 'var(--accent-blue)' },
+                                ].map(seg => (
+                                    <div key={seg.label} style={{ position: 'absolute', left: `${seg.pct}%`, top: 0, bottom: 0, right: 0, background: seg.color, opacity: 0.3 }} />
+                                ))}
+                                <div style={{
+                                    position: 'absolute', top: -1, bottom: -1,
+                                    left: `${Math.min(99, (Number(wkg) - 2.5) / 3 * 100)}%`,
+                                    width: 3, background: riderLevel?.color || 'var(--accent-cyan)',
+                                    borderRadius: 2, boxShadow: `0 0 6px ${riderLevel?.color || 'var(--accent-cyan)'}`,
+                                }} />
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-3)' }}>
+                                <span>2.5</span><span>3.0</span><span>3.5</span><span>4.0</span><span>4.5</span><span>5.5+</span>
+                            </div>
+                        </div>
+                    )}
+
+                    <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {[
+                            { label: profile.primarySport || 'Road Cycling', icon: '🚴' },
+                            { label: profile.weeklyHours || '—', icon: '⏱' },
+                            { label: profile.isRacing === 'yes' ? 'Race mode' : 'Build mode', icon: '📍' },
+                        ].map(tag => (
+                            <span key={tag.label} style={{ padding: '4px 10px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 11, color: 'var(--text-2)' }}>
+                                {tag.icon} {tag.label}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+
+                {/* ─── PERFORMANCE INSIGHTS ─── */}
+                <div className="card" style={{ marginBottom: 0 }}>
+                    <div className="card-header">
+                        <span className="card-title">What To Focus On</span>
+                        <span className="card-badge">{insights.length} insight{insights.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {insights.map((ins, i) => (
+                            <div key={i} style={{
+                                padding: '12px 14px', borderRadius: 8,
+                                background: insightBg[ins.type] || 'var(--bg-2)',
+                                border: `1px solid ${insightBorder[ins.type] || 'var(--border)'}`,
+                                borderLeft: `3px solid ${insightColor[ins.type] || 'var(--text-3)'}`,
+                            }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: insightColor[ins.type], marginBottom: 4 }}>{ins.title}</div>
+                                <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>{ins.body}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {report.verdict && (
+                        <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--bg-2)', borderRadius: 8, borderLeft: `3px solid ${report.status === 'good' ? 'var(--accent-green)' : report.status === 'bad' ? 'var(--accent-red)' : 'var(--accent-yellow)'}` }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4, fontFamily: 'var(--font-mono)' }}>TARGET ASSESSMENT</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>{report.verdict}</div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* ─── UPCOMING RACES + WEEKENDS ─── */}
+            <div style={{ display: 'grid', gridTemplateColumns: upcomingRaces.length > 0 ? '1.4fr 1fr' : '1fr', gap: 16, marginBottom: 16 }}>
+                {upcomingRaces.length > 0 && (
+                    <div className="card" style={{ marginBottom: 0 }}>
+                        <div className="card-header">
+                            <span className="card-title">Upcoming Races</span>
+                            <span className="card-badge">{daysToNextRace != null ? `Next in ${daysToNextRace}d` : `${upcomingRaces.length} races`}</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {upcomingRaces.map((race, idx) => {
+                                const raceDate = new Date(String(race.start_date_local || race.start_date || race.date || race.event_date).slice(0, 10));
+                                const daysUntilRace = Math.ceil((raceDate.getTime() - new Date().getTime()) / 86400000);
+                                const isNextRace = idx === 0;
+                                return (
+                                    <div key={idx} style={{
+                                        display: 'flex', alignItems: 'center', gap: 12,
+                                        padding: '10px 14px', borderRadius: 8,
                                         border: `1px solid ${isNextRace ? 'var(--accent-cyan)' : 'var(--border)'}`,
-                                        background: isNextRace ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
+                                        background: isNextRace ? 'rgba(6,182,212,0.06)' : 'var(--bg-2)',
+                                    }}>
+                                        <div style={{
+                                            minWidth: 48, textAlign: 'center', padding: '4px 8px',
+                                            borderRadius: 6, background: isNextRace ? 'rgba(6,182,212,0.15)' : 'var(--bg-3)',
+                                            fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700,
+                                            color: isNextRace ? 'var(--accent-cyan)' : 'var(--text-3)',
+                                        }}>
+                                            {daysUntilRace === 0 ? 'TODAY' : `${daysUntilRace}d`}
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-0)' }}>{race.name || race.title || 'Race'}</div>
+                                            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{raceDate.toLocaleDateString('en-GB', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+                                        </div>
+                                        {isNextRace && <span style={{ fontSize: 11, color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>NEXT</span>}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                <div className="card" style={{ marginBottom: 0 }}>
+                    <div className="card-header">
+                        <span className="card-title">Next 4 Weekends</span>
+                        <span className="card-badge">{next4Weekends.reduce((s, w) => s + w.raceCount, 0)} races</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {next4Weekends.map((weekend) => {
+                            const isRacing = (profile.racingWeeks || {})[weekend.weekKey];
+                            return (
+                                <button
+                                    key={weekend.weekNum}
+                                    type="button"
+                                    onClick={() => toggleRacingWeek(weekend.weekKey)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 10,
+                                        padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                                        border: `1px solid ${isRacing ? 'var(--accent-green)' : weekend.raceCount > 0 ? 'rgba(6,182,212,0.3)' : 'var(--border)'}`,
+                                        background: isRacing ? 'rgba(34,197,94,0.08)' : weekend.raceCount > 0 ? 'rgba(6,182,212,0.05)' : 'var(--bg-2)',
+                                        textAlign: 'left', outline: 'none',
                                     }}
                                 >
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: isNextRace ? 'var(--accent-cyan)' : 'var(--text-2)' }}>
-                                        {isNextRace ? '⭐ NEXT' : `+${daysUntilRace}d`}
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>
+                                            {weekend.saturday_str}
+                                        </div>
+                                        {weekend.raceCount > 0 ? (
+                                            <div style={{ fontSize: 11, color: 'var(--accent-cyan)' }}>
+                                                {weekend.races.map(r => r.name || r.title || 'Race').join(', ')}
+                                            </div>
+                                        ) : (
+                                            <div style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic' }}>No races</div>
+                                        )}
                                     </div>
-                                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4, color: 'var(--text-1)' }}>
-                                        {race.name || race.title || 'Race'}
+                                    <div style={{
+                                        padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700,
+                                        fontFamily: 'var(--font-mono)',
+                                        color: isRacing ? 'var(--accent-green)' : 'var(--text-3)',
+                                        background: isRacing ? 'rgba(34,197,94,0.15)' : 'var(--bg-3)',
+                                    }}>
+                                        {isRacing ? 'RACE' : 'TRAIN'}
                                     </div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
-                                        {raceDate.toLocaleDateString('en-GB', { weekday: 'short', month: 'short', day: 'numeric' })}
-                                    </div>
-                                </div>
+                                </button>
                             );
                         })}
+                    </div>
+                    {saveMsg && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--accent-green)' }}>{saveMsg}</div>}
+                </div>
+            </div>
+
+            {/* ─── TARGET GOAL ─── */}
+            {(profile.targetEventName || profile.targetFtp) && (
+                <div className="card" style={{ marginBottom: 16 }}>
+                    <div className="card-header">
+                        <span className="card-title">Target Goal</span>
+                        <span className="card-badge">{report.daysLeft != null ? `${report.daysLeft}d remaining` : 'No date set'}</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+                        {profile.targetEventName && (
+                            <div style={{ padding: 14, background: 'var(--bg-2)', borderRadius: 8 }}>
+                                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 6 }}>TARGET EVENT</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-0)' }}>{profile.targetEventName}</div>
+                                {profile.targetDate && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>{profile.targetDate}</div>}
+                            </div>
+                        )}
+                        {profile.targetFtp && (
+                            <div style={{ padding: 14, background: 'var(--bg-2)', borderRadius: 8 }}>
+                                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 6 }}>TARGET FTP</div>
+                                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--accent-blue)', fontFamily: 'var(--font-mono)' }}>{profile.targetFtp}W</div>
+                                {report.delta != null && <div style={{ fontSize: 11, color: report.delta > 0 ? 'var(--accent-orange)' : 'var(--accent-green)', marginTop: 4 }}>{report.delta > 0 ? `+${report.delta.toFixed(0)}W gap` : 'Target met'}</div>}
+                            </div>
+                        )}
+                        {report.reqPerWeek != null && report.reqPerWeek > 0 && (
+                            <div style={{ padding: 14, background: 'var(--bg-2)', borderRadius: 8 }}>
+                                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 6 }}>REQUIRED GAIN</div>
+                                <div style={{ fontSize: 22, fontWeight: 700, color: report.status === 'good' ? 'var(--accent-green)' : report.status === 'bad' ? 'var(--accent-red)' : 'var(--accent-yellow)', fontFamily: 'var(--font-mono)' }}>
+                                    {report.reqPerWeek.toFixed(1)} W/wk
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>{report.verdict?.split('.')[0]}</div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
 
-
-
-            {/* ─── NEXT 4 WEEKENDS ─── */}
-            <div className="card" style={{ marginBottom: 16 }}>
-                <div className="card-header">
-                    <span className="card-title">📅 Next 4 Weekends</span>
-                    <span className="card-badge">{next4Weekends.reduce((sum, w) => sum + w.raceCount, 0)} races</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-                    {next4Weekends.map((weekend) => (
-                        <button
-                            key={weekend.weekNum}
-                            type="button"
-                            onClick={() => toggleRacingWeek(weekend.weekKey)}
-                            style={{
-                                padding: 12,
-                                borderRadius: 6,
-                                border: `1px solid ${(profile.racingWeeks || {})[weekend.weekKey] ? 'var(--accent-green)' : (weekend.raceCount > 0 ? 'var(--accent-cyan)' : 'var(--border)')}`,
-                                background: (profile.racingWeeks || {})[weekend.weekKey]
-                                    ? 'rgba(34,197,94,0.12)'
-                                    : (weekend.raceCount > 0 ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)'),
-                                cursor: 'pointer',
-                                textAlign: 'left',
-                                transition: 'all 0.15s ease',
-                            }}
-                        >
-                            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', marginBottom: 8 }}>
-                                WEEK {weekend.weekNum} — {weekend.saturday_str}
-                            </div>
-                            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, color: (profile.racingWeeks || {})[weekend.weekKey] ? 'var(--accent-green)' : 'var(--text-3)' }}>
-                                {(profile.racingWeeks || {})[weekend.weekKey] ? 'RACING: ON' : 'RACING: OFF'}
-                            </div>
-                            {weekend.raceCount > 0 ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                    {weekend.races.map((race, idx) => (
-                                        <div key={idx} style={{ fontSize: 11, color: 'var(--accent-cyan)', fontWeight: 500 }}>
-                                            🏁 {race.name || race.title || 'Race'}
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic' }}>
-                                    No races
-                                </div>
-                            )}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="calendar-layout" style={{ gridTemplateColumns: '1.2fr 1fr' }}>
+            {/* ─── SETTINGS (COLLAPSIBLE) ─── */}
+            {showSettings && (
                 <div className="card" style={{ marginBottom: 0 }}>
                     <div className="card-header">
-                        <span className="card-title">Rider Setup</span>
-                        <span className="card-badge">Profile</span>
+                        <span className="card-title">Profile Settings</span>
+                        <button className="btn" onClick={() => setShowSettings(false)} style={{ fontSize: 12 }}>Close</button>
                     </div>
 
                     <div className="calendar-form-row">
@@ -484,159 +712,33 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                             <option>Direct and analytical - data first</option>
                             <option>Demanding but constructive</option>
                         </select>
-                        <div className="calendar-helper" style={{ display: 'flex', alignItems: 'center', paddingLeft: 6 }}>
-                            {profile.isRacing === 'yes' ? 'Race mode enabled' : 'Build mode enabled'}
-                        </div>
                     </div>
 
-                    <div className="card-title" style={{ marginTop: 8, marginBottom: 8 }}>Target</div>
-
+                    <div style={{ marginTop: 8, marginBottom: 6, fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Target Event</div>
                     <div className="calendar-form-row">
                         <input className="form-input calendar-form-input" placeholder="Target event name" value={profile.targetEventName || ''} onChange={e => update('targetEventName', e.target.value)} />
                         <input className="form-input calendar-form-input" type="date" value={profile.targetDate || ''} onChange={e => update('targetDate', e.target.value)} />
                     </div>
-
                     <div className="calendar-form-row">
                         <input className="form-input calendar-form-input" type="number" placeholder="Target FTP (W)" value={profile.targetFtp || ''} onChange={e => update('targetFtp', e.target.value)} />
                         <input className="form-input calendar-form-input" type="number" placeholder="Target weight (kg)" value={profile.targetWeight || ''} onChange={e => update('targetWeight', e.target.value)} />
                     </div>
 
-                    <div className="card-title" style={{ marginTop: 8, marginBottom: 8 }}>Long-Term Performance Goal</div>
-
-                    <div className="calendar-form-row">
-                        <select className="form-input calendar-form-input" value={profile.longTermGoalType || 'ftp'} onChange={e => update('longTermGoalType', e.target.value)}>
-                            <option value="ftp">FTP (cycling watts)</option>
-                            <option value="running_pace">Running pace</option>
-                        </select>
-                        {profile.longTermGoalType === 'running_pace' ? (
-                            <input
-                                className="form-input calendar-form-input"
-                                type="text"
-                                placeholder="Target pace (e.g. 3:45/km)"
-                                value={profile.longTermGoalValue || ''}
-                                onChange={e => update('longTermGoalValue', e.target.value)}
-                            />
-                        ) : (
-                            <input
-                                className="form-input calendar-form-input"
-                                type="number"
-                                placeholder="Target FTP (W)"
-                                value={profile.longTermGoalValue || ''}
-                                onChange={e => update('longTermGoalValue', e.target.value)}
-                            />
-                        )}
-                    </div>
-
-                    <div className="calendar-form-row">
-                        <input
-                            className="form-input calendar-form-input"
-                            type="date"
-                            value={profile.longTermGoalDate || ''}
-                            onChange={e => update('longTermGoalDate', e.target.value)}
-                        />
-                        <div className="calendar-helper" style={{ display: 'flex', alignItems: 'center', paddingLeft: 6 }}>
-                            {profile.longTermGoalDate
-                                ? `Goal horizon: ${longTermDaysLeft != null ? `${longTermDaysLeft} days` : 'invalid date'}`
-                                : 'Set a long-term goal date'}
-                        </div>
-                    </div>
-
                     <textarea
                         className="form-input calendar-form-input"
-                        rows={4}
-                        placeholder="Weaknesses, constraints, injury notes, lifestyle constraints"
+                        rows={3}
+                        placeholder="Notes: weaknesses, injuries, constraints..."
                         value={profile.notes || ''}
                         onChange={e => update('notes', e.target.value)}
+                        style={{ marginTop: 8 }}
                     />
 
-                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                         <button className="btn btn-primary" onClick={saveProfile}>Save Profile</button>
-                        {saveMsg && <div className="calendar-helper">{saveMsg}</div>}
+                        {saveMsg && <div className="calendar-helper" style={{ color: 'var(--accent-green)' }}>{saveMsg}</div>}
                     </div>
                 </div>
-
-                <div className="card" style={{ marginBottom: 0 }}>
-                    <div className="card-header">
-                        <span className="card-title">Brutal Readiness</span>
-                        <span className="card-badge">{report.readiness != null ? `${report.readiness}%` : 'N/A'}</span>
-                    </div>
-
-                    {!hasWellnessData && (
-                        <div className="info-banner" style={{ marginBottom: 12, backgroundColor: loading ? 'rgba(59,130,246,0.1)' : 'rgba(249,115,22,0.1)', borderColor: loading ? 'rgba(59,130,246,0.3)' : 'rgba(249,115,22,0.3)' }}>
-                            <strong>{loading ? '⏳ Fetching training metrics...' : '⚠ Training data not yet loaded'}</strong>
-                            <div style={{ marginTop: 6, fontSize: 12 }}>
-                                {loading
-                                    ? 'Syncing with Intervals.icu. CTL/ATL (fitness/fatigue), TSB (form), and RHR will appear here shortly.'
-                                    : 'CTL/ATL/TSB metrics require Intervals.icu connection. Check Settings → Intervals.icu or navigate to Dashboard to trigger sync.'}
-                            </div>
-                        </div>
-                    )}
-
-                    <div className={`info-banner ${report.status === 'bad' ? 'error-banner' : ''}`} style={{ marginBottom: 12 }}>
-                        <strong>{report.headline}</strong>
-                        <div style={{ marginTop: 6 }}>{report.verdict}</div>
-                    </div>
-
-                    <div className="calendar-upcoming-list" style={{ marginTop: 0 }}>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">Current FTP</div>
-                            <div className="calendar-upcoming-title">{currentFtp || '—'} W</div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">TSB / Form</div>
-                            <div className="calendar-upcoming-title">{tsb != null ? tsb.toFixed(1) : '—'}</div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">CTL / ATL</div>
-                            <div className="calendar-upcoming-title">{ctl != null ? ctl.toFixed(1) : '—'} / {atl != null ? atl.toFixed(1) : '—'}</div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">Resting HR</div>
-                            <div className="calendar-upcoming-title">{restingHr != null ? `${restingHr} bpm` : '—'}</div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">Target FTP Gap</div>
-                            <div className="calendar-upcoming-title">{report.delta != null ? `${report.delta > 0 ? '+' : ''}${report.delta.toFixed(1)} W` : '—'}</div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">Required FTP / week</div>
-                            <div className="calendar-upcoming-title">{report.reqPerWeek != null ? `${report.reqPerWeek.toFixed(2)} W/week` : '—'}</div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">Days to target</div>
-                            <div className="calendar-upcoming-title">{report.daysLeft != null ? report.daysLeft : '—'}</div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">Races last 4 weeks</div>
-                            <div className="calendar-upcoming-title">{critStats.racesLast4w}</div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">Weekend race frequency</div>
-                            <div className="calendar-upcoming-title">{critStats.weekendRaces}/4 ({critStats.weekendHitRate}%)</div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">Upcoming race count</div>
-                            <div className="calendar-upcoming-title">{critStats.upcomingCount}</div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">Racing mode</div>
-                            <div className="calendar-upcoming-title">{profile.isRacing === 'yes' ? 'Racing' : 'Not racing'}</div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">Long-term goal</div>
-                            <div className="calendar-upcoming-title">
-                                {profile.longTermGoalValue
-                                    ? `${profile.longTermGoalType === 'running_pace' ? 'Pace' : 'FTP'}: ${profile.longTermGoalValue}${profile.longTermGoalType === 'running_pace' ? '' : ' W'}`
-                                    : '—'}
-                            </div>
-                        </div>
-                        <div className="calendar-upcoming-item">
-                            <div className="calendar-upcoming-date">Goal timeline</div>
-                            <div className="calendar-upcoming-title">{longTermDaysLeft != null ? `${longTermDaysLeft} days` : '—'}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            )}
         </div>
     );
 }

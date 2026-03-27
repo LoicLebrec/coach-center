@@ -136,6 +136,34 @@ class IntervalsService {
     return this.request(`/athlete/${this.athleteId}/events?${params}`);
   }
 
+  // POST /api/v1/athlete/{id}/events  — single object only
+  async createEvent(payload) {
+    if (Array.isArray(payload)) {
+      // API accepts one event per request — loop sequentially
+      const results = [];
+      for (const p of payload) {
+        results.push(await this._postEvent(p));
+      }
+      return results;
+    }
+    return this._postEvent(payload);
+  }
+
+  async _postEvent(payload) {
+    return this.request(`/athlete/${this.athleteId}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // DELETE /api/v1/athlete/{id}/events/{eventId}
+  async deleteEvent(eventId) {
+    return this.request(`/athlete/${this.athleteId}/events/${eventId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // ─── Power Curve ──────────────────────────────────────────
   async getPowerCurve(type = 'Ride') {
     return this.request(`/athlete/${this.athleteId}/power-curves?type=${type}`);
@@ -169,6 +197,43 @@ class IntervalsService {
     if (tsb > -25) return { state: 'tired', label: 'Fatigued', color: '#fb923c' };
     return { state: 'overreaching', label: 'Overreaching', color: '#ef4444' };
   }
+}
+
+/**
+ * Converts workoutBlocks to a readable text description for the Intervals.icu
+ * event description field (used when workout_doc structured format is not needed).
+ */
+function blocksToDescription(blocks = [], notes = '') {
+  if (!blocks.length) return notes;
+  const lines = blocks.map(b => {
+    const dur = b.durationMin != null ? `${b.durationMin}min` : '';
+    const zone = b.zone || '';
+    return [b.label, dur, zone].filter(Boolean).join(' · ');
+  });
+  const blockText = lines.join('\n');
+  return notes ? `${notes}\n\n${blockText}` : blockText;
+}
+
+/**
+ * Converts a local planned-event object into an Intervals.icu event payload.
+ * Uses the minimal required fields that the Intervals.icu API accepts.
+ * Workout structure is described as plain text in the description field.
+ */
+export function buildIcuEventPayload(event) {
+  const dateStr = String(event.start_date_local || event.date || '').slice(0, 10);
+  // Intervals.icu accepts date-only (YYYY-MM-DD) for all-day events
+  const startLocal = dateStr || new Date().toISOString().slice(0, 10);
+  const name = (event.title || event.name || 'Workout').slice(0, 100);
+  const isRace = (event.kind || '').toLowerCase() === 'race';
+  const description = blocksToDescription(event.workoutBlocks, event.notes);
+
+  return {
+    category: isRace ? 'RACE' : 'WORKOUT',
+    start_date_local: startLocal,
+    name,
+    description,
+    type: event.type || event.event_type || 'Ride',
+  };
 }
 
 export const intervalsService = new IntervalsService();

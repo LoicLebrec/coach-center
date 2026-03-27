@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { intervalsService } from './services/intervals';
+import { intervalsService, buildIcuEventPayload } from './services/intervals';
+import { buildRuleBasedWorkout, inferTrainingType } from './services/workout-rules';
 import { stravaService } from './services/strava';
 import { garminService } from './services/garmin';
 import { aiCoachService } from './services/ai-coach';
@@ -13,6 +14,7 @@ import CoachChat from './components/CoachChat';
 import AthleteProfile from './components/AthleteProfile';
 import Calendar from './components/Calendar';
 import WorkoutBuilder from './components/WorkoutBuilder';
+import SmartWorkoutWizard from './components/SmartWorkoutWizard';
 import GpxRouteBuilder from './components/GpxRouteBuilder';
 import { LIBRARY_WORKOUTS } from './data/workoutLibrary';
 import './styles/app.css';
@@ -470,6 +472,17 @@ export default function App() {
       planned: true,
     };
 
+    // Auto-sync to Intervals.icu if configured (best-effort, never blocks the local save)
+    if (intervalsService.isConfigured()) {
+      try {
+        const icuPayload = buildIcuEventPayload(normalized);
+        await intervalsService.createEvent(icuPayload);
+        normalized.icuSynced = true;
+      } catch (err) {
+        console.warn('[ICU sync] single event failed:', err.message);
+      }
+    }
+
     const next = await persistence.addPlannedEvent(normalized);
     setPlannedEvents(next);
   }, []);
@@ -488,6 +501,7 @@ export default function App() {
 
     const athleteProfile = await persistence.getAthleteProfile();
     const racingWeeks = athleteProfile?.racingWeeks || {};
+    const ftp = Number(athleteProfile?.ftp || athleteProfile?.icu_ftp || 200);
 
     const startDate = new Date();
     startDate.setDate(startDate.getDate() + 1);
@@ -513,10 +527,15 @@ export default function App() {
     const prompt = [
       'Build a realistic training micro-cycle as strict JSON array only.',
       `Generate ${days} planned sessions starting ${startDay}.`,
-      'Return ONLY valid JSON. No markdown.',
-      'Each item keys: date (YYYY-MM-DD), title, type, kind (training|objective|race), notes.',
+      'Return ONLY valid JSON array. No markdown, no explanation.',
+      'Each item MUST have these keys:',
+      '  date (YYYY-MM-DD), title (string), type (Ride|Run|Swim|Workout), kind (training|race|rest),',
+      '  trainingType (one of: vo2|threshold|sweetspot|endurance|recovery|openers|rest),',
+      '  durationMin (integer minutes, e.g. 60 for 1h, 0 for rest days),',
+      '  notes (short description of the session intent).',
       sundayRaceDirective,
       objective ? `Primary objective: ${objective}.` : 'Primary objective: improve aerobic fitness and consistency.',
+      'Vary intensity across the week (not every day is hard). Include recovery and endurance days.',
     ].join('\n');
 
     const aiResponse = await aiCoachService.chat(prompt, null, [], null, []);
@@ -542,6 +561,21 @@ export default function App() {
       fallbackDate.setDate(startDate.getDate() + idx);
       const dateKey = typeof item?.date === 'string' ? item.date : fallbackDate.toISOString().split('T')[0];
       const kind = String(item?.kind || 'training').toLowerCase();
+      const isTraining = kind === 'training' || kind === 'workout';
+
+      // Resolve training type — use AI-provided or infer from title/notes
+      const trainingType = item?.trainingType
+        || inferTrainingType(item?.title || '', item?.notes || '');
+      const durationMin = Number(item?.durationMin) || 60;
+
+      // Build structured blocks for training sessions
+      let workoutBlocks = [];
+      if (isTraining && trainingType !== 'rest' && durationMin >= 20) {
+        try {
+          const built = buildRuleBasedWorkout(trainingType, durationMin, 'good', ftp, null);
+          workoutBlocks = built.blocks || [];
+        } catch (_) {}
+      }
 
       return {
         id: `local_ai_${Date.now()}_${idx}`,
@@ -549,11 +583,12 @@ export default function App() {
         planned: true,
         name: item?.title || `AI Session ${idx + 1}`,
         title: item?.title || `AI Session ${idx + 1}`,
-        type: item?.type || 'Workout',
-        event_type: item?.type || 'Workout',
+        type: item?.type || 'Ride',
+        event_type: item?.type || 'Ride',
         kind,
         start_date_local: `${dateKey}T07:00:00`,
         notes: item?.notes || '',
+        workoutBlocks,
       };
     });
 
@@ -591,6 +626,20 @@ export default function App() {
     const next = [...(current || []), ...generated];
     await persistence.savePlannedEvents(next);
     setPlannedEvents(next);
+
+    // Batch-sync to Intervals.icu if configured (best-effort)
+    if (intervalsService.isConfigured()) {
+      try {
+        const icuPayloads = generated
+          .filter(e => (e.kind || '') !== 'note')
+          .map(e => buildIcuEventPayload(e));
+        if (icuPayloads.length) await intervalsService.createEvent(icuPayloads);
+        generated.forEach(e => { e.icuSynced = true; });
+      } catch (err) {
+        console.warn('[ICU sync] batch plan failed:', err.message);
+      }
+    }
+
     return generated;
   }, [llmProvider, groqApiKey, claudeApiKey]);
 
@@ -726,18 +775,13 @@ export default function App() {
         );
       case VIEWS.WORKOUT_BUILDER:
         return (
-          <div>
-            <div className="page-header">
-              <div className="page-title">Workout Builder</div>
-              <div className="page-subtitle">Build structured sessions with zones, blocks, and save directly to calendar</div>
-            </div>
-            <WorkoutBuilder
-              onCreate={handleAddPlannedEvent}
-              onSaveToLibrary={handleSaveWorkoutToLibrary}
-              onGenerateWithAi={handleGenerateAiWorkoutTemplate}
-              ftp={athlete?.icu_ftp || athlete?.ftp || athlete?.ftp_watts || athlete?.critical_power || athlete?.zones?.ftp || null}
-            />
-          </div>
+          <SmartWorkoutWizard
+            athlete={athlete}
+            events={events}
+            plannedEvents={plannedEvents}
+            onAddToCalendar={handleAddPlannedEvent}
+            onGenerateWithAi={handleGenerateAiWorkoutTemplate}
+          />
         );
       case VIEWS.ATHLETE_PROFILE:
         return <AthleteProfile wellness={wellness} athlete={athlete} events={events} activities={activities} loading={loading} />;
@@ -759,9 +803,9 @@ export default function App() {
       case VIEWS.DASHBOARD:
         return <Dashboard wellness={wellness} activities={activities} athlete={athlete} loading={loading} error={error} />;
       case VIEWS.PMC:
-        return <PMCChart wellness={wellness} loading={loading} />;
+        return <PMCChart wellness={wellness} activities={activities} loading={loading} />;
       case VIEWS.ACTIVITIES:
-        return <Activities activities={activities} loading={loading} />;
+        return <Activities activities={activities} athlete={athlete} loading={loading} />;
       case VIEWS.WEEKLY:
         return <WeeklyLoad activities={activities} loading={loading} />;
       case VIEWS.CALENDAR:

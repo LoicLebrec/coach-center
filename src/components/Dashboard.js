@@ -250,6 +250,45 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
     return result;
   }, [activities]);
 
+  // Weekly kilometers and average watts
+  const weeklyMetrics = useMemo(() => {
+    if (!activities?.length) return [];
+    const result = [];
+    const now = new Date();
+    for (let i = 7; i >= 0; i--) {
+      const end = new Date(now);
+      end.setDate(now.getDate() - i * 7);
+      end.setHours(23, 59, 59, 999);
+      const start = new Date(end);
+      start.setDate(end.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+      const label = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      
+      const weekActivities = activities.filter(a => {
+        if (!a.start_date_local) return false;
+        const d = new Date(a.start_date_local);
+        return d >= start && d <= end;
+      });
+
+      const distanceKm = weekActivities.reduce((s, a) => {
+        const raw = Number(a.distance || 0);
+        if (!Number.isFinite(raw) || raw <= 0) return s;
+        // Intervals/Strava can expose distance in meters; fallback to km for small values.
+        return s + (raw > 1000 ? raw / 1000 : raw);
+      }, 0);
+
+      const wattsSamples = weekActivities
+        .map(a => Number(a.icu_average_watts || a.average_watts || 0))
+        .filter(w => Number.isFinite(w) && w > 0);
+      const avgWatts = wattsSamples.length > 0
+        ? Math.round(wattsSamples.reduce((s, w) => s + w, 0) / wattsSamples.length)
+        : 0;
+
+      result.push({ label, distance: Number(distanceKm.toFixed(1)), avgWatts, current: i === 0 });
+    }
+    return result;
+  }, [activities]);
+
   // Recent activities (last 7)
   const recentActivities = useMemo(() => {
     if (!activities) return [];
@@ -297,6 +336,9 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
 
   const BarTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
+    const point = payload[0] || {};
+    const metricName = point.name || 'Value';
+    const suffix = metricName === 'Distance' ? ' km' : metricName === 'Avg Power' ? ' W' : '';
     return (
       <div style={{
         background: 'var(--bg-2)',
@@ -307,7 +349,9 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         fontSize: 11,
       }}>
         <div style={{ color: 'var(--text-2)', marginBottom: 4 }}>{label}</div>
-        <div style={{ color: 'var(--accent-blue)' }}>TSS: {payload[0]?.value}</div>
+        <div style={{ color: point.color || 'var(--accent-blue)' }}>
+          {metricName}: {point?.value}{suffix}
+        </div>
       </div>
     );
   };
@@ -464,6 +508,86 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
                 <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                 <Bar dataKey="tss" name="TSS" radius={[3, 3, 0, 0]}>
                   {weeklyTSS.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.current ? 'var(--accent-blue)' : 'var(--bg-3)'}
+                      stroke={entry.current ? 'var(--accent-blue)' : 'var(--border)'}
+                      strokeWidth={1}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Card 3b: Weekly Kilometers ─── */}
+      {weeklyMetrics.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Weekly Distance — Last 8 Weeks</span>
+            <span className="card-badge">KM</span>
+          </div>
+          <div style={{ height: 150, marginTop: 8 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={weeklyMetrics} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
+                  tickLine={false}
+                  axisLine={{ stroke: 'var(--border)' }}
+                />
+                <YAxis
+                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={36}
+                  label={{ value: 'KM', angle: -90, position: 'insideLeft', fill: 'var(--text-3)', fontSize: 9, fontFamily: 'var(--font-mono)', dy: 14 }}
+                />
+                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <Bar dataKey="distance" name="Distance" radius={[3, 3, 0, 0]}>
+                  {weeklyMetrics.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.current ? '#22c55e' : 'var(--bg-3)'}
+                      stroke={entry.current ? '#22c55e' : 'var(--border)'}
+                      strokeWidth={1}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Card 3c: Weekly Average Watts ─── */}
+      {weeklyMetrics.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Weekly Avg Power — Last 8 Weeks</span>
+            <span className="card-badge">W</span>
+          </div>
+          <div style={{ height: 150, marginTop: 8 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={weeklyMetrics} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
+                  tickLine={false}
+                  axisLine={{ stroke: 'var(--border)' }}
+                />
+                <YAxis
+                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={36}
+                  label={{ value: 'Watts', angle: -90, position: 'insideLeft', fill: 'var(--text-3)', fontSize: 9, fontFamily: 'var(--font-mono)', dy: 14 }}
+                />
+                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <Bar dataKey="avgWatts" name="Avg Power" radius={[3, 3, 0, 0]}>
+                  {weeklyMetrics.map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={entry.current ? 'var(--accent-blue)' : 'var(--bg-3)'}
