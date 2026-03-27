@@ -125,6 +125,27 @@ function kindLabel(kind) {
     return 'Training';
 }
 
+function trainingTone(event) {
+    if (!event) return 'general';
+    if (event.kind === 'race') return 'race';
+    if (event.kind === 'objective') return 'objective';
+
+    const text = `${event.title || ''} ${event.notes || ''} ${event.type || ''}`.toLowerCase();
+    if (/\brest\b|recovery|easy spin|off day|no riding/.test(text)) return 'recovery';
+    if (/vo2|max|threshold|over-?under|sprint|anaerobic|ftp test|all out/.test(text)) return 'intensive';
+    if (/z2|endurance|long ride|aerobic|tempo|sweet.?spot/.test(text)) return 'endurance';
+    return 'general';
+}
+
+function toneLabel(tone) {
+    if (tone === 'recovery') return 'Recovery';
+    if (tone === 'intensive') return 'Intensive';
+    if (tone === 'endurance') return 'Endurance';
+    if (tone === 'race') return 'Race';
+    if (tone === 'objective') return 'Objective';
+    return 'Session';
+}
+
 function sanitizeLabel(text) {
     return String(text || '')
         .toLowerCase()
@@ -831,7 +852,11 @@ export default function Calendar({
                                         <div className="calendar-day-num">{format(day, 'd')}</div>
                                         <div className="calendar-day-events">
                                             {entries.slice(0, 2).map(entry => (
-                                                <div key={entry.id} className={`calendar-pill calendar-pill-${entry.kind}`} title={entry.title}>
+                                                <div
+                                                    key={entry.id}
+                                                    className={`calendar-pill calendar-pill-${entry.kind} calendar-pill-tone-${trainingTone(entry)}`}
+                                                    title={entry.title}
+                                                >
                                                     {entry.title}
                                                 </div>
                                             ))}
@@ -845,7 +870,7 @@ export default function Calendar({
                     )}
 
                     {viewMode === 'week' && (
-                        <div className="calendar-grid">
+                        <div className="calendar-grid calendar-grid-week">
                             {weekDays.map(day => {
                                 const dayKey = format(day, 'yyyy-MM-dd');
                                 const entries = byDayAll.get(dayKey) || [];
@@ -861,14 +886,35 @@ export default function Calendar({
                                         onDrop={handleDropOnDay(dayKey)}
                                     >
                                         <div className="calendar-day-num">{format(day, 'EEE d')}</div>
-                                        <div className="calendar-day-events">
-                                            {entries.slice(0, 5).map(entry => (
-                                                <div key={entry.id} className={`calendar-pill calendar-pill-${entry.kind}`} title={entry.title}>
-                                                    {entry.title}
-                                                </div>
-                                            ))}
-                                            {entries.length > 5 && <div className="calendar-more">+{entries.length - 5} more</div>}
-                                            {entries.length === 0 && <div className="calendar-drop-hint">Drop workout</div>}
+                                        <div className="calendar-week-events">
+                                            {entries.map(entry => {
+                                                const tone = trainingTone(entry);
+                                                const notesPreview = String(entry.notes || '').replace(/\s+/g, ' ').slice(0, 170);
+                                                const blocksDuration = totalDuration(entry.workoutBlocks || []);
+                                                return (
+                                                    <div key={entry.id} className={`calendar-week-item calendar-week-item-${tone}`}>
+                                                        <div className="calendar-week-item-head">
+                                                            <div className="calendar-week-item-title">{entry.title}</div>
+                                                            <span className={`calendar-week-tone calendar-week-tone-${tone}`}>{toneLabel(tone)}</span>
+                                                        </div>
+                                                        <div className="calendar-week-meta">
+                                                            <span>{entry.type || kindLabel(entry.kind)}</span>
+                                                            {blocksDuration > 0 && <span>{blocksDuration} min</span>}
+                                                            <span>{kindLabel(entry.kind)}</span>
+                                                        </div>
+                                                        <WorkoutBlocksGraph blocks={entry.workoutBlocks} />
+                                                        {!!notesPreview && (
+                                                            <div className="calendar-week-notes">{notesPreview}</div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                            {entries.length === 0 && (
+                                                <div className="calendar-drop-hint">Drop workout</div>
+                                            )}
+                                            {entries.length > 0 && entries.length >= 6 && (
+                                                <div className="calendar-more">{entries.length} sessions</div>
+                                            )}
                                         </div>
                                     </div>
                                 );
