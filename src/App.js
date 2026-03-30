@@ -252,10 +252,10 @@ export default function App() {
 
   // Handle OAuth callbacks (Strava + Wahoo) — differentiated by `state` param
   useEffect(() => {
-    const params    = new URLSearchParams(window.location.search);
-    const code      = params.get('code');
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
     const authError = params.get('error');
-    const state     = params.get('state'); // 'strava' | 'wahoo'
+    const state = params.get('state'); // 'strava' | 'wahoo'
 
     if (authError) {
       setError(`OAuth was not completed: ${authError}`);
@@ -273,9 +273,9 @@ export default function App() {
           const data = await wahooService.exchangeCode(code, redirectUri);
           await persistence.saveCredentials('wahoo', {
             ...(await persistence.getCredentials('wahoo')),
-            accessToken:  data.access_token,
+            accessToken: data.access_token,
             refreshToken: data.refresh_token,
-            expiresAt:    wahooService.expiresAt,
+            expiresAt: wahooService.expiresAt,
           });
           setConnections(c => ({ ...c, wahoo: true }));
         } else {
@@ -283,10 +283,10 @@ export default function App() {
           const data = await stravaService.exchangeCode(code, redirectUri);
           await persistence.saveCredentials('strava', {
             ...(await persistence.getCredentials('strava')),
-            accessToken:  data.access_token,
+            accessToken: data.access_token,
             refreshToken: data.refresh_token,
-            expiresAt:    data.expires_at,
-            athleteId:    data.athlete?.id,
+            expiresAt: data.expires_at,
+            athleteId: data.athlete?.id,
           });
           setConnections(c => ({ ...c, strava: true }));
         }
@@ -701,7 +701,7 @@ export default function App() {
         try {
           const built = buildRuleBasedWorkout(trainingType, durationMin, 'good', ftp, null);
           workoutBlocks = built.blocks || [];
-        } catch (_) {}
+        } catch (_) { }
       }
 
       return {
@@ -778,6 +778,18 @@ export default function App() {
 
   const handleExportToZwift = useCallback((workout) => {
     exportToZwift(workout);
+  }, []);
+
+  const handleOpenRouteBuilder = useCallback((event) => {
+    if (event) {
+      persistence.savePref('route-builder-last-session', {
+        id: event.id,
+        title: event.title,
+        type: event.type,
+        date: event.date ? new Date(event.date).toISOString() : null,
+      }).catch(() => null);
+    }
+    setView(VIEWS.GPX_BUILDER);
   }, []);
 
   const handleSaveWorkoutToLibrary = useCallback(async (workout) => {
@@ -985,6 +997,7 @@ export default function App() {
             onSendToWahoo={connections.wahoo ? handleSendToWahoo : null}
             onExportToZwift={handleExportToZwift}
             workoutLibrary={[...LIBRARY_WORKOUTS, ...customWorkoutLibrary]}
+            onOpenRouteBuilder={handleOpenRouteBuilder}
           />
         );
       case VIEWS.SETTINGS:
@@ -1008,7 +1021,10 @@ export default function App() {
         <div className="sidebar-header">
           <div className="sidebar-logo">
             <span className="sidebar-logo-mark">CC</span>
-            Coach<span>Center</span>
+            <span className="sidebar-logo-wordmark">
+              <span className="sidebar-logo-title">Coach Center</span>
+              <span className="sidebar-logo-sub">Performance Studio</span>
+            </span>
           </div>
           <div className="sidebar-version">APEX v0.2.0</div>
         </div>
@@ -1052,19 +1068,19 @@ export default function App() {
           <div className="nav-section-label">Connections</div>
           <div className="nav-item" style={{ cursor: 'default' }}>
             <span className="conn-dot" style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: connections.intervals ? 'var(--accent-green)' : 'var(--text-3)' }}></span>
-            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Intervals.icu</span>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Intervals.icu</span>
           </div>
           <div className="nav-item" style={{ cursor: 'default' }}>
             <span className="conn-dot" style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: connections.strava ? 'var(--accent-green)' : 'var(--text-3)' }}></span>
-            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Strava</span>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Strava</span>
           </div>
           <div className="nav-item" style={{ cursor: 'default' }}>
             <span className="conn-dot" style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: connections.wahoo ? 'var(--accent-green)' : 'var(--text-3)' }}></span>
-            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Wahoo</span>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Wahoo</span>
           </div>
           <div className="nav-item" style={{ cursor: 'default' }}>
             <span className="conn-dot" style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: connections.garmin ? 'var(--accent-yellow)' : 'var(--text-3)' }}></span>
-            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Garmin (via I.icu)</span>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Garmin (via I.icu)</span>
           </div>
         </nav>
       </aside>

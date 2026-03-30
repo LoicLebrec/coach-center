@@ -23,7 +23,6 @@ import { exportWorkoutFit, exportWorkoutFitFromBlocks, hasWorkoutContent, export
 import { intervalsService, buildIcuEventPayload } from '../services/intervals';
 import { buildRuleBasedWorkout, inferTrainingType } from '../services/workout-rules';
 import { LIBRARY_WORKOUTS as DEFAULT_LIBRARY_WORKOUTS } from '../data/workoutLibrary';
-import GpxRouteBuilder from './GpxRouteBuilder';
 
 const ZONE_STYLE = {
     Z1: 'z1',
@@ -339,6 +338,7 @@ export default function Calendar({
     onSendToWahoo,
     onExportToZwift,
     workoutLibrary,
+    onOpenRouteBuilder,
 }) {
     const csvInputRef = useRef(null);
     const [cursor, setCursor] = useState(startOfMonth(new Date()));
@@ -375,6 +375,7 @@ export default function Calendar({
     const [plannerError, setPlannerError] = useState(null);
     const [dragOverDay, setDragOverDay] = useState(null);
     const [selectedEvent, setSelectedEvent] = useState(null);
+    const [routePromptEvent, setRoutePromptEvent] = useState(null);
     const [selectedActivityDay, setSelectedActivityDay] = useState(null);
     const [dayQuickTitle, setDayQuickTitle] = useState('');
     const [dayQuickType, setDayQuickType] = useState('Workout');
@@ -1044,6 +1045,20 @@ export default function Calendar({
         }
     };
 
+    const isRouteCandidate = (event) => {
+        if (!event) return false;
+        const hasPlannedId = String(event.id || '').startsWith('local_') || String(event.id || '').startsWith('event_');
+        return event.kind === 'training' && hasPlannedId && event.date >= startOfDay(new Date());
+    };
+
+    const openEventCard = (event) => {
+        if (isRouteCandidate(event)) {
+            setRoutePromptEvent(event);
+            return;
+        }
+        setSelectedEvent(event);
+    };
+
     return (
         <div>
             <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -1129,7 +1144,7 @@ export default function Calendar({
                                                             key={entry.id}
                                                             className={`calendar-pill calendar-pill-${entry.kind} calendar-pill-tone-${tone}`}
                                                             title={entry.title}
-                                                            onClick={(e) => { e.stopPropagation(); setSelectedEvent(entry); }}
+                                                            onClick={(e) => { e.stopPropagation(); openEventCard(entry); }}
                                                             style={{ cursor: 'pointer' }}
                                                         >
                                                             <span className="calendar-pill-text">{entry.title}</span>
@@ -1204,7 +1219,7 @@ export default function Calendar({
                                                     const notesPreview = String(entry.notes || '').replace(/\s+/g, ' ').slice(0, 170);
                                                     const blocksDuration = totalDuration(entry.workoutBlocks || []);
                                                     return (
-                                                        <div key={entry.id} className={`calendar-week-item calendar-week-item-${tone}`} onClick={(e) => { e.stopPropagation(); setSelectedEvent(entry); }} style={{ cursor: 'pointer' }}>
+                                                        <div key={entry.id} className={`calendar-week-item calendar-week-item-${tone}`} onClick={(e) => { e.stopPropagation(); openEventCard(entry); }} style={{ cursor: 'pointer' }}>
                                                             <div className="calendar-week-item-head">
                                                                 <div className="calendar-week-item-title">{entry.title}</div>
                                                                 <span className={`calendar-week-tone calendar-week-tone-${tone}`}>{toneLabel(tone)}</span>
@@ -1287,7 +1302,6 @@ export default function Calendar({
                         )}
                     </div>
 
-                    <GpxRouteBuilder athlete={athlete} events={events} plannedEvents={plannedEvents} workoutLibrary={libraryWorkouts} />
                 </div>
 
                 {/* ── Weekly metrics (Kilometers & Avg Watts) ── */}
@@ -1466,10 +1480,10 @@ export default function Calendar({
                                 <div>
                                     <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 8 }}>What's your training goal?</div>
                                     {[
-                                        { id: 'race', icon: '🏁', label: 'Race Prep', sub: 'Peak for an upcoming event' },
-                                        { id: 'ftp', icon: '⚡', label: 'FTP Build', sub: 'Raise threshold power' },
-                                        { id: 'base', icon: '🌱', label: 'Build Base', sub: 'Aerobic foundation & volume' },
-                                        { id: 'recovery', icon: '💤', label: 'Recovery', sub: 'Absorb & rebuild' },
+                                        { id: 'race', code: 'RACE', label: 'Race Prep', sub: 'Peak for an upcoming event' },
+                                        { id: 'ftp', code: 'FTP', label: 'FTP Build', sub: 'Raise threshold power' },
+                                        { id: 'base', code: 'BASE', label: 'Build Base', sub: 'Aerobic foundation & volume' },
+                                        { id: 'recovery', code: 'REC', label: 'Recovery', sub: 'Absorb and rebuild' },
                                     ].map(opt => (
                                         <div
                                             key={opt.id}
@@ -1482,7 +1496,14 @@ export default function Calendar({
                                                 cursor: 'pointer', transition: 'all 0.15s',
                                             }}
                                         >
-                                            <span style={{ fontSize: 18 }}>{opt.icon}</span>
+                                            <span style={{
+                                                fontFamily: 'var(--font-mono)',
+                                                fontSize: 11,
+                                                fontWeight: 700,
+                                                letterSpacing: '0.08em',
+                                                color: 'var(--text-2)',
+                                                minWidth: 34,
+                                            }}>{opt.code}</span>
                                             <div>
                                                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>{opt.label}</div>
                                                 <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{opt.sub}</div>
@@ -1527,9 +1548,9 @@ export default function Calendar({
                                 <div>
                                     <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 8 }}>What training load?</div>
                                     {[
-                                        { id: 'easy', icon: '🟢', label: 'Easy', sub: 'Low stress — ideal for recovery block or returning from break' },
-                                        { id: 'moderate', icon: '🟡', label: 'Moderate', sub: 'Balanced — solid progression without excessive fatigue' },
-                                        { id: 'hard', icon: '🔴', label: 'Hard', sub: 'High load — push limits, accumulate significant CTL' },
+                                        { id: 'easy', code: 'L1', label: 'Easy', sub: 'Low stress - ideal for recovery block or returning from break' },
+                                        { id: 'moderate', code: 'L2', label: 'Moderate', sub: 'Balanced - solid progression without excessive fatigue' },
+                                        { id: 'hard', code: 'L3', label: 'Hard', sub: 'High load - push limits and accumulate significant CTL' },
                                     ].map(opt => (
                                         <div
                                             key={opt.id}
@@ -1542,7 +1563,14 @@ export default function Calendar({
                                                 cursor: 'pointer', transition: 'all 0.15s',
                                             }}
                                         >
-                                            <span style={{ fontSize: 16 }}>{opt.icon}</span>
+                                            <span style={{
+                                                fontFamily: 'var(--font-mono)',
+                                                fontSize: 11,
+                                                fontWeight: 700,
+                                                letterSpacing: '0.08em',
+                                                color: 'var(--text-2)',
+                                                minWidth: 24,
+                                            }}>{opt.code}</span>
                                             <div>
                                                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>{opt.label}</div>
                                                 <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{opt.sub}</div>
@@ -1749,7 +1777,7 @@ export default function Calendar({
                     ) : (
                         <div className="calendar-upcoming-list">
                             {timelineEvents.map(event => (
-                                <div key={event.id} className="calendar-upcoming-item" onClick={() => setSelectedEvent(event)} style={{ cursor: 'pointer' }}>
+                                <div key={event.id} className="calendar-upcoming-item" onClick={() => openEventCard(event)} style={{ cursor: 'pointer' }}>
                                     <div>
                                         <div className="calendar-upcoming-date">{format(event.date, 'EEE dd MMM yyyy')}</div>
                                         <div className="calendar-upcoming-title">{event.title}</div>
@@ -2086,12 +2114,73 @@ export default function Calendar({
                                     Send to Wahoo
                                 </button>
                             )}
+                            {isRouteCandidate(selectedEvent) && (
+                                <button className="btn" onClick={() => setRoutePromptEvent(selectedEvent)}>
+                                    Build Route
+                                </button>
+                            )}
                             {String(selectedEvent.id).startsWith('local_') && (
                                 <button className="btn btn-danger" onClick={() => { onRemovePlannedEvent(selectedEvent.id); setSelectedEvent(null); }}>
                                     Remove
                                 </button>
                             )}
                             <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => setSelectedEvent(null)}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {routePromptEvent && (
+                <div
+                    style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+                        zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+                    }}
+                    onClick={() => setRoutePromptEvent(null)}
+                >
+                    <div
+                        style={{
+                            width: '100%',
+                            maxWidth: 520,
+                            background: 'var(--bg-1)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 14,
+                            padding: 22,
+                            boxShadow: '0 18px 52px rgba(0,0,0,0.42)',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div style={{ fontSize: 20, fontWeight: 650, color: 'var(--text-0)', marginBottom: 8 }}>
+                            Build route based on your training
+                        </div>
+                        <div style={{ fontSize: 14, color: 'var(--text-1)', lineHeight: 1.6, marginBottom: 14 }}>
+                            Open Route Builder to generate a route for <strong>{routePromptEvent.title}</strong> on {format(routePromptEvent.date, 'EEE dd MMM')}.
+                        </div>
+                        <div style={{
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg-2)',
+                            borderRadius: 10,
+                            padding: '10px 12px',
+                            fontSize: 12,
+                            color: 'var(--text-2)',
+                            marginBottom: 16,
+                        }}>
+                            Tip: adjust distance, surface, and route style in Route Builder after opening.
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button className="btn" onClick={() => setRoutePromptEvent(null)}>
+                                Cancel
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => {
+                                    onOpenRouteBuilder?.(routePromptEvent);
+                                    setRoutePromptEvent(null);
+                                    setSelectedEvent(null);
+                                }}
+                            >
+                                Open Route Builder
+                            </button>
                         </div>
                     </div>
                 </div>
