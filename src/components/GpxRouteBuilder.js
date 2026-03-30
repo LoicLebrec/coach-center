@@ -15,7 +15,7 @@ L.Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, 
 // Fallback speeds (km/h) when no FTP/weight data available
 const SPEED_KMPH = {
   Ride: { Z1: 20, Z2: 27, Z3: 32, Z4: 36, Z5: 40 },
-  Run:  { Z1: 7,  Z2: 10, Z3: 13, Z4: 15, Z5: 17 },
+  Run: { Z1: 7, Z2: 10, Z3: 13, Z4: 15, Z5: 17 },
 };
 
 // Zone intensity as fraction of FTP
@@ -27,10 +27,10 @@ const ZONE_FTP_FRACTION = { Z1: 0.55, Z2: 0.70, Z3: 0.85, Z4: 1.00, Z5: 1.12 };
 // Gravel: packed gravel / upright position — much higher rolling resistance
 // MTB: off-road terrain / standing/upright
 const SURFACE_PHYSICS = {
-  road:   { crr: 0.004, cda: 0.32 },
-  quiet:  { crr: 0.007, cda: 0.36 },
+  road: { crr: 0.004, cda: 0.32 },
+  quiet: { crr: 0.007, cda: 0.36 },
   gravel: { crr: 0.030, cda: 0.40 },
-  mtb:    { crr: 0.050, cda: 0.50 },
+  mtb: { crr: 0.050, cda: 0.50 },
 };
 
 // Multiplier applied to fallback table speeds when no FTP available
@@ -78,7 +78,7 @@ function estimateRouteTimeMin(rawCoords, powerW, massKg, crr, cda) {
   for (let i = 1; i < rawCoords.length; i++) {
     const segKm = haversineKm(
       { lat: rawCoords[i - 1][1], lng: rawCoords[i - 1][0] },
-      { lat: rawCoords[i][1],     lng: rawCoords[i][0] }
+      { lat: rawCoords[i][1], lng: rawCoords[i][0] }
     );
     if (segKm < 1e-6) continue;
     const dEle = (rawCoords[i][2] || 0) - (rawCoords[i - 1][2] || 0);
@@ -121,14 +121,14 @@ function routeFitScore(candidate, { duration, targetKm, intervalLoad, terrainPre
   // Terrain preference bonus (flat / hilly bias)
   let prefBonus = 0;
   if (elevation?.hasData) {
-    if (terrainPref === 'flat')  prefBonus = -Math.min(elevation.climbM / 400, 0.25);
-    if (terrainPref === 'hilly') prefBonus =  Math.min(elevation.climbM / 600, 0.25);
+    if (terrainPref === 'flat') prefBonus = -Math.min(elevation.climbM / 400, 0.25);
+    if (terrainPref === 'hilly') prefBonus = Math.min(elevation.climbM / 600, 0.25);
   }
 
   // Weights derived from intervalLoad — sum to ~0.85 + prefBonus
-  const wTime    = Math.max(0.20, 0.55 - intervalLoad * 0.45);
+  const wTime = Math.max(0.20, 0.55 - intervalLoad * 0.45);
   const wTerrain = intervalLoad * 0.55;
-  const wShape   = 0.15;
+  const wShape = 0.15;
 
   return timeScore * wTime + terrainScore * wTerrain + shapeScore * wShape + prefBonus;
 }
@@ -558,6 +558,16 @@ async function fetchBrouterRoute(from, to, profile) {
   if (!raw?.length) throw new Error('No route from BRouter');
   return raw.map(c => [c[0], c[1]]);
 }
+
+async function fetchBrouterRouteSafe(from, to, profile) {
+  try {
+    return await fetchBrouterRoute(from, to, profile);
+  } catch (err) {
+    const fallback = SURFACE_PROFILE_FALLBACK[profile];
+    if (fallback) return await fetchBrouterRoute(from, to, fallback);
+    throw err;
+  }
+}
 async function fetchBrouterTrip(startLat, startLng, wpts, profile, alternativeidx = 0) {
   const pts = [{ lat: startLat, lng: startLng }, ...wpts, { lat: startLat, lng: startLng }];
   const ll = pts.map(p => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join('|');
@@ -593,7 +603,7 @@ async function routeSegment(from, to, sport, surface) {
     }
   }
   try {
-    return await fetchBrouterRoute(fromSnap, toSnap, SURFACE_PROFILES[surface] || 'fastbike');
+    return await fetchBrouterRouteSafe(fromSnap, toSnap, SURFACE_PROFILES[surface] || 'fastbike');
   } catch (_) {
     return fetchOsrmRouteByProfile('driving', fromSnap, toSnap);
   }
@@ -609,7 +619,7 @@ async function routeTripWithSegments(startLat, startLng, wpts, sport, surface) {
 async function routeTrip(startLat, startLng, wpts, sport, surface) {
   if (sport === 'Run') return fetchOsrmTrip(startLat, startLng, wpts);
   try {
-    return await fetchBrouterTrip(startLat, startLng, wpts, SURFACE_PROFILES[surface] || 'fastbike');
+    return await fetchBrouterTripSafe(startLat, startLng, wpts, SURFACE_PROFILES[surface] || 'fastbike');
   } catch (_) {
     return routeTripWithSegments(startLat, startLng, wpts, sport, surface);
   }
@@ -621,7 +631,7 @@ async function routeOutAndBack(startLat, startLng, halfKm, sport, surface, dir) 
     return { coords: [...outC, ...[...outC].reverse().slice(1)], rawCoords: null };
   }
   try {
-    const { coords: outC, rawCoords: outR } = await fetchBrouterTrip(startLat, startLng, [mid], SURFACE_PROFILES[surface] || 'fastbike');
+    const { coords: outC, rawCoords: outR } = await fetchBrouterTripSafe(startLat, startLng, [mid], SURFACE_PROFILES[surface] || 'fastbike');
     return { coords: [...outC, ...[...outC].reverse().slice(1)], rawCoords: outR ? [...outR, ...[...outR].reverse().slice(1)] : null };
   } catch (_) {
     const outC = await routeSegment({ lat: startLat, lng: startLng }, mid, sport, surface);
@@ -991,6 +1001,12 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
   const [startLat, setStartLat] = useState('');
   const [startLng, setStartLng] = useState('');
   const [startName, setStartName] = useState('');
+  const [endLat, setEndLat] = useState('');
+  const [endLng, setEndLng] = useState('');
+  const [endName, setEndName] = useState('');
+  const [viaLat, setViaLat] = useState('');
+  const [viaLng, setViaLng] = useState('');
+  const [viaName, setViaName] = useState('');
   const [homeLat, setHomeLat] = useState('');
   const [homeLng, setHomeLng] = useState('');
   const [homeName, setHomeName] = useState('');
@@ -1006,6 +1022,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
   const [surface, setSurface] = useState('road');
   const [directionPref, setDirectionPref] = useState('any');
   const [terrainPref, setTerrainPref] = useState('any');
+  const [menuStep, setMenuStep] = useState('start');
 
   // Tabs
   const [tab, setTab] = useState('generate');
@@ -1053,6 +1070,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
   const [showMapPoiResults, setShowMapPoiResults] = useState(false);
   const [mapPlaceResults, setMapPlaceResults] = useState([]);
   const [mapSearching, setMapSearching] = useState(false);
+  const [topBuildExpanded, setTopBuildExpanded] = useState(false);
 
   const showPois = activePoiCats.size > 0;
 
@@ -1301,6 +1319,18 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
       reverseGeocode(la, ln).then(n => { setHomeName(n); savePrefs({ homeLat: String(la), homeLng: String(ln), homeName: n }); });
       return;
     }
+    if (mapPickMode === 'end') {
+      setEndLat(String(la)); setEndLng(String(ln)); setEndName('Resolving...');
+      setMapPickMode(null);
+      reverseGeocode(la, ln).then(n => setEndName(n));
+      return;
+    }
+    if (mapPickMode === 'via') {
+      setViaLat(String(la)); setViaLng(String(ln)); setViaName('Resolving...');
+      setMapPickMode(null);
+      reverseGeocode(la, ln).then(n => setViaName(n));
+      return;
+    }
     if (tab !== 'draw') return;
     const idx = waypointsRef.current.length;
     const newPt = { lat: la, lng: ln, name: coordStr(la, ln) };
@@ -1357,6 +1387,15 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
   const handleGenerate = useCallback(async () => {
     const la = parseFloat(startLat), ln = parseFloat(startLng);
     if (isNaN(la) || isNaN(ln)) { setGenError('Set your start location first.'); return; }
+    const endPoint = {
+      lat: parseFloat(endLat),
+      lng: parseFloat(endLng),
+    };
+    const hasEndPoint = !isNaN(endPoint.lat) && !isNaN(endPoint.lng);
+    if (routeType === 'point' && !hasEndPoint) {
+      setGenError('Set an end point for point-to-point navigation.');
+      return;
+    }
     setGenError(null); setGenLoading(true); setCandidates([]);
 
     // Direction preference → rotate waypoints toward that bearing
@@ -1394,13 +1433,44 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
     const avgPowerW = ftp
       ? (selectedBlocks.length > 0
         ? selectedBlocks.reduce((s, b) => s + ftp * (ZONE_FTP_FRACTION[b.zone] || 0.7) * Number(b.durationMin), 0) /
-          Math.max(1, selectedBlocks.reduce((s, b) => s + Number(b.durationMin), 0))
+        Math.max(1, selectedBlocks.reduce((s, b) => s + Number(b.durationMin), 0))
         : ftp * (ZONE_FTP_FRACTION[zone] || 0.7))
       : null;
 
     const scoreParams = { duration, targetKm, intervalLoad, terrainPref };
 
     try {
+      if (routeType === 'point') {
+        const points = [{ lat: la, lng: ln }];
+        if (!isNaN(parseFloat(viaLat)) && !isNaN(parseFloat(viaLng))) {
+          points.push({ lat: parseFloat(viaLat), lng: parseFloat(viaLng) });
+        }
+        points.push(endPoint);
+
+        const segs = await Promise.all(points.slice(0, -1).map((p, i) => routeSegment(p, points[i + 1], sport, surface)));
+        const coords = segs.flatMap((seg, i) => i === 0 ? seg : seg.slice(1));
+        const distanceKm = Math.round(routeDistanceKm(coords) * 10) / 10;
+        const shape = scoreRouteShape(coords);
+        const candidate = {
+          id: 0,
+          label: 'A',
+          coords,
+          rawCoords: null,
+          distanceKm,
+          intScore: null,
+          shape,
+          elevation: { climbM: 0, descentM: 0, hasData: false },
+          estTimeMin: null,
+        };
+        if ((shape.uTurns || 0) > 0) {
+          setGenError('Point-to-point route built, but includes a U-turn. Try moving waypoint/end point slightly.');
+        }
+        setCandidates([candidate]);
+        setSelected(0);
+        setGenLoading(false);
+        return;
+      }
+
       const results = await Promise.allSettled(rotations.map(async (rot) => {
         if (routeType === 'outback') return routeOutAndBack(la, ln, halfKm, sport, surface, rot);
 
@@ -1426,9 +1496,9 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
           .map(r => r.value)
           .map(res => {
             const distanceKm = routeDistanceKm(res.coords);
-            const shape      = scoreRouteShape(res.coords);
-            const elevation  = routeElevation(res.rawCoords);
-            const intScore   = effectiveIntervals ? scoreForIntervals(res.rawCoords, effectiveWarmupKm) : null;
+            const shape = scoreRouteShape(res.coords);
+            const elevation = routeElevation(res.rawCoords);
+            const intScore = effectiveIntervals ? scoreForIntervals(res.rawCoords, effectiveWarmupKm) : null;
             const estTimeMin = avgPowerW ? estimateRouteTimeMin(res.rawCoords, avgPowerW, riderMass, crr, cda) : null;
             return { ...res, __score: routeFitScore({ shape, intScore, elevation, estTimeMin, distanceKm }, scoreParams) };
           })
@@ -1442,9 +1512,9 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
         if (r.status !== 'fulfilled') return null;
         const { coords, rawCoords } = r.value;
         const distanceKm = Math.round(routeDistanceKm(coords) * 10) / 10;
-        const intScore   = effectiveIntervals && rawCoords ? scoreForIntervals(rawCoords, effectiveWarmupKm) : null;
-        const shape      = scoreRouteShape(coords);
-        const elevation  = routeElevation(rawCoords);
+        const intScore = effectiveIntervals && rawCoords ? scoreForIntervals(rawCoords, effectiveWarmupKm) : null;
+        const shape = scoreRouteShape(coords);
+        const elevation = routeElevation(rawCoords);
         const estTimeMin = avgPowerW ? estimateRouteTimeMin(rawCoords, avgPowerW, riderMass, crr, cda) : null;
         return { id: i, label: ['A', 'B', 'C'][i], coords, rawCoords, distanceKm, intScore, shape, elevation, estTimeMin };
       }).filter(Boolean);
@@ -1460,7 +1530,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
       setCandidates(sorted); setSelected(0);
     } catch (err) { setGenError(err.message || 'Route generation failed.'); }
     finally { setGenLoading(false); }
-  }, [startLat, startLng, targetKm, sport, surface, routeType, directionPref, terrainPref, zone, duration, todayIntervals, warmupKmEst, zoneSpeedKmh, selectedBlocks, ftp, riderMass]);
+  }, [startLat, startLng, endLat, endLng, viaLat, viaLng, targetKm, sport, surface, routeType, directionPref, terrainPref, zone, duration, todayIntervals, warmupKmEst, zoneSpeedKmh, selectedBlocks, ftp, riderMass]);
 
   // ── Save / delete / rate ──────────────────────────────────
   const handleSaveRoute = async (name, coords, distKm, rSport, rWaypoints) => {
@@ -1556,15 +1626,66 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               <Polyline key={i} positions={seg.map(([ln, la]) => [la, ln])}
                 pathOptions={{ color: drawnPolylineColor, weight: 4, opacity: 0.95 }} />
             ))}
-            {tab === 'draw' && waypoints.map((pt, i) => (
-              <Marker key={i} position={[pt.lat, pt.lng]} icon={mapPinIcon(String(i + 1), '#4d7fe8')} />
-            ))}
+            {tab === 'draw' && waypoints.map((pt, i) => {
+              const isFirst = i === 0;
+              const isLast = i === waypoints.length - 1 && waypoints.length > 1;
+              const pinColor = isFirst ? '#1f9d77' : isLast ? '#ef4444' : '#4d7fe8';
+              const pinLabel = isFirst ? 'S' : isLast ? 'E' : String(i + 1);
+              // Cumulative distance up to this waypoint
+              let cumDist = 0;
+              for (let j = 1; j <= i; j++) {
+                cumDist += haversineKm(
+                  { lat: waypoints[j - 1].lat, lng: waypoints[j - 1].lng },
+                  { lat: waypoints[j].lat, lng: waypoints[j].lng }
+                );
+              }
+              return (
+                <Marker key={i} position={[pt.lat, pt.lng]} icon={mapPinIcon(pinLabel, pinColor)}>
+                  <Tooltip direction="top" offset={[0, -16]} opacity={0.95} permanent={false}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                      {isFirst ? 'Start' : isLast ? `End · ${cumDist.toFixed(1)} km` : `WP ${i + 1} · ${cumDist.toFixed(1)} km`}
+                    </span>
+                  </Tooltip>
+                  <Popup>
+                    <div style={{ minWidth: 160, fontFamily: 'var(--font-sans)', padding: '4px 2px' }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#111', marginBottom: 4 }}>
+                        {isFirst ? 'Start' : isLast ? 'End point' : `Waypoint ${i + 1}`}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#666', marginBottom: i > 0 ? 4 : 8 }}>
+                        {pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}
+                      </div>
+                      {i > 0 && (
+                        <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
+                          {cumDist.toFixed(2)} km from start
+                        </div>
+                      )}
+                      <button
+                        onClick={() => removeWaypoint(i)}
+                        style={{
+                          width: '100%', padding: '6px 8px', borderRadius: 6, border: 'none',
+                          background: '#ef4444', color: '#fff', fontSize: 12, fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Remove waypoint
+                      </button>
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
             {tab === 'saved' && previewRoute?.coords && (
               <Polyline positions={previewRoute.coords.map(([ln, la]) => [la, ln])}
                 pathOptions={{ color: '#4d7fe8', weight: 4, opacity: 0.95 }} />
             )}
             {startLat && startLng && tab !== 'draw' && (
               <Marker position={[parseFloat(startLat), parseFloat(startLng)]} icon={mapPinIcon('ST', '#1f9d77')} />
+            )}
+            {routeType === 'point' && endLat && endLng && tab !== 'draw' && (
+              <Marker position={[parseFloat(endLat), parseFloat(endLng)]} icon={mapPinIcon('EN', '#f97316')} />
+            )}
+            {routeType === 'point' && viaLat && viaLng && tab !== 'draw' && (
+              <Marker position={[parseFloat(viaLat), parseFloat(viaLng)]} icon={mapPinIcon('WP', '#7c3aed')} />
             )}
 
             {displayCurrentLocation && (
@@ -1804,6 +1925,90 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
             </div>
           )}
         </div>
+
+        <div style={{
+          ...GLASS,
+          marginTop: 8,
+          borderRadius: 12,
+          border: '1px solid rgba(255,255,255,0.08)',
+          overflow: 'hidden',
+        }}>
+          <button
+            onClick={() => setTopBuildExpanded(v => !v)}
+            style={{
+              width: '100%',
+              border: 'none',
+              background: 'rgba(255,255,255,0.04)',
+              color: 'var(--text-1)',
+              padding: '9px 11px',
+              textAlign: 'left',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
+              letterSpacing: '0.06em',
+            }}
+          >
+            {topBuildExpanded ? 'HIDE' : 'SHOW'} BUILD POINTS
+          </button>
+
+          {topBuildExpanded && (
+            <div style={{ padding: 10, background: 'rgba(8, 10, 14, 0.94)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>
+                ROUTE MODE
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                {[
+                  { id: 'loop', label: 'Loop' },
+                  { id: 'outback', label: 'Out & Back' },
+                  { id: 'point', label: 'Point to Point' },
+                ].map(o => (
+                  <button
+                    key={o.id}
+                    onClick={() => setRouteType(o.id)}
+                    style={{
+                      border: `1px solid ${routeType === o.id ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`,
+                      background: routeType === o.id ? 'var(--brand-dim)' : 'rgba(255,255,255,0.05)',
+                      color: routeType === o.id ? 'var(--brand)' : 'var(--text-2)',
+                      borderRadius: 7,
+                      padding: '5px 8px',
+                      fontSize: 12,
+                      fontFamily: 'var(--font-mono)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>
+                POINT PICKER
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                <button onClick={() => setMapPickMode('start')} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: `1px solid ${mapPickMode === 'start' ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`, background: mapPickMode === 'start' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.05)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                  Pick Start
+                </button>
+                <button onClick={() => { setRouteType('point'); setMapPickMode('via'); }} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: `1px solid ${mapPickMode === 'via' ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`, background: mapPickMode === 'via' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.05)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                  Pick Waypoint
+                </button>
+                <button onClick={() => { setRouteType('point'); setMapPickMode('end'); }} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: `1px solid ${mapPickMode === 'end' ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`, background: mapPickMode === 'end' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.05)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                  Pick End
+                </button>
+                {mapPickMode && (
+                  <button onClick={() => setMapPickMode(null)} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                    Cancel
+                  </button>
+                )}
+              </div>
+
+              <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.4 }}>
+                Start: <span style={{ color: 'var(--text-1)' }}>{startName || (startLat && startLng ? coordStr(startLat, startLng) : 'not set')}</span><br />
+                Waypoint: <span style={{ color: 'var(--text-1)' }}>{viaName || (viaLat && viaLng ? coordStr(viaLat, viaLng) : 'optional')}</span><br />
+                End: <span style={{ color: 'var(--text-1)' }}>{endName || (endLat && endLng ? coordStr(endLat, endLng) : 'not set')}</span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Left floating panel ────────────────────────────── */}
@@ -1811,6 +2016,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
         ...GLASS, position: 'absolute', left: 14, top: 14, bottom: 14,
         width: 'min(390px, calc(100vw - 28px))', borderRadius: 18, zIndex: 1000,
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        minHeight: 0,
         background: 'linear-gradient(180deg, rgba(14,17,24,0.96) 0%, rgba(8,10,15,0.95) 100%)',
         border: '1px solid rgba(255,255,255,0.11)',
         boxShadow: '0 24px 60px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,255,255,0.06)',
@@ -1820,9 +2026,23 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
           padding: '18px 18px 10px',
           borderBottom: '1px solid rgba(255,255,255,0.09)',
           background: 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%)',
+          flex: '0 0 50%',
+          height: '50%',
+          minHeight: 0,
+          maxHeight: '50%',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
+          flexShrink: 0,
         }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', letterSpacing: '0.12em', marginBottom: 14 }}>
-            ROUTE BUILDER · {tile.url.includes('maptiler') ? 'MapTiler Outdoor' : 'Esri'}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontFamily: 'var(--font-sans)', fontSize: 20, fontWeight: 800, color: 'var(--text-0)', letterSpacing: '-0.02em', lineHeight: 1.2, marginBottom: 2 }}>
+              Route Builder
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.1em' }}>
+              {tile.url.includes('maptiler') ? 'MapTiler Outdoor' : 'Esri'} · {sport === 'Run' ? 'Running' : 'Cycling'}
+            </div>
           </div>
 
           {startLat && startLng && (
@@ -1841,31 +2061,75 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
             </div>
           )}
 
-          {/* Location chips */}
-          {startLat && startLng && (
-            <div style={{ display: 'flex', gap: 5, marginBottom: 12, flexWrap: 'wrap' }}>
-              {homeLat && (
-                <button onClick={() => { setStartLat(homeLat); setStartLng(homeLng); setStartName(homeName); setMapFlyTo({ lat: parseFloat(homeLat), lng: parseFloat(homeLng), zoom: 13 }); }}
-                  style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
-                  Use home
-                </button>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.1em', marginBottom: 8 }}>
+            WORKFLOW
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6, marginBottom: 10 }}>
+            {[
+              { id: 'start', label: 'Start Location' },
+              { id: 'training', label: 'Training' },
+              { id: 'settings', label: 'Advanced Training Type' },
+              { id: 'output', label: 'View' },
+            ].map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setMenuStep(s.id)}
+                style={{
+                  borderRadius: 8,
+                  border: `1px solid ${menuStep === s.id ? 'var(--brand)' : 'rgba(255,255,255,0.1)'}`,
+                  background: menuStep === s.id ? 'var(--brand-dim)' : 'rgba(255,255,255,0.04)',
+                  color: menuStep === s.id ? 'var(--brand)' : 'var(--text-2)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  padding: '7px 6px',
+                  fontWeight: menuStep === s.id ? 700 : 500,
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          {menuStep === 'start' && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', letterSpacing: '0.08em', marginBottom: 7 }}>
+                START POINT
+              </div>
+              {startLat && startLng ? (
+                <div style={{ display: 'flex', gap: 5, marginBottom: 8, flexWrap: 'wrap' }}>
+                  {homeLat && (
+                    <button onClick={() => { setStartLat(homeLat); setStartLng(homeLng); setStartName(homeName); setMapFlyTo({ lat: parseFloat(homeLat), lng: parseFloat(homeLng), zoom: 13 }); }}
+                      style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                      Use home
+                    </button>
+                  )}
+                  <button onClick={() => setMapPickMode('start')}
+                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: mapPickMode === 'start' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.07)', border: `1px solid ${mapPickMode === 'start' ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`, color: mapPickMode === 'start' ? 'var(--brand)' : 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                    Select start on map
+                  </button>
+                  <button onClick={() => { setStartLat(''); setStartLng(''); setStartName(''); }}
+                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                    Clear
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  <button onClick={() => setMapPickMode('start')}
+                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: mapPickMode === 'start' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.07)', border: `1px solid ${mapPickMode === 'start' ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`, color: mapPickMode === 'start' ? 'var(--brand)' : 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                    Pick start
+                  </button>
+                  <button onClick={handleDetectLocation}
+                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                    Use my location
+                  </button>
+                </div>
               )}
-              <button onClick={() => setMapPickMode('start')}
-                style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: mapPickMode === 'start' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.07)', border: `1px solid ${mapPickMode === 'start' ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`, color: mapPickMode === 'start' ? 'var(--brand)' : 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
-                Select start on map
-              </button>
-              <button onClick={() => { setStartLat(''); setStartLng(''); setStartName(''); }}
-                style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
-                Clear
-              </button>
             </div>
           )}
 
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.1em', marginBottom: 8 }}>
-            SESSION SETTINGS
-          </div>
-
-          <div style={{
+          {menuStep === 'training' && <div style={{
             marginBottom: 10,
             padding: '11px 12px',
             background: 'rgba(255,255,255,0.045)',
@@ -1993,44 +2257,76 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                 </div>
               );
             })()}
-          </div>
+          </div>}
 
-          {/* Route settings */}
-          <div style={{ display: 'flex', gap: 7, marginBottom: 10 }}>
-            <select value={sport} onChange={e => setSport(e.target.value)} style={{
-              flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)',
-              borderRadius: 8, padding: '8px 10px', color: 'var(--text-0)', fontFamily: 'var(--font-mono)', fontSize: 13, cursor: 'pointer',
-            }}>
-              <option value="Ride">Cycling</option>
-              <option value="Run">Running</option>
-            </select>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '0 10px' }}>
-              <input type="number" min="20" max="360" value={duration} onChange={e => setDuration(e.target.value)}
-                style={{ background: 'none', border: 'none', width: 44, color: 'var(--text-0)', fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 700, outline: 'none', textAlign: 'right' }} />
-              <span style={{ fontSize: 13, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>min</span>
+          {menuStep === 'settings' && <>
+            <div style={{ display: 'flex', gap: 7, marginBottom: 10 }}>
+              <select value={sport} onChange={e => setSport(e.target.value)} style={{
+                flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)',
+                borderRadius: 8, padding: '8px 10px', color: 'var(--text-0)', fontFamily: 'var(--font-mono)', fontSize: 13, cursor: 'pointer',
+              }}>
+                <option value="Ride">Cycling</option>
+                <option value="Run">Running</option>
+              </select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '0 10px' }}>
+                <input type="number" min="20" max="360" value={duration} onChange={e => setDuration(e.target.value)}
+                  style={{ background: 'none', border: 'none', width: 44, color: 'var(--text-0)', fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 700, outline: 'none', textAlign: 'right' }} />
+                <span style={{ fontSize: 13, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>min</span>
+              </div>
             </div>
-          </div>
 
-          {sport === 'Ride' && (
+            {sport === 'Ride' && (
+              <div style={{ marginBottom: 10 }}>
+                <PillToggle options={[{ id: 'road', label: 'Road' }, { id: 'quiet', label: 'Quiet' }, { id: 'gravel', label: 'Gravel' }, { id: 'mtb', label: 'MTB' }]} value={surface} onChange={setSurface} />
+                <div style={{ fontSize: 13, color: 'var(--text-2)', fontFamily: 'var(--font-sans)', marginTop: 7, lineHeight: 1.5 }}>{SURFACE_DESC[surface]}</div>
+              </div>
+            )}
+
             <div style={{ marginBottom: 10 }}>
-              <PillToggle options={[{ id: 'road', label: 'Road' }, { id: 'quiet', label: 'Quiet' }, { id: 'gravel', label: 'Gravel' }, { id: 'mtb', label: 'MTB' }]} value={surface} onChange={setSurface} />
-              <div style={{ fontSize: 13, color: 'var(--text-2)', fontFamily: 'var(--font-sans)', marginTop: 7, lineHeight: 1.5 }}>{SURFACE_DESC[surface]}</div>
+              <PillToggle options={[{ id: 'loop', label: 'Loop' }, { id: 'outback', label: 'Out & Back' }, { id: 'point', label: 'Point to Point' }]} value={routeType} onChange={setRouteType} />
+            </div>
+
+            <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-sans)', marginBottom: 10 }}>
+              Active terrain profile: <strong style={{ color: 'var(--text-1)' }}>{surface}</strong> ({SURFACE_PROFILES[surface] || 'fastbike'})
+            </div>
+
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', letterSpacing: '0.1em', marginBottom: 6 }}>TERRAIN</div>
+              <PillToggle options={[{ id: 'any', label: 'Any' }, { id: 'flat', label: 'Flat' }, { id: 'hilly', label: 'Hilly' }]} value={terrainPref} onChange={setTerrainPref} />
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', letterSpacing: '0.1em', marginBottom: 6 }}>DIRECTION</div>
+              <PillToggle options={[{ id: 'any', label: 'Any' }, { id: 'north', label: 'N' }, { id: 'east', label: 'E' }, { id: 'south', label: 'S' }, { id: 'west', label: 'W' }]} value={directionPref} onChange={setDirectionPref} />
+            </div>
+          </>}
+
+          {menuStep === 'output' && (
+            <div style={{ marginBottom: 12, padding: '10px 11px', borderRadius: 10, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginBottom: 8 }}>
+                Quick access to route output
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                <button onClick={() => setTab('generate')} style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.12)', background: tab === 'generate' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.06)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                  Open Generate
+                </button>
+                <button onClick={() => setTab('saved')} style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.12)', background: tab === 'saved' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.06)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                  Open Saved
+                </button>
+                <button
+                  onClick={() => candidates[selected]?.coords?.length && exportGpxFile(`${sport}-${zone}-${candidates[selected]?.distanceKm}km`, exportCoords(candidates[selected]?.coords || []))}
+                  disabled={!candidates[selected]?.coords?.length || isExportingGpx}
+                  style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(77,127,232,0.18)', color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-mono)', opacity: (!candidates[selected]?.coords?.length || isExportingGpx) ? 0.5 : 1 }}
+                >
+                  {isExportingGpx ? 'Preparing...' : 'Download GPX'}
+                </button>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.4 }}>
+                Current tab: <span style={{ color: 'var(--text-1)' }}>{tab}</span><br />
+                Candidate: <span style={{ color: 'var(--text-1)' }}>{candidates[selected]?.distanceKm ? `${candidates[selected].distanceKm} km` : 'none yet'}</span>
+              </div>
             </div>
           )}
-
-          <div style={{ marginBottom: 10 }}>
-            <PillToggle options={[{ id: 'loop', label: 'Loop' }, { id: 'outback', label: 'Out & Back' }]} value={routeType} onChange={setRouteType} />
-          </div>
-
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', letterSpacing: '0.1em', marginBottom: 6 }}>TERRAIN</div>
-            <PillToggle options={[{ id: 'any', label: 'Any' }, { id: 'flat', label: 'Flat' }, { id: 'hilly', label: 'Hilly' }]} value={terrainPref} onChange={setTerrainPref} />
-          </div>
-
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', letterSpacing: '0.1em', marginBottom: 6 }}>DIRECTION</div>
-            <PillToggle options={[{ id: 'any', label: 'Any' }, { id: 'north', label: 'N' }, { id: 'east', label: 'E' }, { id: 'south', label: 'S' }, { id: 'west', label: 'W' }]} value={directionPref} onChange={setDirectionPref} />
-          </div>
 
           {/* Tabs */}
           <div style={{ display: 'flex', marginLeft: -18, marginRight: -18 }}>
@@ -2056,7 +2352,21 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
         </div>
 
         {/* Panel body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        <div style={{
+          flex: '1 1 50%',
+          height: '50%',
+          minHeight: 0,
+          maxHeight: '50%',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          touchAction: 'pan-y',
+          padding: 16,
+          paddingBottom: 96,
+          scrollbarGutter: 'stable both-edges',
+          scrollbarWidth: 'thin',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
+        }}>
 
           {/* GENERATE TAB */}
           {tab === 'generate' && (
@@ -2165,7 +2475,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                           {c.intScore.descentM > 40 ? 'Descent in\nintervals' : 'Good\ninterval zone'}
                         </div>
                         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', textAlign: 'right' }}>
-                          interval zone:<br/>+{c.intScore.climbM}m / -{c.intScore.descentM}m
+                          interval zone:<br />+{c.intScore.climbM}m / -{c.intScore.descentM}m
                         </div>
                       </div>
                     )}
@@ -2179,7 +2489,19 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               ))}
 
               {candidates.length > 0 && (
-                <div style={{ display: 'flex', gap: 7, marginTop: 6 }}>
+                <div style={{
+                  display: 'flex',
+                  gap: 7,
+                  marginTop: 10,
+                  position: 'sticky',
+                  bottom: 8,
+                  zIndex: 5,
+                  padding: 8,
+                  borderRadius: 10,
+                  background: 'rgba(10,10,10,0.75)',
+                  backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}>
                   <button onClick={() => exportGpxFile(`${sport}-${zone}-${candidates[selected]?.distanceKm}km`, exportCoords(candidates[selected]?.coords || []))}
                     style={{ flex: 1, padding: '11px', borderRadius: 9, border: 'none', cursor: 'pointer', background: 'var(--brand)', color: '#fff', fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600 }}>
                     {isExportingGpx ? 'Preparing GPX...' : 'Download GPX'}
@@ -2218,7 +2540,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                 color: 'var(--text-2)',
                 lineHeight: 1.45,
               }}>
-                Waypoints are route anchor points you place on the map to shape the path. They are not businesses, so they do not have opening hours.
+                Click on the map to add waypoints. The route snaps to roads automatically. Click a pin on the map to remove it.
               </div>
               {waypoints.length > 0 && (
                 <div style={{ marginBottom: 12 }}>
@@ -2256,9 +2578,14 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                 </div>
               )}
               {waypoints.length > 0 && (
-                <button onClick={clearDraw} style={{ marginTop: 10, width: '100%', padding: '8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', background: 'none', color: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                  Clear all
-                </button>
+                <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                  <button onClick={() => removeWaypoint(waypoints.length - 1)} style={{ flex: 1, padding: '8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', background: 'none', color: 'var(--text-2)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                    ↩ Undo last
+                  </button>
+                  <button onClick={clearDraw} style={{ flex: 1, padding: '8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', background: 'none', color: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                    Clear all
+                  </button>
+                </div>
               )}
               {saveMsg && <div style={{ fontSize: 13, color: 'var(--accent-green)', marginTop: 10, fontFamily: 'var(--font-mono)' }}>{saveMsg}</div>}
             </div>

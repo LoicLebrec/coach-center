@@ -675,7 +675,7 @@ body,
 
 .calendar-weekday {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text-2);
   text-transform: uppercase;
@@ -757,7 +757,7 @@ body,
 
 .calendar-day-num {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-2);
   margin-bottom: 6px;
@@ -961,7 +961,7 @@ body,
 
 .calendar-week-meta span {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-2);
   border: 1px solid var(--border-accent);
@@ -972,7 +972,7 @@ body,
 .calendar-week-notes {
   margin-top: 6px;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
 }
 

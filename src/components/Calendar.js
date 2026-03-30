@@ -70,7 +70,7 @@ function WorkoutBlocksGraph({ blocks }) {
 
 const ZONE_COLORS_DETAIL = {
     Z1: '#475569', Z2: '#22c55e', Z3: '#eab308',
-    Z4: '#f97316', Z5: '#ef4444', Z6: '#a855f7', Z7: '#ec4899',
+    Z4: '#f97316', Z5: '#ef4444', Z6: '#a855f7', Z7: '#8b5cf6',
 };
 const ZONE_LABELS_DETAIL = {
     Z1: 'Recovery', Z2: 'Endurance', Z3: 'Tempo',
@@ -339,6 +339,7 @@ export default function Calendar({
     onExportToZwift,
     workoutLibrary,
     onOpenRouteBuilder,
+    onOpenWorkoutBuilder,
 }) {
     const csvInputRef = useRef(null);
     const [cursor, setCursor] = useState(startOfMonth(new Date()));
@@ -347,7 +348,7 @@ export default function Calendar({
         builder: false,
         manual: true,
         library: false,
-        ai: true,
+        ai: false,   // AI plan open by default
         csv: true,
         garmin: true,
         upcoming: false,
@@ -1304,54 +1305,204 @@ export default function Calendar({
 
                 </div>
 
-                {/* ── Weekly metrics (Kilometers & Avg Watts) ── */}
-                {weeklyMetrics.length > 0 && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10, marginBottom: 10 }}>
-                        {/* Weekly Distance Card */}
-                        <div className="card">
-                            <div className="card-header">
-                                <span className="card-title">Weekly Distance — Last 8 Weeks</span>
-                                <span className="card-badge">KM</span>
+                <div className="card" style={{ marginBottom: 0, padding: 0, overflow: 'hidden' }}>
+                    <div style={{ margin: 0 }}>
+                        <div
+                            onClick={() => toggleSection('ai')}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 12,
+                                padding: '14px 16px', borderRadius: 0, cursor: 'pointer',
+                                background: collapsed.ai
+                                    ? 'linear-gradient(135deg, rgba(34,211,238,0.08) 0%, rgba(77,127,232,0.08) 100%)'
+                                    : 'linear-gradient(135deg, rgba(34,211,238,0.14) 0%, rgba(77,127,232,0.14) 100%)',
+                                border: 'none',
+                                transition: 'all 0.2s',
+                            }}
+                        >
+                            <div style={{ fontSize: 22, lineHeight: 1 }}>✦</div>
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 700, color: 'var(--text-0)' }}>Generate Training Plan with AI</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-cyan)', marginTop: 2 }}>Goal → Duration → Load → Generate</div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, minmax(0, 1fr))', gap: 6, marginTop: 10 }}>
-                                {weeklyMetrics.map((week, idx) => (
-                                    <div key={idx} style={{
-                                        padding: '8px 4px',
-                                        background: 'var(--bg-2)',
-                                        borderRadius: 6,
-                                        textAlign: 'center',
-                                        border: week.current ? '2px solid #22c55e' : '1px solid var(--border)',
-                                    }}>
-                                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>{week.label}</div>
-                                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: '#22c55e' }}>{week.distance}</div>
-                                    </div>
-                                ))}
-                            </div>
+                            <span style={{ fontSize: 14, color: 'var(--text-3)' }}>{collapsed.ai ? '▼' : '▲'}</span>
                         </div>
+                        {!collapsed.ai && <div style={{ padding: '16px', background: 'rgba(34,211,238,0.04)', border: '1px solid rgba(34,211,238,0.2)', borderTop: 'none' }}>
+                            <div style={{ display: 'none' }}>AI Plan Builder</div>
 
-                        {/* Weekly Avg Power Card */}
-                        <div className="card">
-                            <div className="card-header">
-                                <span className="card-title">Weekly Avg Power — Last 8 Weeks</span>
-                                <span className="card-badge">W</span>
+                            {/* Step progress */}
+                            <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
+                                {['Goal', 'Duration', 'Load', 'Generate'].map((label, i) => {
+                                    const stepNum = i + 1;
+                                    const active = aiPlanStep === stepNum;
+                                    const done = aiPlanStep > stepNum;
+                                    return (
+                                        <div
+                                            key={label}
+                                            onClick={() => done && setAiPlanStep(stepNum)}
+                                            style={{
+                                                flex: 1, textAlign: 'center', fontSize: 11,
+                                                fontFamily: 'var(--font-mono)', fontWeight: 600,
+                                                padding: '4px 2px', borderRadius: 4,
+                                                background: active ? 'var(--accent-cyan)' : done ? 'rgba(34,197,94,0.15)' : 'var(--bg-3)',
+                                                color: active ? '#000' : done ? 'var(--accent-green)' : 'var(--text-3)',
+                                                cursor: done ? 'pointer' : 'default',
+                                                letterSpacing: '0.03em',
+                                                transition: 'all 0.2s',
+                                            }}
+                                        >
+                                            {done ? '✓ ' : ''}{label}
+                                        </div>
+                                    );
+                                })}
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, minmax(0, 1fr))', gap: 6, marginTop: 10 }}>
-                                {weeklyMetrics.map((week, idx) => (
-                                    <div key={idx} style={{
-                                        padding: '8px 4px',
-                                        background: 'var(--bg-2)',
-                                        borderRadius: 6,
-                                        textAlign: 'center',
-                                        border: week.current ? '2px solid var(--accent-blue)' : '1px solid var(--border)',
-                                    }}>
-                                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>{week.label}</div>
-                                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: week.avgWatts > 0 ? 'var(--accent-blue)' : 'var(--text-3)' }}>{week.avgWatts || '—'}</div>
+
+                            {/* Step 1: Goal */}
+                            {aiPlanStep === 1 && (
+                                <div>
+                                    <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 8 }}>What's your training goal?</div>
+                                    {[
+                                        { id: 'race', code: 'RACE', label: 'Race Prep', sub: 'Peak for an upcoming event' },
+                                        { id: 'ftp', code: 'FTP', label: 'FTP Build', sub: 'Raise threshold power' },
+                                        { id: 'base', code: 'BASE', label: 'Build Base', sub: 'Aerobic foundation & volume' },
+                                        { id: 'recovery', code: 'REC', label: 'Recovery', sub: 'Absorb and rebuild' },
+                                    ].map(opt => (
+                                        <div
+                                            key={opt.id}
+                                            onClick={() => { setAiPlanGoal(opt.id); setAiPlanStep(2); }}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 10,
+                                                padding: '10px 12px', borderRadius: 8, marginBottom: 6,
+                                                border: `1px solid ${aiPlanGoal === opt.id ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                                                background: aiPlanGoal === opt.id ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
+                                                cursor: 'pointer', transition: 'all 0.15s',
+                                            }}
+                                        >
+                                            <span style={{
+                                                fontFamily: 'var(--font-mono)',
+                                                fontSize: 13,
+                                                fontWeight: 700,
+                                                letterSpacing: '0.08em',
+                                                color: 'var(--text-2)',
+                                                minWidth: 34,
+                                            }}>{opt.code}</span>
+                                            <div>
+                                                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)' }}>{opt.label}</div>
+                                                <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{opt.sub}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Step 2: Duration */}
+                            {aiPlanStep === 2 && (
+                                <div>
+                                    <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 8 }}>How long is this block?</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                        {[
+                                            { id: 1, label: '1 week', sub: '7 sessions max' },
+                                            { id: 2, label: '2 weeks', sub: 'Classic micro-cycle' },
+                                            { id: 3, label: '3 weeks', sub: 'Progressive overload' },
+                                            { id: 4, label: '4 weeks', sub: 'Full mesocycle' },
+                                        ].map(opt => (
+                                            <div
+                                                key={opt.id}
+                                                onClick={() => { setAiPlanWeeks(opt.id); setAiPlanStep(3); }}
+                                                style={{
+                                                    padding: '10px 12px', borderRadius: 8,
+                                                    border: `1px solid ${aiPlanWeeks === opt.id ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                                                    background: aiPlanWeeks === opt.id ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
+                                                    cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
+                                                }}
+                                            >
+                                                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{opt.label}</div>
+                                                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{opt.sub}</div>
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
+                                    <button className="btn" style={{ marginTop: 10, fontSize: 12 }} onClick={() => setAiPlanStep(1)}>← Back</button>
+                                </div>
+                            )}
+
+                            {/* Step 3: Load level */}
+                            {aiPlanStep === 3 && (
+                                <div>
+                                    <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 8 }}>What training load?</div>
+                                    {[
+                                        { id: 'easy', code: 'L1', label: 'Easy', sub: 'Low stress - ideal for recovery block or returning from break' },
+                                        { id: 'moderate', code: 'L2', label: 'Moderate', sub: 'Balanced - solid progression without excessive fatigue' },
+                                        { id: 'hard', code: 'L3', label: 'Hard', sub: 'High load - push limits and accumulate significant CTL' },
+                                    ].map(opt => (
+                                        <div
+                                            key={opt.id}
+                                            onClick={() => { setAiPlanLoad(opt.id); setAiPlanStep(4); }}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 10,
+                                                padding: '10px 12px', borderRadius: 8, marginBottom: 6,
+                                                border: `1px solid ${aiPlanLoad === opt.id ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                                                background: aiPlanLoad === opt.id ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
+                                                cursor: 'pointer', transition: 'all 0.15s',
+                                            }}
+                                        >
+                                            <span style={{
+                                                fontFamily: 'var(--font-mono)',
+                                                fontSize: 13,
+                                                fontWeight: 700,
+                                                letterSpacing: '0.08em',
+                                                color: 'var(--text-2)',
+                                                minWidth: 24,
+                                            }}>{opt.code}</span>
+                                            <div>
+                                                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)' }}>{opt.label}</div>
+                                                <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{opt.sub}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <button className="btn" style={{ marginTop: 6, fontSize: 12 }} onClick={() => setAiPlanStep(2)}>← Back</button>
+                                </div>
+                            )}
+
+                            {/* Step 4: Generate */}
+                            {aiPlanStep === 4 && (
+                                <div>
+                                    <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 10 }}>Ready to generate your plan:</div>
+                                    <div style={{
+                                        background: 'var(--bg-3)', borderRadius: 8, padding: '10px 14px',
+                                        fontFamily: 'var(--font-mono)', fontSize: 13, marginBottom: 12,
+                                        borderLeft: '3px solid var(--accent-cyan)',
+                                    }}>
+                                        <div><span style={{ color: 'var(--text-3)' }}>Goal</span> — {{
+                                            race: 'Race Prep', ftp: 'FTP Build', base: 'Build Base', recovery: 'Recovery'
+                                        }[aiPlanGoal]}</div>
+                                        <div style={{ marginTop: 4 }}><span style={{ color: 'var(--text-3)' }}>Duration</span> — {aiPlanWeeks} week{aiPlanWeeks > 1 ? 's' : ''}</div>
+                                        <div style={{ marginTop: 4 }}><span style={{ color: 'var(--text-3)' }}>Load</span> — {{
+                                            easy: 'Easy', moderate: 'Moderate', hard: 'Hard'
+                                        }[aiPlanLoad]}</div>
+                                    </div>
+                                    <button
+                                        className="btn btn-primary"
+                                        style={{ width: '100%', padding: '10px 0', fontSize: 14 }}
+                                        disabled={isGenerating}
+                                        onClick={handleGenerateAi}
+                                    >
+                                        {isGenerating ? 'Building plan...' : 'Generate Plan →'}
+                                    </button>
+                                    <button
+                                        className="btn"
+                                        style={{ width: '100%', marginTop: 6, fontSize: 12 }}
+                                        onClick={() => { setAiPlanStep(1); setAiPlanGoal(null); setAiPlanWeeks(null); setAiPlanLoad(null); }}
+                                    >
+                                        Start over
+                                    </button>
+                                </div>
+                            )}
+
+                            <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+                                AI generates a training block and adds sessions directly to your calendar.
                             </div>
-                        </div>
+                        </div>}
                     </div>
-                )}
+                </div>
 
                 <div className="card" style={{ marginBottom: 0 }}>
                     <div className="card-header">
@@ -1364,19 +1515,24 @@ export default function Calendar({
                         </div>
                     </div>
 
-                    <div className="planner-section">
-                        <button className="planner-toggle" onClick={() => toggleSection('builder')}>
-                            <span>Workout Builder</span>
-                            <span>{collapsed.builder ? '+' : '-'}</span>
+                    <div style={{ padding: '0 0 8px' }}>
+                        <button
+                            onClick={() => onOpenWorkoutBuilder?.()}
+                            style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                width: '100%', padding: '11px 14px', borderRadius: 9,
+                                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+                                color: 'var(--text-2)', cursor: 'pointer', transition: 'all 0.15s',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                        >
+                            <div style={{ textAlign: 'left' }}>
+                                <div style={{ fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>Workout Builder</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Build structured workouts with blocks</div>
+                            </div>
+                            <span style={{ fontSize: 14, color: 'var(--text-3)' }}>→</span>
                         </button>
-                        {!collapsed.builder && (
-                            <WorkoutBuilder
-                                onCreate={onAddPlannedEvent}
-                                onSaveToLibrary={onSaveWorkoutToLibrary}
-                                onGenerateWithAi={onGenerateAiWorkoutTemplate}
-                                ftp={athlete?.icu_ftp || athlete?.ftp || athlete?.ftp_watts || athlete?.critical_power || athlete?.zones?.ftp || null}
-                            />
-                        )}
                     </div>
 
                     <div className="planner-section">
@@ -1440,187 +1596,6 @@ export default function Calendar({
                         </div>}
                     </div>
 
-                    <div className="planner-section">
-                        <button className="planner-toggle" onClick={() => toggleSection('ai')}>
-                            <span>Generate From AI</span>
-                            <span>{collapsed.ai ? '+' : '-'}</span>
-                        </button>
-                        {!collapsed.ai && <div className="calendar-planner-box">
-                            <div className="card-title" style={{ marginBottom: 12 }}>AI Plan Builder</div>
-
-                            {/* Step progress */}
-                            <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
-                                {['Goal', 'Duration', 'Load', 'Generate'].map((label, i) => {
-                                    const stepNum = i + 1;
-                                    const active = aiPlanStep === stepNum;
-                                    const done = aiPlanStep > stepNum;
-                                    return (
-                                        <div
-                                            key={label}
-                                            onClick={() => done && setAiPlanStep(stepNum)}
-                                            style={{
-                                                flex: 1, textAlign: 'center', fontSize: 9,
-                                                fontFamily: 'var(--font-mono)', fontWeight: 600,
-                                                padding: '4px 2px', borderRadius: 4,
-                                                background: active ? 'var(--accent-cyan)' : done ? 'rgba(34,197,94,0.15)' : 'var(--bg-3)',
-                                                color: active ? '#000' : done ? 'var(--accent-green)' : 'var(--text-3)',
-                                                cursor: done ? 'pointer' : 'default',
-                                                letterSpacing: '0.03em',
-                                                transition: 'all 0.2s',
-                                            }}
-                                        >
-                                            {done ? '✓ ' : ''}{label}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Step 1: Goal */}
-                            {aiPlanStep === 1 && (
-                                <div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 8 }}>What's your training goal?</div>
-                                    {[
-                                        { id: 'race', code: 'RACE', label: 'Race Prep', sub: 'Peak for an upcoming event' },
-                                        { id: 'ftp', code: 'FTP', label: 'FTP Build', sub: 'Raise threshold power' },
-                                        { id: 'base', code: 'BASE', label: 'Build Base', sub: 'Aerobic foundation & volume' },
-                                        { id: 'recovery', code: 'REC', label: 'Recovery', sub: 'Absorb and rebuild' },
-                                    ].map(opt => (
-                                        <div
-                                            key={opt.id}
-                                            onClick={() => { setAiPlanGoal(opt.id); setAiPlanStep(2); }}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: 10,
-                                                padding: '10px 12px', borderRadius: 8, marginBottom: 6,
-                                                border: `1px solid ${aiPlanGoal === opt.id ? 'var(--accent-cyan)' : 'var(--border)'}`,
-                                                background: aiPlanGoal === opt.id ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
-                                                cursor: 'pointer', transition: 'all 0.15s',
-                                            }}
-                                        >
-                                            <span style={{
-                                                fontFamily: 'var(--font-mono)',
-                                                fontSize: 11,
-                                                fontWeight: 700,
-                                                letterSpacing: '0.08em',
-                                                color: 'var(--text-2)',
-                                                minWidth: 34,
-                                            }}>{opt.code}</span>
-                                            <div>
-                                                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>{opt.label}</div>
-                                                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{opt.sub}</div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {/* Step 2: Duration */}
-                            {aiPlanStep === 2 && (
-                                <div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 8 }}>How long is this block?</div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                                        {[
-                                            { id: 1, label: '1 week', sub: '7 sessions max' },
-                                            { id: 2, label: '2 weeks', sub: 'Classic micro-cycle' },
-                                            { id: 3, label: '3 weeks', sub: 'Progressive overload' },
-                                            { id: 4, label: '4 weeks', sub: 'Full mesocycle' },
-                                        ].map(opt => (
-                                            <div
-                                                key={opt.id}
-                                                onClick={() => { setAiPlanWeeks(opt.id); setAiPlanStep(3); }}
-                                                style={{
-                                                    padding: '10px 12px', borderRadius: 8,
-                                                    border: `1px solid ${aiPlanWeeks === opt.id ? 'var(--accent-cyan)' : 'var(--border)'}`,
-                                                    background: aiPlanWeeks === opt.id ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
-                                                    cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
-                                                }}
-                                            >
-                                                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{opt.label}</div>
-                                                <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{opt.sub}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <button className="btn" style={{ marginTop: 10, fontSize: 10 }} onClick={() => setAiPlanStep(1)}>← Back</button>
-                                </div>
-                            )}
-
-                            {/* Step 3: Load level */}
-                            {aiPlanStep === 3 && (
-                                <div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 8 }}>What training load?</div>
-                                    {[
-                                        { id: 'easy', code: 'L1', label: 'Easy', sub: 'Low stress - ideal for recovery block or returning from break' },
-                                        { id: 'moderate', code: 'L2', label: 'Moderate', sub: 'Balanced - solid progression without excessive fatigue' },
-                                        { id: 'hard', code: 'L3', label: 'Hard', sub: 'High load - push limits and accumulate significant CTL' },
-                                    ].map(opt => (
-                                        <div
-                                            key={opt.id}
-                                            onClick={() => { setAiPlanLoad(opt.id); setAiPlanStep(4); }}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: 10,
-                                                padding: '10px 12px', borderRadius: 8, marginBottom: 6,
-                                                border: `1px solid ${aiPlanLoad === opt.id ? 'var(--accent-cyan)' : 'var(--border)'}`,
-                                                background: aiPlanLoad === opt.id ? 'rgba(34,211,238,0.08)' : 'var(--bg-2)',
-                                                cursor: 'pointer', transition: 'all 0.15s',
-                                            }}
-                                        >
-                                            <span style={{
-                                                fontFamily: 'var(--font-mono)',
-                                                fontSize: 11,
-                                                fontWeight: 700,
-                                                letterSpacing: '0.08em',
-                                                color: 'var(--text-2)',
-                                                minWidth: 24,
-                                            }}>{opt.code}</span>
-                                            <div>
-                                                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>{opt.label}</div>
-                                                <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{opt.sub}</div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    <button className="btn" style={{ marginTop: 6, fontSize: 10 }} onClick={() => setAiPlanStep(2)}>← Back</button>
-                                </div>
-                            )}
-
-                            {/* Step 4: Generate */}
-                            {aiPlanStep === 4 && (
-                                <div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 10 }}>Ready to generate your plan:</div>
-                                    <div style={{
-                                        background: 'var(--bg-3)', borderRadius: 8, padding: '10px 14px',
-                                        fontFamily: 'var(--font-mono)', fontSize: 11, marginBottom: 12,
-                                        borderLeft: '3px solid var(--accent-cyan)',
-                                    }}>
-                                        <div><span style={{ color: 'var(--text-3)' }}>Goal</span> — {{
-                                            race: 'Race Prep', ftp: 'FTP Build', base: 'Build Base', recovery: 'Recovery'
-                                        }[aiPlanGoal]}</div>
-                                        <div style={{ marginTop: 4 }}><span style={{ color: 'var(--text-3)' }}>Duration</span> — {aiPlanWeeks} week{aiPlanWeeks > 1 ? 's' : ''}</div>
-                                        <div style={{ marginTop: 4 }}><span style={{ color: 'var(--text-3)' }}>Load</span> — {{
-                                            easy: 'Easy', moderate: 'Moderate', hard: 'Hard'
-                                        }[aiPlanLoad]}</div>
-                                    </div>
-                                    <button
-                                        className="btn btn-primary"
-                                        style={{ width: '100%', padding: '10px 0', fontSize: 12 }}
-                                        disabled={isGenerating}
-                                        onClick={handleGenerateAi}
-                                    >
-                                        {isGenerating ? 'Building plan...' : 'Generate Plan →'}
-                                    </button>
-                                    <button
-                                        className="btn"
-                                        style={{ width: '100%', marginTop: 6, fontSize: 10 }}
-                                        onClick={() => { setAiPlanStep(1); setAiPlanGoal(null); setAiPlanWeeks(null); setAiPlanLoad(null); }}
-                                    >
-                                        Start over
-                                    </button>
-                                </div>
-                            )}
-
-                            <div className="calendar-helper" style={{ marginTop: 10 }}>
-                                AI creates a training block and inserts sessions directly into your calendar.
-                            </div>
-                        </div>}
-                    </div>
 
                     <div className="planner-section">
                         <button className="planner-toggle" onClick={() => toggleSection('csv')}>
@@ -1687,7 +1662,7 @@ export default function Calendar({
                         {!collapsed.garmin && (
                             <div className="calendar-planner-box">
                                 <div className="card-title" style={{ marginBottom: 4 }}>Send to Garmin</div>
-                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 12 }}>
+                                <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 12 }}>
                                     {upcomingStructured.length} structured workout{upcomingStructured.length !== 1 ? 's' : ''} ready to export
                                 </div>
 
@@ -1696,15 +1671,15 @@ export default function Calendar({
                                     background: 'var(--bg-3)', borderRadius: 8, padding: '10px 12px', marginBottom: 10,
                                     borderLeft: '3px solid var(--accent-cyan)',
                                 }}>
-                                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>
                                         Via Intervals.icu (recommended)
                                     </div>
-                                    <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 8 }}>
+                                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
                                         Pushes workouts to Intervals.icu calendar. If you have Garmin Connect sync enabled in Intervals.icu, they appear on your device automatically.
                                     </div>
                                     <button
                                         className="btn btn-primary"
-                                        style={{ width: '100%', fontSize: 11 }}
+                                        style={{ width: '100%', fontSize: 13 }}
                                         disabled={isSyncingIcu || !upcomingStructured.length}
                                         onClick={handleSyncAllToIcu}
                                     >
@@ -1717,15 +1692,15 @@ export default function Calendar({
                                     background: 'var(--bg-3)', borderRadius: 8, padding: '10px 12px',
                                     borderLeft: '3px solid var(--accent-purple)',
                                 }}>
-                                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>
                                         Download as ZIP (.fit files)
                                     </div>
-                                    <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 8 }}>
+                                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
                                         One .fit file per workout. Import manually into Garmin Connect website or Garmin Express.
                                     </div>
                                     <button
                                         className="btn"
-                                        style={{ width: '100%', fontSize: 11 }}
+                                        style={{ width: '100%', fontSize: 13 }}
                                         disabled={isExportingZip || !upcomingStructured.length}
                                         onClick={handleExportPlanZip}
                                     >
@@ -1735,7 +1710,7 @@ export default function Calendar({
 
                                 {garminMsg && (
                                     <div style={{
-                                        marginTop: 10, padding: '8px 12px', borderRadius: 6, fontSize: 11,
+                                        marginTop: 10, padding: '8px 12px', borderRadius: 6, fontSize: 13,
                                         background: garminMsg.type === 'ok' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
                                         color: garminMsg.type === 'ok' ? 'var(--accent-green)' : 'var(--accent-red)',
                                         border: `1px solid ${garminMsg.type === 'ok' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
@@ -1763,13 +1738,13 @@ export default function Calendar({
                     {!collapsed.upcoming && (loading && timelineEvents.length === 0 ? (
                         <div className="loading-state" style={{ padding: '24px 8px' }}>
                             <div className="loading-spinner" />
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>Loading planned events...</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14 }}>Loading planned events...</span>
                         </div>
                     ) : timelineEvents.length === 0 ? (
                         <div className="info-banner" style={{ marginBottom: 0 }}>
                             No events found. Add planned workouts or race objectives in Intervals.icu events.
                             {csvImportSummary?.imported > 0 && (
-                                <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                                <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 13 }}>
                                     CSV import succeeded, but imported dates may be in the past relative to today.
                                 </div>
                             )}
@@ -1829,7 +1804,7 @@ export default function Calendar({
                         {/* Header */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
                             <div>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>DAY DETAILS</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>DAY DETAILS</div>
                                 <div style={{ fontFamily: 'var(--font-sans)', fontSize: 18, fontWeight: 600, color: 'var(--text-0)' }}>
                                     {format(parseISO(`${selectedActivityDay}T00:00:00`), 'EEEE, dd MMMM yyyy')}
                                 </div>
@@ -1861,7 +1836,7 @@ export default function Calendar({
 
                         {dayModalTab === 'quick' && (
                             <div style={{ marginBottom: 16, padding: 12, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-2)' }}>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 8, letterSpacing: '0.06em' }}>ADD WORKOUT OR NOTE</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginBottom: 8, letterSpacing: '0.06em' }}>ADD WORKOUT OR NOTE</div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
                                     <input className="form-input calendar-form-input" placeholder="Title (optional)" value={dayQuickTitle} onChange={e => setDayQuickTitle(e.target.value)} />
                                     <select className="form-input calendar-form-input" value={dayQuickType} onChange={e => setDayQuickType(e.target.value)}>
@@ -1905,11 +1880,11 @@ export default function Calendar({
                         )}
 
                         {/* Activities list */}
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 8, letterSpacing: '0.06em' }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginBottom: 8, letterSpacing: '0.06em' }}>
                             ACTIVITIES ({currentDayActivities.length})
                         </div>
                         {currentDayActivities.length === 0 && (
-                            <div style={{ marginBottom: 14, padding: 10, borderRadius: 8, background: 'var(--bg-2)', color: 'var(--text-2)', fontSize: 12 }}>
+                            <div style={{ marginBottom: 14, padding: 10, borderRadius: 8, background: 'var(--bg-2)', color: 'var(--text-2)', fontSize: 14 }}>
                                 No synced activity found on this day. You can still add a workout or note above.
                             </div>
                         )}
@@ -1935,11 +1910,11 @@ export default function Calendar({
                                                 {activity.name || 'Untitled Activity'}
                                             </div>
                                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '4px 10px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
+                                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, padding: '4px 10px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
                                                     {type.toUpperCase()}
                                                 </span>
                                                 {tss > 0 && (
-                                                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '4px 10px', borderRadius: 20, background: 'rgba(34, 197, 94, 0.12)', color: '#22c55e', letterSpacing: '0.06em' }}>
+                                                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, padding: '4px 10px', borderRadius: 20, background: 'rgba(34, 197, 94, 0.12)', color: '#22c55e', letterSpacing: '0.06em' }}>
                                                         {Math.round(tss)} TSS
                                                     </span>
                                                 )}
@@ -1950,7 +1925,7 @@ export default function Calendar({
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 12 }}>
                                             {duration > 0 && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>DURATION</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>DURATION</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--text-0)' }}>
                                                         {duration}m
                                                     </div>
@@ -1958,7 +1933,7 @@ export default function Calendar({
                                             )}
                                             {distance && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>DISTANCE</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>DISTANCE</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--text-0)' }}>
                                                         {distance} km
                                                     </div>
@@ -1966,7 +1941,7 @@ export default function Calendar({
                                             )}
                                             {avgWatts && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>AVG POWER</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>AVG POWER</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--accent-blue)' }}>
                                                         {Math.round(avgWatts)} W
                                                     </div>
@@ -1974,7 +1949,7 @@ export default function Calendar({
                                             )}
                                             {avgHr && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>AVG HR</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>AVG HR</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--accent-red)' }}>
                                                         {Math.round(avgHr)} bpm
                                                     </div>
@@ -1982,7 +1957,7 @@ export default function Calendar({
                                             )}
                                             {ef && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>EFFICIENCY</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>EFFICIENCY</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--accent-green)' }}>
                                                         {ef}
                                                     </div>
@@ -1990,7 +1965,7 @@ export default function Calendar({
                                             )}
                                             {elevGain && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>ELEVATION</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>ELEVATION</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--text-0)' }}>
                                                         {Math.round(elevGain)} m
                                                     </div>
@@ -2000,7 +1975,7 @@ export default function Calendar({
 
                                         {/* Notes if present */}
                                         {activity.notes && (
-                                            <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
+                                            <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8, fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
                                                 {activity.notes}
                                             </div>
                                         )}
@@ -2041,7 +2016,7 @@ export default function Calendar({
                                 <div style={{ fontFamily: 'var(--font-sans)', fontSize: 18, fontWeight: 600, color: 'var(--text-0)', marginBottom: 4 }}>
                                     {selectedEvent.title}
                                 </div>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-2)' }}>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--text-2)' }}>
                                     {format(selectedEvent.date, 'EEEE, dd MMMM yyyy')}
                                 </div>
                             </div>
@@ -2054,18 +2029,18 @@ export default function Calendar({
                         {/* Badges */}
                         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
                             {selectedEvent.type && (
-                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '3px 10px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, padding: '3px 10px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
                                     {selectedEvent.type.toUpperCase()}
                                 </span>
                             )}
                             <span className={`calendar-kind-badge calendar-kind-${selectedEvent.kind}`}>
                                 {kindLabel(selectedEvent.kind)}
                             </span>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '3px 10px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, padding: '3px 10px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
                                 {toneLabel(trainingTone(selectedEvent))}
                             </span>
                             {totalDuration(selectedEvent.workoutBlocks || []) > 0 && (
-                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '3px 10px', borderRadius: 20, background: 'rgba(59,130,246,0.12)', color: 'var(--accent-blue)', letterSpacing: '0.06em' }}>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, padding: '3px 10px', borderRadius: 20, background: 'rgba(59,130,246,0.12)', color: 'var(--accent-blue)', letterSpacing: '0.06em' }}>
                                     {totalDuration(selectedEvent.workoutBlocks)} min
                                 </span>
                             )}
@@ -2074,7 +2049,7 @@ export default function Calendar({
                         {/* Workout block visual */}
                         {selectedEvent.workoutBlocks?.length > 0 && (
                             <div style={{ marginBottom: 16 }}>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 8, letterSpacing: '0.06em' }}>WORKOUT STRUCTURE</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginBottom: 8, letterSpacing: '0.06em' }}>WORKOUT STRUCTURE</div>
                                 <WorkoutDetailVisual
                                     blocks={selectedEvent.workoutBlocks}
                                     ftp={athlete?.ftp || athlete?.icu_ftp || null}
@@ -2084,7 +2059,7 @@ export default function Calendar({
 
                         {/* Notes */}
                         <div style={{ marginBottom: 16 }}>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 6, letterSpacing: '0.06em' }}>NOTES</div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginBottom: 6, letterSpacing: '0.06em' }}>NOTES</div>
                             <div style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: selectedEvent.notes ? 'var(--text-1)' : 'var(--text-3)', lineHeight: 1.7, whiteSpace: 'pre-wrap', background: 'var(--bg-2)', borderRadius: 8, padding: '12px 14px' }}>
                                 {selectedEvent.notes || 'No notes for this session.'}
                             </div>
@@ -2161,7 +2136,7 @@ export default function Calendar({
                             background: 'var(--bg-2)',
                             borderRadius: 10,
                             padding: '10px 12px',
-                            fontSize: 12,
+                            fontSize: 14,
                             color: 'var(--text-2)',
                             marginBottom: 16,
                         }}>

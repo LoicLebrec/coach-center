@@ -998,6 +998,7 @@ export default function App() {
             onExportToZwift={handleExportToZwift}
             workoutLibrary={[...LIBRARY_WORKOUTS, ...customWorkoutLibrary]}
             onOpenRouteBuilder={handleOpenRouteBuilder}
+            onOpenWorkoutBuilder={() => setView(VIEWS.WORKOUT_BUILDER)}
           />
         );
       case VIEWS.SETTINGS:

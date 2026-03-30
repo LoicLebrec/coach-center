@@ -170,12 +170,20 @@ export default function PMCChart({ wellness, activities, athlete, loading }) {
     })();
   }, [selectedDate]);
 
-  const isEstimated = !wellness || wellness.length === 0;
-
+  // Always compute activity-based series as a fallback
   const { series: estimatedSeries, coverage } = useMemo(
     () => computePMCSeriesFromActivities(activities || [], athlete, 120),
     [activities, athlete]
   );
+
+  // Use wellness data only if it contains real CTL values (> 1).
+  // Falls back to activity-derived estimates when wellness is absent or all-zero
+  // (e.g. when icu_training_load was missing for historical activities).
+  const hasRealCTL = useMemo(
+    () => wellness?.some(w => (w.icu_ctl != null ? Number(w.icu_ctl) : 0) > 1),
+    [wellness]
+  );
+  const isEstimated = !wellness || wellness.length === 0 || !hasRealCTL;
 
   const data = useMemo(() => {
     if (!isEstimated) {
@@ -184,9 +192,9 @@ export default function PMCChart({ wellness, activities, athlete, loading }) {
         return {
           date: w.id,
           shortDate: w.id ? w.id.slice(5) : '',
-          ctl: w.icu_ctl ? Math.round(w.icu_ctl * 10) / 10 : null,
-          atl: w.icu_atl ? Math.round(w.icu_atl * 10) / 10 : null,
-          tsb: w.icu_ctl && w.icu_atl ? Math.round((w.icu_ctl - w.icu_atl) * 10) / 10 : null,
+          ctl: w.icu_ctl != null ? Math.round(Number(w.icu_ctl) * 10) / 10 : null,
+          atl: w.icu_atl != null ? Math.round(Number(w.icu_atl) * 10) / 10 : null,
+          tsb: w.icu_ctl != null && w.icu_atl != null ? Math.round((Number(w.icu_ctl) - Number(w.icu_atl)) * 10) / 10 : null,
           rhr: getWellnessRestingHr(w),
           load: w.icu_training_load || 0,
           impressionValue: impression ? { great: 25, good: 15, neutral: 5, tired: -10, 'very-tired': -25 }[impression.impression] : null,
@@ -388,6 +396,8 @@ export default function PMCChart({ wellness, activities, athlete, loading }) {
                 tickLine={false}
                 axisLine={false}
                 width={40}
+                domain={['auto', 'auto']}
+                allowDataOverflow={false}
               />
               <YAxis
                 yAxisId="load"
@@ -414,6 +424,7 @@ export default function PMCChart({ wellness, activities, athlete, loading }) {
                 fill="var(--tsb-color)"
                 fillOpacity={0.08}
                 strokeWidth={1.5}
+                connectNulls={true}
               />
 
               {/* CTL */}
@@ -425,6 +436,7 @@ export default function PMCChart({ wellness, activities, athlete, loading }) {
                 stroke="var(--ctl-color)"
                 strokeWidth={2.5}
                 dot={false}
+                connectNulls={true}
                 activeDot={{ r: 3, fill: 'var(--ctl-color)' }}
               />
 
@@ -438,6 +450,7 @@ export default function PMCChart({ wellness, activities, athlete, loading }) {
                 strokeWidth={2}
                 dot={false}
                 strokeDasharray="6 3"
+                connectNulls={true}
                 activeDot={{ r: 3, fill: 'var(--atl-color)' }}
               />
 
