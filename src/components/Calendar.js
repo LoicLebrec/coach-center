@@ -336,6 +336,8 @@ export default function Calendar({
     onGenerateAiWorkouts,
     onSaveWorkoutToLibrary,
     onGenerateAiWorkoutTemplate,
+    onSendToWahoo,
+    onExportToZwift,
     workoutLibrary,
 }) {
     const csvInputRef = useRef(null);
@@ -2064,7 +2066,24 @@ export default function Calendar({
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
                             {eventHasWorkoutData(selectedEvent) && (
                                 <button className="btn btn-primary" onClick={() => { downloadEventFit(selectedEvent); }}>
-                                    Download FIT
+                                    Garmin FIT
+                                </button>
+                            )}
+                            {eventHasWorkoutData(selectedEvent) && onExportToZwift && (
+                                <button className="btn" onClick={() => onExportToZwift(selectedEvent)}>
+                                    Zwift .zwo
+                                </button>
+                            )}
+                            {eventHasWorkoutData(selectedEvent) && onSendToWahoo && (
+                                <button className="btn" onClick={async () => {
+                                    try {
+                                        await onSendToWahoo(selectedEvent);
+                                        alert('Workout sent to Wahoo!');
+                                    } catch (err) {
+                                        alert('Wahoo error: ' + err.message);
+                                    }
+                                }}>
+                                    Send to Wahoo
                                 </button>
                             )}
                             {String(selectedEvent.id).startsWith('local_') && (

@@ -4,6 +4,8 @@ import {
   ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from 'recharts';
 import persistence from '../services/persistence';
+import InfoTip from './InfoTip';
+import { METRICS } from '../data/metricDefs';
 
 const IMPRESSION_OPTIONS = [
   { value: 'great', label: '✨ Great', color: '#22c55e' },
@@ -27,31 +29,101 @@ function getWellnessRestingHr(w) {
   return asNumber(w?.restingHR, w?.resting_hr, w?.rhr, w?.hrRest);
 }
 
-// Compute full PMC time-series from raw activities (fallback when Intervals.icu not connected)
-function computePMCSeriesFromActivities(activities = [], days = 120) {
-  if (!activities.length) return [];
+/**
+ * Estimate TSS for a single activity using a 4-tier cascade:
+ *   1. Direct TSS field (icu_training_load / training_load / tss)  — most accurate
+ *   2. Power-based TSS  (NP / FTP)                                 — accurate with power meter
+ *   3. hrTSS via Banister TRIMP × normalisation factor             — good with HR only
+ *   4. Rough duration-based proxy                                  — last resort
+ *
+ * Returns { tss, method } so callers can report data quality.
+ */
+function estimateActivityTSS(activity, athlete) {
+  const duration = Number(
+    activity.moving_time || activity.elapsed_time || activity.icu_moving_time || 0
+  );
+  if (!duration) return { tss: 0, method: 'none' };
+
+  // ── 1. Direct TSS ─────────────────────────────────────────────
+  const direct = Number(activity.icu_training_load || activity.training_load || activity.tss || 0);
+  if (Number.isFinite(direct) && direct > 0) return { tss: direct, method: 'direct' };
+
+  // ── 2. Power-based TSS  (TSS = t × NP × IF / FTP / 3600 × 100) ─
+  const ftp = Number(
+    athlete?.icu_ftp || athlete?.ftp || athlete?.ftp_watts || athlete?.critical_power || 0
+  );
+  const np = Number(
+    activity.icu_normalized_watts || activity.weighted_average_watts ||
+    activity.icu_average_watts   || activity.average_watts || 0
+  );
+  if (ftp > 0 && np > 0) {
+    const ifPower = np / ftp;
+    const tss = Math.round((duration / 3600) * ifPower * ifPower * 100);
+    if (tss > 0 && tss < 600) return { tss, method: 'power' };
+  }
+
+  // ── 3. hrTSS via Banister TRIMP ───────────────────────────────
+  // TRIMP = t_min × hrReserve × 0.64 × e^(1.92 × hrReserve)
+  // Scaled so that 1 h at LTHR ≈ 100 TSS
+  const avgHr = Number(activity.average_heartrate || 0);
+  if (avgHr > 0) {
+    const maxHr   = Number(athlete?.max_hr || athlete?.icu_hr_max || athlete?.hr_max || 0) || 185;
+    const restHr  = Number(athlete?.resting_hr || athlete?.icu_resting_hr || 0) || 50;
+    // LTHR ≈ 88 % of maxHR (well-trained cyclist) or use explicit field
+    const lthr    = Number(athlete?.lthr || athlete?.threshold_hr || 0) || Math.round(maxHr * 0.88);
+
+    const hrReserve = (avgHr - restHr) / (maxHr - restHr);
+    if (hrReserve > 0.1 && hrReserve <= 1.05) {
+      const durationMin = duration / 60;
+      const trimp = durationMin * hrReserve * 0.64 * Math.exp(1.92 * hrReserve);
+
+      // Normalisation: compute TRIMP for 60 min at LTHR-equivalent hrReserve
+      const lthrReserve    = (lthr - restHr) / (maxHr - restHr);
+      const trimpPerHrAtLT = 60 * lthrReserve * 0.64 * Math.exp(1.92 * lthrReserve);
+      const tss = Math.round(trimp * (100 / trimpPerHrAtLT));
+      if (tss > 0 && tss < 500) return { tss, method: 'hr' };
+    }
+
+    // Simplified hrTSS fallback if TRIMP gives odd values
+    const ifHr  = avgHr / lthr;
+    const hrTss = Math.round((duration / 3600) * ifHr * ifHr * 100);
+    if (hrTss > 0 && hrTss < 400) return { tss: hrTss, method: 'hr' };
+  }
+
+  // ── 4. Duration proxy — 50 TSS/hour (moderate effort assumption) ─
+  const tss = Math.round((duration / 3600) * 50);
+  return { tss, method: 'duration' };
+}
+
+/**
+ * Build full PMC time-series (CTL / ATL / TSB) from raw activities.
+ * Also returns `coverage` object with method counts for UI reporting.
+ */
+function computePMCSeriesFromActivities(activities = [], athlete = null, days = 120) {
+  if (!activities.length) return { series: [], coverage: {} };
 
   const dailyLoad = new Map();
+  const coverage  = { direct: 0, power: 0, hr: 0, duration: 0 };
+
   activities.forEach(a => {
     const day = String(a.start_date_local || '').slice(0, 10);
     if (!day) return;
-    const load = Number(a.icu_training_load || a.training_load || a.tss || 0);
-    if (Number.isFinite(load) && load > 0) {
-      dailyLoad.set(day, (dailyLoad.get(day) || 0) + load);
+    const { tss, method } = estimateActivityTSS(a, athlete);
+    if (tss > 0) {
+      dailyLoad.set(day, (dailyLoad.get(day) || 0) + tss);
+      coverage[method] = (coverage[method] || 0) + 1;
     }
   });
 
-  const today = new Date();
-  let ctl = 0;
-  let atl = 0;
-  const ctlTau = 42;
-  const atlTau = 7;
+  const today  = new Date();
+  let ctl = 0, atl = 0;
+  const ctlTau = 42, atlTau = 7;
 
-  // Prime the model with 90 days before our window
+  // Prime model 90 days before the visible window
   for (let d = days + 90; d > days; d--) {
     const day = new Date(today);
     day.setDate(today.getDate() - d);
-    const key = day.toISOString().slice(0, 10);
+    const key  = day.toISOString().slice(0, 10);
     const load = dailyLoad.get(key) || 0;
     ctl = ctl + (load - ctl) * (1 / ctlTau);
     atl = atl + (load - atl) * (1 / atlTau);
@@ -61,23 +133,24 @@ function computePMCSeriesFromActivities(activities = [], days = 120) {
   for (let d = days; d >= 0; d--) {
     const day = new Date(today);
     day.setDate(today.getDate() - d);
-    const key = day.toISOString().slice(0, 10);
+    const key  = day.toISOString().slice(0, 10);
     const load = dailyLoad.get(key) || 0;
     ctl = ctl + (load - ctl) * (1 / ctlTau);
     atl = atl + (load - atl) * (1 / atlTau);
     series.push({
-      date: key,
+      date:      key,
       shortDate: key.slice(5),
-      ctl: Math.round(ctl * 10) / 10,
-      atl: Math.round(atl * 10) / 10,
-      tsb: Math.round((ctl - atl) * 10) / 10,
+      ctl:  Math.round(ctl  * 10) / 10,
+      atl:  Math.round(atl  * 10) / 10,
+      tsb:  Math.round((ctl - atl) * 10) / 10,
       load,
     });
   }
-  return series;
+
+  return { series, coverage };
 }
 
-export default function PMCChart({ wellness, activities, loading }) {
+export default function PMCChart({ wellness, activities, athlete, loading }) {
   const [range, setRange] = useState(90);
   const [formImpressions, setFormImpressions] = useState({});
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -99,9 +172,9 @@ export default function PMCChart({ wellness, activities, loading }) {
 
   const isEstimated = !wellness || wellness.length === 0;
 
-  const estimatedSeries = useMemo(
-    () => computePMCSeriesFromActivities(activities || [], 120),
-    [activities]
+  const { series: estimatedSeries, coverage } = useMemo(
+    () => computePMCSeriesFromActivities(activities || [], athlete, 120),
+    [activities, athlete]
   );
 
   const data = useMemo(() => {
@@ -255,15 +328,47 @@ export default function PMCChart({ wellness, activities, loading }) {
       </div>
 
       {isEstimated && (
-        <div className="info-banner" style={{ backgroundColor: 'rgba(250,204,21,0.08)', borderColor: 'rgba(250,204,21,0.3)', marginTop: 8 }}>
-          <strong>Estimated from activities</strong> — Intervals.icu not connected. CTL/ATL/TSB are computed from your activity training load data. Connect Intervals.icu in Settings for more accurate values.
+        <div className="info-banner" style={{ backgroundColor: 'rgba(250,204,21,0.06)', borderColor: 'rgba(250,204,21,0.25)', marginTop: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+            <div>
+              <strong>Estimated mode</strong> — Intervals.icu not connected.
+              TSS calculated per activity using the best available data.
+            </div>
+            {coverage && Object.values(coverage).some(v => v > 0) && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
+                {coverage.direct > 0 && (
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.3)' }}>
+                    ✓ {coverage.direct} direct TSS
+                  </span>
+                )}
+                {coverage.power > 0 && (
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'rgba(96,148,240,0.12)', color: '#6094f0', border: '1px solid rgba(96,148,240,0.3)' }}>
+                    ⚡ {coverage.power} power
+                  </span>
+                )}
+                {coverage.hr > 0 && (
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'rgba(251,146,60,0.12)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.3)' }}>
+                    ♥ {coverage.hr} hrTSS
+                  </span>
+                )}
+                {coverage.duration > 0 && (
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'rgba(148,163,184,0.1)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.2)' }}>
+                    ⏱ {coverage.duration} duration estimate
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* Main PMC chart */}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">CTL / ATL / TSB</span>
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+            CTL / ATL / TSB
+            <InfoTip {...METRICS.CTL} />
+          </span>
           <span className="card-badge">{data.length} days</span>
         </div>
         <div className="chart-container" style={{ height: 340 }}>
@@ -377,7 +482,7 @@ export default function PMCChart({ wellness, activities, loading }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 12 }}>
         {stats?.ctl && (
           <div className="card" style={{ marginBottom: 0, padding: 12 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>CTL (Fitness)</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6, display: 'flex', alignItems: 'center' }}>CTL (Fitness)<InfoTip {...METRICS.CTL} /></div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--ctl-color)', marginBottom: 4 }}>
               {stats.ctl.latest.toFixed(1)} <span style={{ fontSize: 10, color: 'var(--text-2)' }}>current</span>
             </div>
@@ -388,7 +493,7 @@ export default function PMCChart({ wellness, activities, loading }) {
         )}
         {stats?.atl && (
           <div className="card" style={{ marginBottom: 0, padding: 12 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>ATL (Fatigue)</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6, display: 'flex', alignItems: 'center' }}>ATL (Fatigue)<InfoTip {...METRICS.ATL} /></div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--atl-color)', marginBottom: 4 }}>
               {stats.atl.latest.toFixed(1)} <span style={{ fontSize: 10, color: 'var(--text-2)' }}>current</span>
             </div>
@@ -399,7 +504,7 @@ export default function PMCChart({ wellness, activities, loading }) {
         )}
         {stats?.tsb && (
           <div className="card" style={{ marginBottom: 0, padding: 12 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>TSB (Form)</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6, display: 'flex', alignItems: 'center' }}>TSB (Form)<InfoTip {...METRICS.TSB} /></div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--tsb-color)', marginBottom: 4 }}>
               {stats.tsb.latest.toFixed(1)} <span style={{ fontSize: 10, color: 'var(--text-2)' }}>current</span>
             </div>
@@ -410,7 +515,7 @@ export default function PMCChart({ wellness, activities, loading }) {
         )}
         {stats?.rhr && (
           <div className="card" style={{ marginBottom: 0, padding: 12 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>RHR (Recovery)</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6, display: 'flex', alignItems: 'center' }}>RHR (Recovery)<InfoTip {...METRICS.RHR} /></div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--accent-purple)', marginBottom: 4 }}>
               {stats.rhr.latest.toFixed(0)} <span style={{ fontSize: 10, color: 'var(--text-2)' }}>bpm</span>
             </div>

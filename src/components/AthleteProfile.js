@@ -110,7 +110,7 @@ function buildBrutalReport({ currentFtp, tsb, targetFtp, targetDate, coachStyle 
     };
 }
 
-export default function AthleteProfile({ wellness = [], athlete = null, events = [], activities = [], loading = false }) {
+export default function AthleteProfile({ wellness = [], athlete = null, events = [], activities = [], loading = false, powerCurve = null }) {
     const [profile, setProfile] = useState({
         riderName: '',
         primarySport: 'Road Cycling',
@@ -129,6 +129,7 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
     });
     const [saveMsg, setSaveMsg] = useState('');
     const [showSettings, setShowSettings] = useState(false);
+    const [showCatBreakdown, setShowCatBreakdown] = useState(false);
 
     // Add a helper message state for missing data
     const hasWellnessData = wellness && wellness.length > 0;
@@ -242,8 +243,8 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
     }, [events, activities]);
 
     const latest = wellness?.[wellness.length - 1] || null;
-    const ctl = latest?.icu_ctl ?? null;
-    const atl = latest?.icu_atl ?? null;
+    const ctl = latest?.icu_ctl ?? latest?.ctl ?? latest?.fitness ?? null;
+    const atl = latest?.icu_atl ?? latest?.atl ?? latest?.fatigue ?? null;
     const tsb = ctl != null && atl != null ? ctl - atl : null;
     const currentFtp = getAthleteFtp(athlete);
     const restingHr = getWellnessRestingHr(latest);
@@ -356,15 +357,22 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
         ? (currentFtp / getAthleteWeight(athlete)).toFixed(2)
         : null;
 
+    // Coggan (2010) power profiling table — international standard, used by TrainingPeaks, Intervals.icu, etc.
+    const CAT_LEVELS = [
+        { tier: 6, label: 'World Tour / Pro', range: '≥ 5.5', min: 5.5, max: Infinity, color: 'var(--accent-cyan)', desc: 'Professional peloton standard. UCI WorldTour / ProTeam level.' },
+        { tier: 5, label: 'Elite Amateur', range: '5.0–5.5', min: 5.0, max: 5.5, color: 'var(--accent-blue)', desc: 'National-level competition. Top domestic amateur / U23 elite.' },
+        { tier: 4, label: 'Cat 1 / Expert', range: '4.5–5.0', min: 4.5, max: 5.0, color: 'var(--accent-blue)', desc: 'Highest open amateur category. Strong regional racer.' },
+        { tier: 3, label: 'Cat 2 / Advanced', range: '4.0–4.5', min: 4.0, max: 4.5, color: 'var(--accent-green)', desc: 'Competitive club racer. Finishing in the front group consistently.' },
+        { tier: 2, label: 'Cat 3 / Competitive', range: '3.5–4.0', min: 3.5, max: 4.0, color: 'var(--accent-yellow)', desc: 'Active racer with consistent structured training.' },
+        { tier: 1, label: 'Cat 4 / Recreational', range: '3.0–3.5', min: 3.0, max: 3.5, color: 'var(--accent-orange)', desc: 'Beginner racer or fit recreational cyclist.' },
+        { tier: 0, label: 'Cat 5 / Untrained', range: '< 3.0', min: 0, max: 3.0, color: 'var(--text-2)', desc: 'New to structured training. Significant aerobic base to build.' },
+    ];
+
     const riderLevel = (() => {
         const w = Number(wkg);
         if (!w) return null;
-        if (w >= 5.0) return { label: 'Elite / Pro', color: 'var(--accent-cyan)', tier: 5 };
-        if (w >= 4.5) return { label: 'Cat A / Semi-pro', color: 'var(--accent-blue)', tier: 4 };
-        if (w >= 4.0) return { label: 'Competitive Cat A', color: 'var(--accent-green)', tier: 3 };
-        if (w >= 3.5) return { label: 'Strong Cat B', color: 'var(--accent-yellow)', tier: 2 };
-        if (w >= 3.0) return { label: 'Cat C / Improving', color: 'var(--accent-orange)', tier: 1 };
-        return { label: 'Recreational', color: 'var(--text-2)', tier: 0 };
+        const cat = CAT_LEVELS.find(c => w >= c.min && w < c.max) || CAT_LEVELS[CAT_LEVELS.length - 1];
+        return { ...cat, source: `${cat.range} W/kg · Coggan power profiling table (2010) · Source: TrainingPeaks / Intervals.icu standard` };
     })();
 
     const riderArchetype = (() => {
@@ -389,33 +397,33 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
         const reqW = report.reqPerWeek;
 
         if (tsbVal < -25) {
-            items.push({ type: 'warning', title: 'High Fatigue Load', body: `TSB is ${tsbVal.toFixed(0)}. You are deep in fatigue. Prioritize recovery before any intensity work.` });
+            items.push({ type: 'warning', title: 'High Fatigue Load', body: `TSB is ${tsbVal.toFixed(0)}. You are deep in fatigue — prioritize recovery before any intensity work.`, source: `TSB = CTL − ATL = ${ctlVal.toFixed(0)} − ${atl?.toFixed(0) ?? '?'} = ${tsbVal.toFixed(0)} · Coggan & Allen: TSB < −25 = overreaching zone` });
         } else if (tsbVal > 15) {
-            items.push({ type: 'good', title: 'Fresh and Ready', body: `TSB is +${tsbVal.toFixed(0)}. You have good form. This is the time to race or hit quality sessions.` });
+            items.push({ type: 'good', title: 'Fresh and Ready', body: `TSB is +${tsbVal.toFixed(0)}. You are in good form — optimal window to race or hit quality sessions.`, source: `TSB = ${tsbVal.toFixed(0)} · Coggan & Allen: optimal race window = +5 to +25` });
         }
 
         if (ctlVal > 0 && ctlVal < 50) {
-            items.push({ type: 'focus', title: 'Build Your Aerobic Base', body: 'CTL is below 50 — volume is your primary limiter. More Z2 hours will unlock everything else.' });
+            items.push({ type: 'focus', title: 'Build Your Aerobic Base', body: `CTL is ${ctlVal.toFixed(0)} — volume is your primary limiter right now. More Z2 hours will unlock everything else.`, source: `CTL = ${ctlVal.toFixed(0)} · Threshold: < 50 TSS = underdeveloped aerobic base (Coggan model)` });
         } else if (ctlVal >= 80) {
-            items.push({ type: 'good', title: 'Strong Fitness Base', body: `CTL at ${ctlVal.toFixed(0)} — solid fitness foundation. Focus on quality and race-specific efforts.` });
+            items.push({ type: 'good', title: 'Strong Fitness Base', body: `CTL at ${ctlVal.toFixed(0)} — solid aerobic foundation. Shift focus to quality and race-specific efforts.`, source: `CTL = ${ctlVal.toFixed(0)} · Amateur racer target: 80–120 TSS (Coggan & Allen reference range)` });
         }
 
         if (report.delta != null && report.delta > 20) {
-            items.push({ type: 'focus', title: 'FTP Gap to Target', body: `${report.delta.toFixed(0)}W gap to target. ${reqW != null ? `Requires ${reqW.toFixed(1)}W/week — ` : ''}structured threshold sessions are key.` });
+            items.push({ type: 'focus', title: 'FTP Gap to Target', body: `${report.delta.toFixed(0)}W gap to your FTP target.${reqW != null ? ` Requires ${reqW.toFixed(1)}W/week —` : ''} structured threshold sessions are key.`, source: `Current FTP: ${currentFtp}W · Target: ${Number(profile?.targetFtp || 0)}W · Gap: ${report.delta.toFixed(0)}W · Required progression: ${reqW?.toFixed(1) ?? '?'}W/week` });
         } else if (report.delta != null && report.delta <= 0) {
-            items.push({ type: 'good', title: 'Target FTP Reached', body: 'You are at or above your FTP target. Now prove it consistently in training and racing.' });
+            items.push({ type: 'good', title: 'Target FTP Reached', body: 'You are at or above your FTP target on paper. Prove it consistently in training and racing.', source: `Current FTP ${currentFtp}W ≥ target ${Number(profile?.targetFtp || 0)}W` });
         }
 
         if (daysLeft != null && daysLeft > 0 && daysLeft <= 14) {
-            items.push({ type: 'warning', title: 'Race Taper Zone', body: `${daysLeft} days to target event. Reduce volume, keep intensity sharp. Don't add fitness now — show what you have.` });
+            items.push({ type: 'warning', title: 'Race Taper Zone', body: `${daysLeft} days to target event. Reduce volume, keep intensity sharp. Don't try to add fitness now.`, source: `${daysLeft}d to event · Taper protocol: reduce volume 30–50%, maintain one sharp intensity session (Mujika & Padilla, 2003)` });
         }
 
         if (restingHr != null && restingHr > 55) {
-            items.push({ type: 'info', title: 'Monitor Recovery', body: `Resting HR at ${restingHr} bpm. Track trend daily — rising RHR is often the first signal of overtraining.` });
+            items.push({ type: 'info', title: 'Monitor Recovery', body: `Resting HR at ${restingHr} bpm. Track the daily trend — a rise of +5–7 bpm above your baseline is an early overtraining signal.`, source: `RHR: ${restingHr} bpm · Source: Intervals.icu wellness log · Threshold: +5–7 bpm elevation = incomplete recovery (Meeusen et al., ECSS 2013)` });
         }
 
         if (items.length === 0) {
-            items.push({ type: 'info', title: 'Connect Intervals.icu', body: 'Link your training data to get personalised insights, FTP readiness scores, and recovery tracking.' });
+            items.push({ type: 'info', title: 'Connect Intervals.icu', body: 'Link your training data to get personalised insights, FTP readiness scores, and recovery tracking.', source: null });
         }
 
         return items;
@@ -442,20 +450,46 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                 </button>
             </div>
 
+            {/* ─── DATA STATUS ─── */}
+            {(() => {
+                const hasCtl = ctl != null;
+                const hasAtlData = atl != null;
+                const hasAll = hasCtl && hasAtlData && currentFtp;
+                const hasNone = !hasCtl && !hasAtlData && !currentFtp && !restingHr;
+                if (hasAll) return null;
+                return (
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '10px 14px', marginBottom: 14,
+                        background: hasNone ? 'rgba(239,68,68,0.06)' : 'rgba(251,191,36,0.06)',
+                        border: `1px solid ${hasNone ? 'rgba(239,68,68,0.2)' : 'rgba(251,191,36,0.2)'}`,
+                        borderRadius: 8,
+                    }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: hasNone ? 'var(--accent-red)' : 'var(--accent-yellow)' }} />
+                        <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>
+                            {hasNone
+                                ? <><strong style={{ color: 'var(--text-1)' }}>No training data connected.</strong> Go to Settings → Connect Intervals.icu to load CTL, ATL, TSB and wellness metrics.</>
+                                : <><strong style={{ color: 'var(--text-1)' }}>Partial data.</strong> {!currentFtp ? 'FTP missing — set it in Settings. ' : ''}{!hasCtl ? 'Wellness not synced — CTL/ATL unavailable. ' : ''}Check your Intervals.icu connection.</>
+                            }
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* ─── KEY METRICS ROW ─── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
                 {[
                     { label: 'FTP', value: currentFtp ? `${currentFtp}W` : '—', sub: wkg ? `${wkg} W/kg` : null, color: 'var(--accent-blue)' },
-                    { label: 'FITNESS (CTL)', value: ctl != null ? ctl.toFixed(0) : '—', sub: 'chronic load', color: 'var(--ctl-color)' },
-                    { label: 'FATIGUE (ATL)', value: atl != null ? atl.toFixed(0) : '—', sub: 'acute load', color: 'var(--atl-color)' },
+                    { label: 'FITNESS (CTL)', value: ctl != null ? ctl.toFixed(0) : '—', sub: 'chronic load · 42d avg', color: 'var(--ctl-color)' },
+                    { label: 'FATIGUE (ATL)', value: atl != null ? atl.toFixed(0) : '—', sub: 'acute load · 7d avg', color: 'var(--atl-color)' },
                     { label: 'FORM (TSB)', value: tsb != null ? (tsb > 0 ? '+' : '') + tsb.toFixed(0) : '—', sub: tsb != null ? (tsb > 5 ? 'Fresh' : tsb < -20 ? 'Tired' : 'Neutral') : null, color: tsb != null && tsb > 5 ? 'var(--accent-green)' : tsb != null && tsb < -20 ? 'var(--accent-red)' : 'var(--tsb-color)' },
                     { label: 'RESTING HR', value: restingHr != null ? `${restingHr} bpm` : '—', sub: 'recovery proxy', color: 'var(--accent-orange)' },
                     { label: 'READINESS', value: report.readiness != null ? `${report.readiness}%` : '—', sub: report.status, color: report.status === 'good' ? 'var(--accent-green)' : report.status === 'bad' ? 'var(--accent-red)' : 'var(--accent-yellow)' },
                 ].map(m => (
                     <div key={m.label} style={{ padding: '14px 16px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 10 }}>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', letterSpacing: '0.1em', marginBottom: 8 }}>{m.label}</div>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: m.color, lineHeight: 1 }}>{m.value}</div>
-                        {m.sub && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>{m.sub}</div>}
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.1em', marginBottom: 8 }}>{m.label}</div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 700, color: m.color, lineHeight: 1 }}>{m.value}</div>
+                        {m.sub && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>{m.sub}</div>}
                     </div>
                 ))}
             </div>
@@ -465,46 +499,157 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                 <div className="card" style={{ marginBottom: 0 }}>
                     <div className="card-header">
                         <span className="card-title">Rider Profile</span>
-                        {riderLevel && <span className="card-badge" style={{ color: riderLevel.color }}>{riderLevel.label}</span>}
+                        {riderLevel && (
+                            <button
+                                onClick={() => setShowCatBreakdown(s => !s)}
+                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                            >
+                                <span className="card-badge" style={{ color: riderLevel.color, textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>
+                                    {riderLevel.label} ↕
+                                </span>
+                            </button>
+                        )}
                     </div>
 
                     {riderArchetype ? (
                         <div style={{ marginBottom: 16, padding: '16px', background: 'var(--bg-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
                             <div style={{ fontSize: 28, marginBottom: 8 }}>{riderArchetype.icon}</div>
-                            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-0)', marginBottom: 6 }}>{riderArchetype.label}</div>
-                            <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>{riderArchetype.desc}</div>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-0)', marginBottom: 6 }}>{riderArchetype.label}</div>
+                            <div style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6 }}>{riderArchetype.desc}</div>
                         </div>
                     ) : (
-                        <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 8, fontSize: 12, color: 'var(--text-3)' }}>
+                        <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 8, fontSize: 14, color: 'var(--text-3)' }}>
                             Connect Intervals.icu and set your FTP to see your rider profile.
+                        </div>
+                    )}
+
+                    {showCatBreakdown && wkg && (
+                        <div style={{ marginBottom: 16, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                            <div style={{ padding: '8px 12px', background: 'var(--bg-3)', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.08em' }}>
+                                W/KG CLASSIFICATION · Coggan (2010)
+                            </div>
+                            {CAT_LEVELS.map(cat => {
+                                const isCurrent = cat.tier === riderLevel?.tier;
+                                return (
+                                    <div key={cat.tier} style={{
+                                        display: 'flex', alignItems: 'center', gap: 10,
+                                        padding: '10px 12px',
+                                        background: isCurrent ? `${cat.color}12` : 'transparent',
+                                        borderLeft: isCurrent ? `3px solid ${cat.color}` : '3px solid transparent',
+                                        borderBottom: '1px solid var(--border)',
+                                    }}>
+                                        <div style={{ minWidth: 70, fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: cat.color }}>
+                                            {cat.range}
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: 13, fontWeight: isCurrent ? 700 : 500, color: isCurrent ? 'var(--text-0)' : 'var(--text-2)' }}>
+                                                {cat.label}
+                                                {isCurrent && <span style={{ marginLeft: 8, fontSize: 11, fontFamily: 'var(--font-mono)', color: cat.color }}>← you ({wkg} W/kg)</span>}
+                                            </div>
+                                            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{cat.desc}</div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            <div style={{ padding: '6px 12px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)' }}>
+                                Source: Coggan A. (2010) Power profiling table · Used by TrainingPeaks, Intervals.icu · Based on 20-min FTP test normalized to body weight
+                            </div>
                         </div>
                     )}
 
                     {wkg && (
                         <div>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 8 }}>W/KG BENCHMARK</div>
-                            <div style={{ position: 'relative', height: 8, background: 'var(--bg-3)', borderRadius: 4, marginBottom: 6, overflow: 'hidden' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.08em' }}>W/KG BENCHMARK</div>
+                                <div style={{ fontSize: 11, color: riderLevel?.color, fontWeight: 600 }}>{wkg} W/kg</div>
+                            </div>
+                            <div style={{ position: 'relative', height: 10, background: 'var(--bg-3)', borderRadius: 5, marginBottom: 6, overflow: 'hidden' }}>
                                 {[
-                                    { label: 'Rec', pct: 0, color: 'var(--text-3)' },
-                                    { label: 'Cat C', pct: 33, color: 'var(--accent-orange)' },
-                                    { label: 'Cat B', pct: 50, color: 'var(--accent-yellow)' },
-                                    { label: 'Cat A', pct: 67, color: 'var(--accent-green)' },
-                                    { label: 'Elite', pct: 84, color: 'var(--accent-blue)' },
-                                ].map(seg => (
-                                    <div key={seg.label} style={{ position: 'absolute', left: `${seg.pct}%`, top: 0, bottom: 0, right: 0, background: seg.color, opacity: 0.3 }} />
+                                    { pct: 0, color: 'var(--text-3)' },
+                                    { pct: 20, color: 'var(--accent-orange)' },
+                                    { pct: 40, color: 'var(--accent-yellow)' },
+                                    { pct: 60, color: 'var(--accent-green)' },
+                                    { pct: 80, color: 'var(--accent-blue)' },
+                                ].map((seg, i) => (
+                                    <div key={i} style={{ position: 'absolute', left: `${seg.pct}%`, top: 0, bottom: 0, right: 0, background: seg.color, opacity: 0.28 }} />
                                 ))}
                                 <div style={{
                                     position: 'absolute', top: -1, bottom: -1,
                                     left: `${Math.min(99, (Number(wkg) - 2.5) / 3 * 100)}%`,
                                     width: 3, background: riderLevel?.color || 'var(--accent-cyan)',
-                                    borderRadius: 2, boxShadow: `0 0 6px ${riderLevel?.color || 'var(--accent-cyan)'}`,
+                                    borderRadius: 2, boxShadow: `0 0 8px ${riderLevel?.color || 'var(--accent-cyan)'}`,
                                 }} />
                             </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-3)' }}>
-                                <span>2.5</span><span>3.0</span><span>3.5</span><span>4.0</span><span>4.5</span><span>5.5+</span>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', marginBottom: 8 }}>
+                                <span>Cat5</span><span>Cat4</span><span>Cat3</span><span>Cat2</span><span>Cat1</span><span>Elite</span>
+                            </div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', lineHeight: 1.5, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+                                Click category badge to see all levels
                             </div>
                         </div>
                     )}
+
+                    {(currentFtp || (Array.isArray(powerCurve) && powerCurve.length > 0)) && (() => {
+                        const DURATIONS = [
+                            { key: '10s',  sec: 10,    label: '10 sec',   type: 'Neuromuscular', typeColor: 'var(--accent-purple)' },
+                            { key: '30s',  sec: 30,    label: '30 sec',   type: 'Short Sprint',  typeColor: 'var(--accent-red)' },
+                            { key: '1min', sec: 60,    label: '1 min',    type: 'Anaerobic',     typeColor: 'var(--accent-orange)' },
+                            { key: '5min', sec: 300,   label: '5 min',    type: 'VO2 Max',       typeColor: 'var(--accent-yellow)' },
+                            { key: '20min',sec: 1200,  label: '20 min',   type: 'Threshold',     typeColor: 'var(--accent-green)' },
+                            { key: '1h',   sec: 3600,  label: '1 hour',   type: 'FTP',           typeColor: 'var(--accent-blue)' },
+                            { key: '4h',   sec: 14400, label: '4 hours',  type: 'Aerobic Base',  typeColor: 'var(--text-2)' },
+                        ];
+                        const getRealWatts = (sec) => {
+                            if (!Array.isArray(powerCurve) || powerCurve.length === 0) return null;
+                            const sorted = [...powerCurve].sort((a, b) =>
+                                Math.abs((a.secs || a.time || 0) - sec) - Math.abs((b.secs || b.time || 0) - sec)
+                            );
+                            const best = sorted[0];
+                            if (!best) return null;
+                            const bestSec = best.secs || best.time || 0;
+                            if (Math.abs(bestSec - sec) > sec * 0.25) return null;
+                            return best.watts || best.power || null;
+                        };
+                        const FALLBACK_PCT = { 10: 1.78, 30: 1.55, 60: 1.32, 300: 1.16, 1200: 1.05, 3600: 1.00, 14400: 0.76 };
+                        const getEstimatedWatts = (sec) => currentFtp ? Math.round((FALLBACK_PCT[sec] ?? 1.0) * currentFtp) : null;
+                        const rows = DURATIONS.map(d => {
+                            const real = getRealWatts(d.sec);
+                            const watts = real ?? getEstimatedWatts(d.sec);
+                            return { ...d, watts, isReal: real != null };
+                        }).filter(d => d.watts != null);
+                        if (rows.length === 0) return null;
+                        const maxW = rows[0].watts;
+                        const hasReal = rows.some(r => r.isReal);
+                        return (
+                            <div style={{ marginTop: 16 }}>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 8 }}>
+                                    POWER PROFILE {hasReal ? '· INTERVALS.ICU' : '· ESTIMATE'}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                    {rows.map(d => {
+                                        const pct = currentFtp ? Math.round(d.watts / currentFtp * 100) : null;
+                                        const barPct = Math.round(d.watts / maxW * 100);
+                                        return (
+                                            <div key={d.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <div style={{ minWidth: 44, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', textAlign: 'right' }}>{d.label}</div>
+                                                <div style={{ flex: 1, height: 18, background: 'var(--bg-3)', borderRadius: 3, overflow: 'hidden', position: 'relative' }}>
+                                                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${barPct}%`, background: d.typeColor, opacity: d.isReal ? 0.9 : 0.5, borderRadius: 3, transition: 'width 0.4s ease' }} />
+                                                    <div style={{ position: 'absolute', right: 4, top: 0, bottom: 0, display: 'flex', alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-0)', fontWeight: 600 }}>
+                                                        {d.watts}W
+                                                    </div>
+                                                </div>
+                                                {pct != null && <div style={{ minWidth: 36, fontFamily: 'var(--font-mono)', fontSize: 11, color: d.typeColor, fontWeight: 600, textAlign: 'right' }}>{pct}%</div>}
+                                                <div style={{ minWidth: 80, fontSize: 11, color: 'var(--text-3)' }}>{d.type}</div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', lineHeight: 1.5 }}>
+                                    {hasReal ? 'Intervals.icu · best power for each duration' : `Estimated · Coggan empirical ratios · connect Intervals.icu for real data`}
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         {[
@@ -533,16 +678,21 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                                 border: `1px solid ${insightBorder[ins.type] || 'var(--border)'}`,
                                 borderLeft: `3px solid ${insightColor[ins.type] || 'var(--text-3)'}`,
                             }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: insightColor[ins.type], marginBottom: 4 }}>{ins.title}</div>
-                                <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>{ins.body}</div>
+                                <div style={{ fontSize: 14, fontWeight: 700, color: insightColor[ins.type], marginBottom: 4 }}>{ins.title}</div>
+                                <div style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6 }}>{ins.body}</div>
+                                {ins.source && (
+                                    <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', lineHeight: 1.5 }}>
+                                        {ins.source}
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
 
                     {report.verdict && (
                         <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--bg-2)', borderRadius: 8, borderLeft: `3px solid ${report.status === 'good' ? 'var(--accent-green)' : report.status === 'bad' ? 'var(--accent-red)' : 'var(--accent-yellow)'}` }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4, fontFamily: 'var(--font-mono)' }}>TARGET ASSESSMENT</div>
-                            <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>{report.verdict}</div>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4, fontFamily: 'var(--font-mono)' }}>TARGET ASSESSMENT</div>
+                            <div style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6 }}>{report.verdict}</div>
                         </div>
                     )}
                 </div>
@@ -571,16 +721,16 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                                         <div style={{
                                             minWidth: 48, textAlign: 'center', padding: '4px 8px',
                                             borderRadius: 6, background: isNextRace ? 'rgba(6,182,212,0.15)' : 'var(--bg-3)',
-                                            fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700,
+                                            fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700,
                                             color: isNextRace ? 'var(--accent-cyan)' : 'var(--text-3)',
                                         }}>
                                             {daysUntilRace === 0 ? 'TODAY' : `${daysUntilRace}d`}
                                         </div>
                                         <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-0)' }}>{race.name || race.title || 'Race'}</div>
-                                            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{raceDate.toLocaleDateString('en-GB', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+                                            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-0)' }}>{race.name || race.title || 'Race'}</div>
+                                            <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{raceDate.toLocaleDateString('en-GB', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
                                         </div>
-                                        {isNextRace && <span style={{ fontSize: 11, color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>NEXT</span>}
+                                        {isNextRace && <span style={{ fontSize: 12, color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>NEXT</span>}
                                     </div>
                                 );
                             })}
@@ -610,19 +760,19 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                                     }}
                                 >
                                     <div style={{ flex: 1 }}>
-                                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>
                                             {weekend.saturday_str}
                                         </div>
                                         {weekend.raceCount > 0 ? (
-                                            <div style={{ fontSize: 11, color: 'var(--accent-cyan)' }}>
+                                            <div style={{ fontSize: 13, color: 'var(--accent-cyan)' }}>
                                                 {weekend.races.map(r => r.name || r.title || 'Race').join(', ')}
                                             </div>
                                         ) : (
-                                            <div style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic' }}>No races</div>
+                                            <div style={{ fontSize: 13, color: 'var(--text-3)', fontStyle: 'italic' }}>No races</div>
                                         )}
                                     </div>
                                     <div style={{
-                                        padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700,
+                                        padding: '3px 8px', borderRadius: 4, fontSize: 12, fontWeight: 700,
                                         fontFamily: 'var(--font-mono)',
                                         color: isRacing ? 'var(--accent-green)' : 'var(--text-3)',
                                         background: isRacing ? 'rgba(34,197,94,0.15)' : 'var(--bg-3)',
@@ -633,7 +783,7 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                             );
                         })}
                     </div>
-                    {saveMsg && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--accent-green)' }}>{saveMsg}</div>}
+                    {saveMsg && <div style={{ marginTop: 8, fontSize: 13, color: 'var(--accent-green)' }}>{saveMsg}</div>}
                 </div>
             </div>
 
@@ -647,25 +797,25 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
                         {profile.targetEventName && (
                             <div style={{ padding: 14, background: 'var(--bg-2)', borderRadius: 8 }}>
-                                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 6 }}>TARGET EVENT</div>
-                                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-0)' }}>{profile.targetEventName}</div>
-                                {profile.targetDate && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>{profile.targetDate}</div>}
+                                <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 6 }}>TARGET EVENT</div>
+                                <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-0)' }}>{profile.targetEventName}</div>
+                                {profile.targetDate && <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>{profile.targetDate}</div>}
                             </div>
                         )}
                         {profile.targetFtp && (
                             <div style={{ padding: 14, background: 'var(--bg-2)', borderRadius: 8 }}>
-                                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 6 }}>TARGET FTP</div>
-                                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--accent-blue)', fontFamily: 'var(--font-mono)' }}>{profile.targetFtp}W</div>
-                                {report.delta != null && <div style={{ fontSize: 11, color: report.delta > 0 ? 'var(--accent-orange)' : 'var(--accent-green)', marginTop: 4 }}>{report.delta > 0 ? `+${report.delta.toFixed(0)}W gap` : 'Target met'}</div>}
+                                <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 6 }}>TARGET FTP</div>
+                                <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--accent-blue)', fontFamily: 'var(--font-mono)' }}>{profile.targetFtp}W</div>
+                                {report.delta != null && <div style={{ fontSize: 13, color: report.delta > 0 ? 'var(--accent-orange)' : 'var(--accent-green)', marginTop: 4 }}>{report.delta > 0 ? `+${report.delta.toFixed(0)}W gap` : 'Target met'}</div>}
                             </div>
                         )}
                         {report.reqPerWeek != null && report.reqPerWeek > 0 && (
                             <div style={{ padding: 14, background: 'var(--bg-2)', borderRadius: 8 }}>
-                                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 6 }}>REQUIRED GAIN</div>
-                                <div style={{ fontSize: 22, fontWeight: 700, color: report.status === 'good' ? 'var(--accent-green)' : report.status === 'bad' ? 'var(--accent-red)' : 'var(--accent-yellow)', fontFamily: 'var(--font-mono)' }}>
+                                <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 6 }}>REQUIRED GAIN</div>
+                                <div style={{ fontSize: 26, fontWeight: 700, color: report.status === 'good' ? 'var(--accent-green)' : report.status === 'bad' ? 'var(--accent-red)' : 'var(--accent-yellow)', fontFamily: 'var(--font-mono)' }}>
                                     {report.reqPerWeek.toFixed(1)} W/wk
                                 </div>
-                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>{report.verdict?.split('.')[0]}</div>
+                                <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>{report.verdict?.split('.')[0]}</div>
                             </div>
                         )}
                     </div>

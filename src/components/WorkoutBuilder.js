@@ -39,11 +39,13 @@ const PRESETS = {
     ],
 };
 
-const makeBlock = (label = 'Block', durationMin = 10, zone = 'Z2') => ({
+const makeBlock = (label = 'Block', durationMin = 10, zone = 'Z2', targetWatts = '', targetHr = '') => ({
     id: `b_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
     label,
     durationMin,
     zone,
+    targetWatts,
+    targetHr,
 });
 
 function zoneMeta(zone) {
@@ -109,7 +111,10 @@ export default function WorkoutBuilder({ onCreate, onSaveToLibrary, onGenerateWi
         lines.push('');
         lines.push('Workout Steps:');
         blocks.forEach((b, idx) => {
-            lines.push(`${idx + 1}. ${b.label} — ${b.durationMin} min @ ${zoneText(b.zone, ftp)}`);
+            let target = zoneText(b.zone, ftp);
+            if (b.targetWatts) target += ` · target ${b.targetWatts}W`;
+            if (b.targetHr) target += ` · target ${b.targetHr} bpm`;
+            lines.push(`${idx + 1}. ${b.label} — ${b.durationMin} min @ ${target}`);
         });
         return lines.join('\n');
     };
@@ -250,7 +255,33 @@ export default function WorkoutBuilder({ onCreate, onSaveToLibrary, onGenerateWi
                         >
                             {ZONES.map(z => <option key={z.id} value={z.id}>{z.id} - {z.name}</option>)}
                         </select>
-                        <div className="workout-block-target">{zoneText(b.zone, ftp)}</div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                            <input
+                                className="form-input calendar-form-input"
+                                type="number"
+                                min="0"
+                                placeholder="Target W"
+                                value={b.targetWatts}
+                                onChange={e => updateBlock(b.id, 'targetWatts', e.target.value)}
+                                style={{ width: 90 }}
+                                title="Override: target watts for this block"
+                            />
+                            <input
+                                className="form-input calendar-form-input"
+                                type="number"
+                                min="0"
+                                placeholder="Target bpm"
+                                value={b.targetHr}
+                                onChange={e => updateBlock(b.id, 'targetHr', e.target.value)}
+                                style={{ width: 100 }}
+                                title="Override: target heart rate for this block"
+                            />
+                        </div>
+                        <div className="workout-block-target">
+                            {zoneText(b.zone, ftp)}
+                            {b.targetWatts && <span style={{ color: 'var(--accent-blue)', marginLeft: 6 }}>→ {b.targetWatts}W</span>}
+                            {b.targetHr && <span style={{ color: 'var(--accent-red)', marginLeft: 6 }}>→ {b.targetHr} bpm</span>}
+                        </div>
                         <div className="workout-block-actions">
                             <button className="btn" onClick={() => moveBlock(b.id, -1)}>Up</button>
                             <button className="btn" onClick={() => moveBlock(b.id, 1)}>Down</button>

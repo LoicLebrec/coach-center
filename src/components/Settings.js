@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import persistence from '../services/persistence';
 import { stravaService } from '../services/strava';
+import { wahooService } from '../services/wahoo';
 import { garminService } from '../services/garmin';
 
 export default function Settings({ connections, onSave, onDisconnect, onRefresh, onRepairHistory }) {
@@ -12,10 +13,17 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
   const [stravaClientId, setStravaClientId] = useState('');
   const [stravaClientSecret, setStravaClientSecret] = useState('');
 
+  // Wahoo
+  const [wahooClientId, setWahooClientId] = useState('');
+  const [wahooClientSecret, setWahooClientSecret] = useState('');
+
   // AI Coach
   const [claudeApiKey, setClaudeApiKey] = useState('');
   const [groqApiKey, setGroqApiKey] = useState('');
   const [llmProvider, setLlmProvider] = useState('claude');
+
+  // Map tiles
+  const [mapTilerKey, setMapTilerKey] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -36,12 +44,19 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
         setStravaClientId(stravaCreds.clientId || '');
         setStravaClientSecret(stravaCreds.clientSecret || '');
       }
+      const wahooCreds = await persistence.getCredentials('wahoo');
+      if (wahooCreds) {
+        setWahooClientId(wahooCreds.clientId || '');
+        setWahooClientSecret(wahooCreds.clientSecret || '');
+      }
       const claudeKey = await persistence.getClaudeApiKey();
       if (claudeKey) setClaudeApiKey(claudeKey);
       const groqKey = await persistence.getGroqApiKey();
       if (groqKey) setGroqApiKey(groqKey);
       const provider = await persistence.getLlmProvider();
       setLlmProvider(provider || 'claude');
+      const mtKey = await persistence.getPref('maptiler-key', '');
+      if (mtKey) setMapTilerKey(mtKey);
     })();
   }, []);
 
@@ -74,6 +89,25 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
     }
     await onSave('strava', { clientId: stravaClientId.trim(), clientSecret: stravaClientSecret.trim() });
     showMessage('Strava credentials saved. Click "Connect Strava" to authorize.');
+  };
+
+  const handleSaveWahoo = async () => {
+    if (!wahooClientId.trim() || !wahooClientSecret.trim()) {
+      showMessage('Please enter both Wahoo Client ID and Client Secret.', true);
+      return;
+    }
+    await onSave('wahoo', { clientId: wahooClientId.trim(), clientSecret: wahooClientSecret.trim() });
+    showMessage('Wahoo credentials saved. Click "Connect Wahoo" to authorize.');
+  };
+
+  const handleWahooAuth = () => {
+    if (!wahooClientId.trim() || !wahooClientSecret.trim()) {
+      showMessage('Save your Wahoo credentials first.', true);
+      return;
+    }
+    wahooService.configure(wahooClientId.trim(), wahooClientSecret.trim());
+    const redirectUri = window.location.origin + window.location.pathname;
+    window.location.href = wahooService.getAuthUrl(redirectUri);
   };
 
   const handleSaveClaude = async () => {
@@ -245,6 +279,47 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
           )}
           {connections.strava && (
             <button className="btn btn-danger" onClick={() => onDisconnect('strava')}>Disconnect</button>
+          )}
+        </div>
+      </div>
+
+      {/* ═══ Wahoo ═══ */}
+      <div className="settings-section">
+        <div className="settings-section-title">
+          Wahoo Fitness
+          {connections.wahoo && <span style={{ color: 'var(--accent-green)', fontSize: 12, marginLeft: 8 }}>● Connected</span>}
+        </div>
+        <div className="settings-section-desc">
+          Push structured workouts directly to your Wahoo ELEMNT or KICKR. Uses OAuth — register a free app at developers.wahooligan.com.
+        </div>
+
+        <div className="info-banner">
+          <strong>Setup (one-time):</strong><br />
+          1. Go to <code>developers.wahooligan.com</code> → Create Application<br />
+          2. Set <strong>Redirect URI</strong> to: <code>{window.location.origin + window.location.pathname}</code><br />
+          3. Copy <strong>Client ID</strong> and <strong>Client Secret</strong><br />
+          4. Save here, then click "Connect Wahoo" to authorize
+        </div>
+
+        <div className="form-field">
+          <label className="form-label">Client ID</label>
+          <input className="form-input" type="text" placeholder="Wahoo App Client ID"
+            value={wahooClientId} onChange={e => setWahooClientId(e.target.value)} />
+        </div>
+
+        <div className="form-field">
+          <label className="form-label">Client Secret</label>
+          <input className="form-input" type="password" placeholder="Wahoo App Client Secret"
+            value={wahooClientSecret} onChange={e => setWahooClientSecret(e.target.value)} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn" onClick={handleSaveWahoo}>Save Credentials</button>
+          {!connections.wahoo && wahooClientId && (
+            <button className="btn btn-primary" onClick={handleWahooAuth}>Connect Wahoo →</button>
+          )}
+          {connections.wahoo && (
+            <button className="btn btn-danger" onClick={() => onDisconnect('wahoo')}>Disconnect</button>
           )}
         </div>
       </div>
@@ -445,6 +520,49 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
           }}>
             Reset Everything
           </button>
+        </div>
+      </div>
+
+      {/* ═══ Map Tiles ═══ */}
+      <div className="settings-section">
+        <div className="settings-section-title">Map Tiles — Route Builder</div>
+        <div className="settings-section-desc">
+          Without a key, routes use Esri World Topo (free, decent quality). Add a MapTiler key
+          to get the Komoot/Strava outdoor look — free tier is 100,000 tiles/month.
+          Sign up at <code>cloud.maptiler.com</code> → API Keys → copy your default key.
+        </div>
+        <div className="form-field">
+          <label className="form-label">
+            MapTiler API Key
+            {mapTilerKey && <span style={{ color: 'var(--accent-green)', marginLeft: 8, fontWeight: 400 }}>● Configured</span>}
+          </label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              className="form-input"
+              type="password"
+              placeholder="Paste your MapTiler API key..."
+              value={mapTilerKey}
+              onChange={e => setMapTilerKey(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button className="btn btn-primary" onClick={async () => {
+              await persistence.savePref('maptiler-key', mapTilerKey.trim());
+              onSave('maptiler', { key: mapTilerKey.trim() });
+              showMessage('Map tile key saved. Reload the Route Builder to apply.');
+            }}>
+              {mapTilerKey ? 'Update' : 'Save'}
+            </button>
+            {mapTilerKey && (
+              <button className="btn" onClick={async () => {
+                await persistence.savePref('maptiler-key', '');
+                setMapTilerKey('');
+                onSave('maptiler', { key: '' });
+                showMessage('Map key cleared. Reverted to free tiles.');
+              }}>
+                Clear
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

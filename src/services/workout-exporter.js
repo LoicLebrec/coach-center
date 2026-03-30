@@ -90,39 +90,58 @@ function writeWorkoutData(w, name, numSteps, sport) {
 }
 
 // Local mesg 2 = Workout Step (global 27)
+// Field numbers per Garmin FIT Profile v21.32:
+//   0=message_index, 1=wkt_step_name, 3=duration_type, 4=duration_value,
+//   5=target_type, 6=target_value, 7=custom_target_value_low,
+//   8=custom_target_value_high, 9=intensity
+// WktStepTarget enum: 2=open, 4=power
+// WktStepDuration enum: 0=time (value in ms)
+// Intensity enum: 0=active, 1=rest, 2=warmup, 3=cooldown
 function writeWorkoutStepDef(w) {
   w.u8(0x42); // definition, local 2
   w.u8(0x00);
   w.u8(0x00);
   w.u16(27);  // global mesg 27 = workout_step
-  w.u8(7);    // 7 fields
+  w.u8(9);    // 9 fields
   // field 0: message_index UINT16
   w.u8(0); w.u8(2); w.u8(0x84);
-  // field 7: wkt_step_name STRING(16)
-  w.u8(7); w.u8(16); w.u8(0x07);
-  // field 1: duration_type ENUM (0=time ms)
-  w.u8(1); w.u8(1); w.u8(0x00);
-  // field 2: duration_value UINT32
-  w.u8(2); w.u8(4); w.u8(0x86);
-  // field 3: target_type ENUM (0=speed,1=hr,3=power,6=open)
+  // field 1: wkt_step_name STRING(16)
+  w.u8(1); w.u8(16); w.u8(0x07);
+  // field 3: duration_type ENUM
   w.u8(3); w.u8(1); w.u8(0x00);
-  // field 4: target_value UINT32
+  // field 4: duration_value UINT32 (ms when type=time)
   w.u8(4); w.u8(4); w.u8(0x86);
-  // field 8: intensity ENUM (0=active,1=rest,2=warmup,3=cooldown)
-  w.u8(8); w.u8(1); w.u8(0x00);
+  // field 5: target_type ENUM (2=open, 4=power)
+  w.u8(5); w.u8(1); w.u8(0x00);
+  // field 6: target_value UINT32 (0 when using custom range)
+  w.u8(6); w.u8(4); w.u8(0x86);
+  // field 7: custom_target_value_low UINT32 (watts low bound)
+  w.u8(7); w.u8(4); w.u8(0x86);
+  // field 8: custom_target_value_high UINT32 (watts high bound)
+  w.u8(8); w.u8(4); w.u8(0x86);
+  // field 9: intensity ENUM
+  w.u8(9); w.u8(1); w.u8(0x00);
 }
 
 function writeWorkoutStepData(w, idx, step) {
-  // step: { name, durationSec, targetType, targetValue, intensity }
-  // targetType: 0=open, 3=power (targetValue in watts), 1=hr (zone 1-7)
+  // Map internal target codes to FIT WktStepTarget enum:
+  //   internal 3 (power) → FIT 4, internal 6 (open) → FIT 2
+  const hasPower = step.targetType === 3 && step.targetValue > 0;
+  const fitTargetType = hasPower ? 4 : 2;
+  // Use ±5% range for power targets (custom_target_value_low/high)
+  const lo = hasPower ? Math.round(step.targetValue * 0.95) >>> 0 : 0;
+  const hi = hasPower ? Math.round(step.targetValue * 1.05) >>> 0 : 0;
+
   w.u8(0x02);
   w.u16(idx);
   w.str(step.name || '', 16);
   w.u8(0); // duration_type = time
-  w.u32((step.durationSec * 1000) >>> 0); // ms
-  w.u8(step.targetType ?? 6); // 6 = open
-  w.u32((step.targetValue ?? 0) >>> 0);
-  w.u8(step.intensity ?? 0); // 0=active
+  w.u32((step.durationSec * 1000) >>> 0); // value in ms
+  w.u8(fitTargetType);
+  w.u32(0); // target_value = 0 (range defined by custom_target fields below)
+  w.u32(lo);
+  w.u32(hi);
+  w.u8(step.intensity ?? 0);
 }
 
 // ─── FIT file assembler ──────────────────────────────────────
@@ -145,7 +164,7 @@ function buildFitWorkout(workoutName, steps, sport = 2) {
   header.u8(14);        // header_size
   header.u8(0x10);      // protocol_version 1.0
   header.u16(2132);     // profile_version 21.32
-  header.u32(dataBytes.length + 2); // data_size (includes data CRC)
+  header.u32(dataBytes.length); // data_size = message bytes only (trailing CRC not counted)
   // ".FIT"
   header.u8(0x2E); header.u8(0x46); header.u8(0x49); header.u8(0x54);
   const headerBytes = header.bytes();
@@ -420,6 +439,63 @@ export function exportWorkoutFit(messageText, ftp = null, sport = 'cycling', lab
  * @param {number} ftp        - athlete FTP for power targets (watts)
  * @param {string} planName   - base name for the ZIP file
  */
+// ─── Zone → FTP percentage ────────────────────────────────────
+const ZONE_POWER = {
+  Z1: { lo: 0.45, hi: 0.55 }, Z2: { lo: 0.56, hi: 0.75 },
+  Z3: { lo: 0.76, hi: 0.90 }, Z4: { lo: 0.91, hi: 1.05 },
+  Z5: { lo: 1.06, hi: 1.20 }, Z6: { lo: 1.21, hi: 1.50 },
+  Z7: { lo: 1.51, hi: 2.00 },
+};
+
+/**
+ * Export a structured workout to Zwift .zwo XML format.
+ * Drop the downloaded file into Documents/Zwift/Workouts/<your-id>/
+ */
+export function exportToZwift(workout) {
+  const blocks = workout.blocks || workout.workoutBlocks || [];
+  const name   = workout.title || workout.name || 'Workout';
+  const desc   = (workout.notes || workout.objective || '').replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+
+  const xmlBlocks = blocks.map((b, i) => {
+    const sec    = Math.round((Number(b.durationMin) || 10) * 60);
+    const zone   = b.zone || 'Z2';
+    const { lo, hi } = ZONE_POWER[zone] || ZONE_POWER.Z2;
+    const mid    = Math.round(((lo + hi) / 2) * 1000) / 1000;
+    const lbl    = (b.label || '').toLowerCase();
+    const isLast = i === blocks.length - 1;
+
+    if (/warm.?up/.test(lbl) || (i === 0 && lo < 0.65)) {
+      return `    <Warmup Duration="${sec}" PowerLow="${lo}" PowerHigh="${hi}"/>`;
+    }
+    if (/cool.?down/.test(lbl) || (isLast && lo < 0.65)) {
+      return `    <Cooldown Duration="${sec}" PowerLow="${hi}" PowerHigh="${lo}"/>`;
+    }
+    return `    <SteadyState Duration="${sec}" Power="${mid}"/>`;
+  });
+
+  const xml = [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<workout_file>',
+    '  <author>CoachCenter APEX</author>',
+    `  <name>${name}</name>`,
+    `  <description>${desc}</description>`,
+    '  <sportType>bike</sportType>',
+    '  <tags/>',
+    '  <workout>',
+    xmlBlocks.join('\n'),
+    '  </workout>',
+    '</workout_file>',
+  ].join('\n');
+
+  const blob = new Blob([xml], { type: 'text/xml' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.zwo`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export async function exportPlanAsZip(events = [], ftp = 200, planName = 'training-plan') {
   const zip = new JSZip();
   const folder = zip.folder('workouts');

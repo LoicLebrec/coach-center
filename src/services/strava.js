@@ -132,6 +132,23 @@ class StravaService {
     return this.request(`/athlete/activities?page=${page}&per_page=${perPage}`);
   }
 
+  async getActivitiesDateRange(oldest, newest) {
+    const after = Math.floor(new Date(oldest + 'T00:00:00').getTime() / 1000);
+    const before = Math.floor(new Date(newest + 'T23:59:59').getTime() / 1000);
+    const all = [];
+    let page = 1;
+    while (true) {
+      const batch = await this.request(
+        `/athlete/activities?after=${after}&before=${before}&page=${page}&per_page=100`
+      );
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      all.push(...batch);
+      if (batch.length < 100) break;
+      if (++page > 10) break; // safety cap: 1000 activities
+    }
+    return all;
+  }
+
   async getActivity(id) {
     return this.request(`/activities/${id}?include_all_efforts=false`);
   }

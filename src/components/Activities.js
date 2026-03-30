@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import InfoTip from './InfoTip';
+import { METRICS } from '../data/metricDefs';
 
 const ZONE_COLORS = {
   Z1: '#475569', Z2: '#22c55e', Z3: '#eab308',
@@ -50,14 +52,17 @@ function ActivityIntensityBar({ zone, durationSec }) {
   );
 }
 
-function Metric({ label, value, color, unit }) {
+function Metric({ label, value, color, unit, tip }) {
   if (value == null) return null;
   return (
     <div style={{ padding: '8px 10px', background: 'var(--bg-1)', borderRadius: 7 }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 3, letterSpacing: '0.06em' }}>{label}</div>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 700, color: color || 'var(--text-0)' }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginBottom: 3, letterSpacing: '0.06em', display: 'flex', alignItems: 'center' }}>
+        {label}
+        {tip && <InfoTip {...tip} />}
+      </div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 17, fontWeight: 700, color: color || 'var(--text-0)' }}>
         {value}
-        {unit && <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-3)', marginLeft: 2 }}>{unit}</span>}
+        {unit && <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-3)', marginLeft: 2 }}>{unit}</span>}
       </div>
     </div>
   );
@@ -209,20 +214,20 @@ export default function Activities({ activities, loading, athlete }) {
               {/* Header row */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-0)', marginBottom: 4 }}>
+                  <div style={{ fontSize: 17, fontWeight: 600, color: 'var(--text-0)', marginBottom: 4 }}>
                     {a._name}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)' }}>
                       {a.dateStr}
                     </span>
                     {a._type && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '2px 8px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, padding: '2px 8px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
                         {a._type.toUpperCase()}
                       </span>
                     )}
                     {zone && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '2px 8px', borderRadius: 20, background: `${color}18`, color, letterSpacing: '0.06em', fontWeight: 600 }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, padding: '2px 8px', borderRadius: 20, background: `${color}18`, color, letterSpacing: '0.06em', fontWeight: 600 }}>
                         {zone} · {ZONE_LABELS[zone]}
                       </span>
                     )}
@@ -230,8 +235,8 @@ export default function Activities({ activities, loading, athlete }) {
                 </div>
                 {a._tss != null && (
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', letterSpacing: '0.06em', marginBottom: 2 }}>TSS</div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700, color: 'var(--accent-cyan)' }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.06em', marginBottom: 2 }}>TSS</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 700, color: 'var(--accent-cyan)' }}>
                       {Math.round(a._tss)}
                     </div>
                   </div>
@@ -249,17 +254,18 @@ export default function Activities({ activities, loading, athlete }) {
                   borderLeft: `3px solid ${color}`,
                 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-0)' }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-0)', display: 'flex', alignItems: 'center' }}>
                       {ZONE_LABELS[zone]}
+                      <InfoTip {...METRICS.ZONE} />
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
                       {zone} · {ZONE_PCT[zone][0]}–{ZONE_PCT[zone][1]}% FTP
                       {ftp && a._watts ? ` · ~${Math.round(a._watts)}W avg` : ''}
                       {a._intensity ? ` · IF ${a._intensity.toFixed(2)}` : ''}
                     </div>
                   </div>
                   {a._duration > 0 && (
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600, color }}>
                       {formatDuration(a._duration)}
                     </div>
                   )}
@@ -271,11 +277,17 @@ export default function Activities({ activities, loading, athlete }) {
                 {a._duration > 0 && !zone && (
                   <Metric label="DURATION" value={formatDuration(a._duration)} />
                 )}
+                {a._tss != null && (
+                  <Metric label="TSS" value={Math.round(a._tss)} color="var(--accent-cyan)" tip={METRICS.TSS} />
+                )}
                 {a._watts != null && (
                   <Metric label="AVG POWER" value={Math.round(a._watts)} unit="W" color="var(--accent-blue)" />
                 )}
                 {a._normalizedWatts != null && a._normalizedWatts !== a._watts && (
-                  <Metric label="NP" value={Math.round(a._normalizedWatts)} unit="W" color="var(--accent-cyan)" />
+                  <Metric label="NP" value={Math.round(a._normalizedWatts)} unit="W" color="var(--accent-cyan)" tip={METRICS.NP} />
+                )}
+                {a._intensity != null && (
+                  <Metric label="IF" value={a._intensity.toFixed(2)} tip={METRICS.IF} />
                 )}
                 {a._hr != null && (
                   <Metric label="AVG HR" value={Math.round(a._hr)} unit="bpm" color="var(--accent-red)" />
@@ -284,7 +296,7 @@ export default function Activities({ activities, loading, athlete }) {
                   <Metric label="MAX HR" value={Math.round(a._maxHr)} unit="bpm" color="var(--accent-orange)" />
                 )}
                 {a.ef != null && (
-                  <Metric label="EF" value={a.ef.toFixed(3)} color={a.ef > 1.5 ? 'var(--accent-green)' : a.ef < 1.2 ? 'var(--accent-orange)' : 'var(--text-1)'} />
+                  <Metric label="EF" value={a.ef.toFixed(3)} color={a.ef > 1.5 ? 'var(--accent-green)' : a.ef < 1.2 ? 'var(--accent-orange)' : 'var(--text-1)'} tip={METRICS.EF} />
                 )}
                 {a._distance != null && (
                   <Metric label="DISTANCE" value={a._distance.toFixed(1)} unit="km" />

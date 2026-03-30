@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { intervalsService, buildIcuEventPayload } from './services/intervals';
 import { buildRuleBasedWorkout, inferTrainingType } from './services/workout-rules';
 import { stravaService } from './services/strava';
+import { wahooService } from './services/wahoo';
+import { exportToZwift } from './services/workout-exporter';
 import { garminService } from './services/garmin';
 import { aiCoachService } from './services/ai-coach';
 import persistence from './services/persistence';
@@ -70,6 +72,59 @@ function findNumericByKeyPattern(obj, pattern, depth = 0) {
   return null;
 }
 
+// Estimate TSS for an activity that has no icu_training_load
+function estimateActivityTSS(activity, ftp) {
+  const duration = activity.moving_time || activity.elapsed_time || 0;
+  if (!duration) return null;
+
+  const np = activity.weighted_average_watts || activity.icu_normalized_watts
+    || activity.average_watts || activity.icu_average_watts;
+  if (np && ftp && np > 0) {
+    const intensityFactor = np / ftp;
+    return Math.round((duration * np * intensityFactor) / (ftp * 3600) * 100);
+  }
+
+  const avgHR = activity.average_heartrate;
+  if (avgHR && avgHR > 50) {
+    const restHR = 50, maxHR = 190;
+    const hrRatio = Math.min(1, Math.max(0, (avgHR - restHR) / (maxHR - restHR)));
+    if (hrRatio > 0) {
+      const trimp = (duration / 60) * hrRatio * 0.64 * Math.exp(1.92 * hrRatio);
+      return Math.round(trimp * 1.5);
+    }
+  }
+
+  return Math.round((duration / 3600) * 40);
+}
+
+// Build synthetic CTL/ATL/TSB wellness array from activity TSS history
+function computeSyntheticWellness(activities) {
+  if (!activities?.length) return [];
+  const tssByDate = {};
+  for (const a of activities) {
+    const date = (a.start_date_local || '').slice(0, 10);
+    if (!date || date === 'null') continue;
+    tssByDate[date] = (tssByDate[date] || 0) + (a.icu_training_load || 0);
+  }
+  const dates = Object.keys(tssByDate).sort();
+  if (!dates.length) return [];
+  let ctl = 0, atl = 0;
+  const wellness = [];
+  for (let d = new Date(dates[0] + 'T00:00:00'); d <= new Date(); d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().split('T')[0];
+    const tss = tssByDate[dateStr] || 0;
+    ctl = ctl + (tss - ctl) / 42;
+    atl = atl + (tss - atl) / 7;
+    wellness.push({
+      id: dateStr,
+      icu_ctl: Math.round(ctl * 10) / 10,
+      icu_atl: Math.round(atl * 10) / 10,
+      _synthetic: true,
+    });
+  }
+  return wellness;
+}
+
 function normalizeAthleteProfile(rawAthlete) {
   if (!rawAthlete || typeof rawAthlete !== 'object') return rawAthlete;
 
@@ -111,17 +166,20 @@ export default function App() {
   const [events, setEvents] = useState([]);
   const [plannedEvents, setPlannedEvents] = useState([]);
   const [customWorkoutLibrary, setCustomWorkoutLibrary] = useState([]);
+  const [powerCurve, setPowerCurve] = useState(null);
 
   // LLM config
   const [claudeApiKey, setClaudeApiKey] = useState(null);
   const [groqApiKey, setGroqApiKey] = useState(null);
   const [llmProvider, setLlmProvider] = useState('groq');
+  const [mapTilerKey, setMapTilerKey] = useState('');
 
   // Connection state
   const [connections, setConnections] = useState({
     intervals: false,
     strava: false,
     garmin: false,
+    wahoo: false,
   });
 
   // Load saved credentials on mount
@@ -132,6 +190,15 @@ export default function App() {
         if (intCreds?.athleteId && intCreds?.apiKey) {
           intervalsService.configure(intCreds.athleteId, intCreds.apiKey);
           setConnections(c => ({ ...c, intervals: true }));
+        }
+
+        const wahooCreds = await persistence.getCredentials('wahoo');
+        if (wahooCreds?.clientId && wahooCreds?.clientSecret) {
+          wahooService.configure(wahooCreds.clientId, wahooCreds.clientSecret);
+          if (wahooCreds.accessToken) {
+            wahooService.setTokens(wahooCreds.accessToken, wahooCreds.refreshToken, wahooCreds.expiresAt);
+            setConnections(c => ({ ...c, wahoo: true }));
+          }
         }
 
         const stravaCreds = await persistence.getCredentials('strava');
@@ -166,6 +233,9 @@ export default function App() {
         aiCoachService.setProvider(provider);
         setLlmProvider(provider);
 
+        const mtKey = await persistence.getPref('maptiler-key', '');
+        if (mtKey) setMapTilerKey(mtKey);
+
         const localPlanned = await persistence.getPlannedEvents();
         setPlannedEvents(localPlanned || []);
 
@@ -180,37 +250,51 @@ export default function App() {
     })();
   }, []);
 
-  // Handle Strava OAuth callback
+  // Handle OAuth callbacks (Strava + Wahoo) — differentiated by `state` param
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
+    const params    = new URLSearchParams(window.location.search);
+    const code      = params.get('code');
     const authError = params.get('error');
+    const state     = params.get('state'); // 'strava' | 'wahoo'
 
     if (authError) {
-      setError(`Strava OAuth was not completed: ${authError}`);
+      setError(`OAuth was not completed: ${authError}`);
       window.history.replaceState({}, '', window.location.pathname);
       return;
     }
 
-    if (code) {
-      (async () => {
-        try {
-          const redirectUri = window.location.origin + window.location.pathname;
+    if (!code) return;
+
+    (async () => {
+      try {
+        const redirectUri = window.location.origin + window.location.pathname;
+
+        if (state === 'wahoo') {
+          const data = await wahooService.exchangeCode(code, redirectUri);
+          await persistence.saveCredentials('wahoo', {
+            ...(await persistence.getCredentials('wahoo')),
+            accessToken:  data.access_token,
+            refreshToken: data.refresh_token,
+            expiresAt:    wahooService.expiresAt,
+          });
+          setConnections(c => ({ ...c, wahoo: true }));
+        } else {
+          // Default: Strava (legacy callbacks without state also go here)
           const data = await stravaService.exchangeCode(code, redirectUri);
           await persistence.saveCredentials('strava', {
             ...(await persistence.getCredentials('strava')),
-            accessToken: data.access_token,
+            accessToken:  data.access_token,
             refreshToken: data.refresh_token,
-            expiresAt: data.expires_at,
-            athleteId: data.athlete?.id,
+            expiresAt:    data.expires_at,
+            athleteId:    data.athlete?.id,
           });
           setConnections(c => ({ ...c, strava: true }));
-          window.history.replaceState({}, '', window.location.pathname);
-        } catch (err) {
-          setError('Strava OAuth failed: ' + err.message);
         }
-      })();
-    }
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch (err) {
+        setError('OAuth failed: ' + err.message);
+      }
+    })();
   }, []);
 
   // Dedup activities: same start_date_local (to minute) + type → keep richest entry
@@ -259,8 +343,12 @@ export default function App() {
         total_elevation_gain: a.total_elevation_gain ?? a.elevation_gain ?? a.elev_gain ?? null,
         icu_training_load: a.icu_training_load ?? a.training_load ?? a.tss ?? a.load ?? null,
         icu_average_watts: a.icu_average_watts ?? a.average_watts ?? a.avg_power ?? a.power ?? null,
+        icu_normalized_watts: a.icu_normalized_watts ?? a.weighted_average_watts ?? a.normalizedWatts ?? null,
         average_watts: a.average_watts ?? a.avg_power ?? a.icu_average_watts ?? null,
+        weighted_average_watts: a.weighted_average_watts ?? a.icu_normalized_watts ?? null,
         average_heartrate: a.average_heartrate ?? a.avg_hr ?? a.heart_rate ?? null,
+        max_heartrate: a.max_heartrate ?? a.max_hr ?? null,
+        _source: a._source ?? (a.icu_training_load != null ? 'intervals' : a.weighted_average_watts != null ? 'strava' : 'unknown'),
       };
     });
   }, []);
@@ -369,9 +457,11 @@ export default function App() {
     });
   }, [computeActivityCompleteness]);
 
-  // Fetch data when Intervals.icu is connected
+  // Fetch data from Intervals.icu and/or Strava — whichever is connected
   const fetchData = useCallback(async (options = {}) => {
-    if (!intervalsService.isConfigured()) return;
+    const hasIcu = intervalsService.isConfigured();
+    const hasStrava = stravaService.isConfigured();
+    if (!hasIcu && !hasStrava) return;
 
     const mode = options.mode || 'incremental';
     const syncDays = mode === 'repair' ? REPAIR_SYNC_DAYS : INCREMENTAL_SYNC_DAYS;
@@ -386,49 +476,87 @@ export default function App() {
       const oldest = oldestDate.toISOString().split('T')[0];
       const newest = now.toISOString().split('T')[0];
 
-      const [wellnessData, activitiesData, athleteData, eventsData] = await Promise.allSettled([
-        intervalsService.getWellness(oldest, newest),
-        intervalsService.getActivities(oldest, newest),
-        intervalsService.getAthlete(),
-        intervalsService.getEvents(oldest, newest),
-      ]);
+      let icuWellness = [], icuActivities = [], icuAthlete = null, icuEvents = [], icuPowerCurve = null;
+      let stravaActivities = [], stravaAthlete = null;
 
-      const wellness = wellnessData.status === 'fulfilled' ? (wellnessData.value || []) : [];
-      const rawActivities = activitiesData.status === 'fulfilled' ? (activitiesData.value || []) : [];
-      const normalizedActivities = normalizeActivities(rawActivities);
-      let dedupedActivities = deduplicateActivities(normalizedActivities);
+      // Fetch from Intervals.icu if configured
+      if (hasIcu) {
+        const [wellnessData, activitiesData, athleteData, eventsData, powerCurveData] = await Promise.allSettled([
+          intervalsService.getWellness(oldest, newest),
+          intervalsService.getActivities(oldest, newest),
+          intervalsService.getAthlete(),
+          intervalsService.getEvents(oldest, newest),
+          intervalsService.getPowerCurve('Ride'),
+        ]);
+        icuWellness = wellnessData.status === 'fulfilled' ? (wellnessData.value || []) : [];
+        icuActivities = activitiesData.status === 'fulfilled' ? (activitiesData.value || []) : [];
+        icuAthlete = athleteData.status === 'fulfilled' ? normalizeAthleteProfile(athleteData.value || null) : null;
+        icuEvents = eventsData.status === 'fulfilled' ? (eventsData.value || []) : [];
+        icuPowerCurve = powerCurveData.status === 'fulfilled' ? (powerCurveData.value || null) : null;
+      }
 
-      // Progressive enrichment from per-activity endpoint:
-      // - incremental mode: enrich top sparse records while staying fast.
-      // - repair mode: deep enrichment of full fetched history.
-      if (dedupedActivities.length > 0) {
+      // Fetch from Strava if configured
+      if (hasStrava) {
+        const [stravaActData, stravaAthleteData] = await Promise.allSettled([
+          stravaService.getActivitiesDateRange(oldest, newest),
+          stravaService.getAthlete(),
+        ]);
+        stravaActivities = stravaActData.status === 'fulfilled' ? (stravaActData.value || []) : [];
+        stravaAthlete = stravaAthleteData.status === 'fulfilled'
+          ? normalizeAthleteProfile(stravaAthleteData.value || null) : null;
+      }
+
+      // Merge and normalize — ICU activities take precedence over Strava duplicates
+      const allRaw = [...icuActivities, ...stravaActivities];
+      const normalized = normalizeActivities(allRaw);
+      let dedupedActivities = deduplicateActivities(normalized);
+
+      // Determine FTP for TSS estimation (ICU wins over Strava)
+      const resolvedAthlete = icuAthlete || stravaAthlete;
+      const ftp = resolvedAthlete?.icu_ftp || resolvedAthlete?.ftp || null;
+
+      // Estimate TSS for activities that have none (common with Strava-only)
+      dedupedActivities = dedupedActivities.map(a => {
+        if (a.icu_training_load != null) return a;
+        const estimated = estimateActivityTSS(a, ftp);
+        return estimated != null ? { ...a, icu_training_load: estimated, _tssEstimated: true } : a;
+      });
+
+      // Progressive enrichment from ICU per-activity endpoint
+      if (hasIcu && dedupedActivities.length > 0) {
         const maxToEnrich = mode === 'repair'
           ? dedupedActivities.length
           : Math.min(dedupedActivities.length, 180);
         dedupedActivities = await enrichActivitiesProgressive(dedupedActivities, maxToEnrich);
       }
 
-      if (wellnessData.status === 'fulfilled') setWellness(wellness);
-      if (activitiesData.status === 'fulfilled') setActivities(dedupedActivities);
-      if (athleteData.status === 'fulfilled') setAthlete(normalizeAthleteProfile(athleteData.value || null));
-      if (eventsData.status === 'fulfilled') setEvents(eventsData.value || []);
+      // Wellness: use ICU if available, else compute synthetic from activity TSS
+      const finalWellness = icuWellness.length > 0
+        ? icuWellness
+        : computeSyntheticWellness(dedupedActivities);
+
+      setWellness(finalWellness);
+      setActivities(dedupedActivities);
+      setAthlete(resolvedAthlete);
+      setEvents(icuEvents);
+      setPowerCurve(icuPowerCurve);
 
       // Build training journal for LLM memory
-      await buildJournal(wellness, dedupedActivities);
+      await buildJournal(finalWellness, dedupedActivities);
 
       // Cache for offline use
-      if (wellness.length) await persistence.cacheData('wellness', wellness, 30);
+      if (finalWellness.length) await persistence.cacheData('wellness', finalWellness, 30);
       if (dedupedActivities.length) await persistence.cacheData('activities', dedupedActivities, 30);
       await persistence.savePref('last-sync-meta', {
         mode,
         syncDays,
         syncedAt: new Date().toISOString(),
         activityCount: dedupedActivities.length,
+        sources: [hasIcu && 'intervals', hasStrava && 'strava'].filter(Boolean),
       });
 
     } catch (err) {
       setError(err.message);
-      // Try loading from cache
       const cachedWellness = await persistence.getCachedData('wellness');
       const cachedActivities = await persistence.getCachedData('activities');
       if (cachedWellness) setWellness(cachedWellness);
@@ -439,11 +567,10 @@ export default function App() {
   }, [deduplicateActivities, normalizeActivities, buildJournal, enrichActivitiesProgressive]);
 
   useEffect(() => {
-    if (!connections.intervals) return;
+    if (!connections.intervals && !connections.strava) return;
 
     fetchData({ mode: 'incremental' });
 
-    // Keep dashboard and activities in sync with newly uploaded rides in Intervals.
     const pollId = setInterval(() => {
       fetchData({ mode: 'incremental' });
     }, 120000);
@@ -455,7 +582,7 @@ export default function App() {
       clearInterval(pollId);
       window.removeEventListener('focus', onFocus);
     };
-  }, [connections.intervals, fetchData]);
+  }, [connections.intervals, connections.strava, fetchData]);
 
   const handleRepairHistory = useCallback(async () => {
     await fetchData({ mode: 'repair' });
@@ -643,6 +770,16 @@ export default function App() {
     return generated;
   }, [llmProvider, groqApiKey, claudeApiKey]);
 
+  const handleSendToWahoo = useCallback(async (workout) => {
+    if (!wahooService.isConfigured()) throw new Error('Wahoo not connected. Add credentials in Settings.');
+    const payload = wahooService.buildWorkoutPayload(workout);
+    await wahooService.createWorkout(payload);
+  }, []);
+
+  const handleExportToZwift = useCallback((workout) => {
+    exportToZwift(workout);
+  }, []);
+
   const handleSaveWorkoutToLibrary = useCallback(async (workout) => {
     if (!workout) return [];
     const next = await persistence.addWorkoutToLibrary(workout);
@@ -711,7 +848,18 @@ export default function App() {
       setConnections(c => ({ ...c, intervals: true, garmin: true }));
     } else if (provider === 'strava') {
       stravaService.configure(creds.clientId, creds.clientSecret);
+      if (creds.accessToken) {
+        stravaService.setTokens(creds.accessToken, creds.refreshToken, creds.expiresAt);
+        setConnections(c => ({ ...c, strava: true }));
+      }
       await persistence.saveCredentials('strava', creds);
+    } else if (provider === 'wahoo') {
+      wahooService.configure(creds.clientId, creds.clientSecret);
+      if (creds.accessToken) {
+        wahooService.setTokens(creds.accessToken, creds.refreshToken, creds.expiresAt);
+        setConnections(c => ({ ...c, wahoo: true }));
+      }
+      await persistence.saveCredentials('wahoo', creds);
     } else if (provider === 'claude') {
       aiCoachService.configure(creds.apiKey || null);
       setClaudeApiKey(creds.apiKey || null);
@@ -724,6 +872,8 @@ export default function App() {
       aiCoachService.setProvider(creds.provider);
       setLlmProvider(creds.provider);
       await persistence.saveLlmProvider(creds.provider);
+    } else if (provider === 'maptiler') {
+      setMapTilerKey(creds.key || '');
     }
   };
 
@@ -738,18 +888,28 @@ export default function App() {
     } else if (provider === 'strava') {
       stravaService.setTokens(null, null, null);
       setConnections(c => ({ ...c, strava: false }));
+      if (!intervalsService.isConfigured()) {
+        setWellness([]);
+        setActivities([]);
+        setAthlete(null);
+      }
+    } else if (provider === 'wahoo') {
+      wahooService.setTokens(null, null, null);
+      setConnections(c => ({ ...c, wahoo: false }));
     }
   };
 
   const renderView = () => {
-    if (!connections.intervals && view !== VIEWS.SETTINGS) {
+    if (!connections.intervals && !connections.strava && view !== VIEWS.SETTINGS) {
       return (
         <div className="loading-state">
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: 'var(--accent-cyan)', letterSpacing: '0.1em', marginBottom: 16 }}>&gt;&gt;</div>
-          <p style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Connect to Intervals.icu to get started</p>
-          <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 20, maxWidth: 400, textAlign: 'center' }}>
-            Coach Center uses Intervals.icu as the primary data source.
-            Your Garmin Connect data also flows through this connection.
+          <p style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Connect a data source to get started</p>
+          <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 8, maxWidth: 420, textAlign: 'center' }}>
+            Connect <strong>Intervals.icu</strong> for full PMC analytics, power curves, wellness tracking, and Garmin sync.
+          </p>
+          <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 20, maxWidth: 420, textAlign: 'center' }}>
+            Connect <strong>Strava</strong> for activity import with estimated TSS and form tracking.
           </p>
           <button className="btn btn-primary" onClick={() => setView(VIEWS.SETTINGS)}>
             Open Settings
@@ -784,7 +944,7 @@ export default function App() {
           />
         );
       case VIEWS.ATHLETE_PROFILE:
-        return <AthleteProfile wellness={wellness} athlete={athlete} events={events} activities={activities} loading={loading} />;
+        return <AthleteProfile wellness={wellness} athlete={athlete} events={events} activities={activities} loading={loading} powerCurve={powerCurve} />;
       case VIEWS.GPX_BUILDER:
         return (
           <div>
@@ -797,13 +957,14 @@ export default function App() {
               events={events}
               plannedEvents={plannedEvents}
               workoutLibrary={[...LIBRARY_WORKOUTS, ...customWorkoutLibrary]}
+              mapTilerKey={mapTilerKey}
             />
           </div>
         );
       case VIEWS.DASHBOARD:
         return <Dashboard wellness={wellness} activities={activities} athlete={athlete} loading={loading} error={error} />;
       case VIEWS.PMC:
-        return <PMCChart wellness={wellness} activities={activities} loading={loading} />;
+        return <PMCChart wellness={wellness} activities={activities} athlete={athlete} loading={loading} />;
       case VIEWS.ACTIVITIES:
         return <Activities activities={activities} athlete={athlete} loading={loading} />;
       case VIEWS.WEEKLY:
@@ -821,6 +982,8 @@ export default function App() {
             onGenerateAiWorkouts={handleGenerateAiWorkouts}
             onSaveWorkoutToLibrary={handleSaveWorkoutToLibrary}
             onGenerateAiWorkoutTemplate={handleGenerateAiWorkoutTemplate}
+            onSendToWahoo={connections.wahoo ? handleSendToWahoo : null}
+            onExportToZwift={handleExportToZwift}
             workoutLibrary={[...LIBRARY_WORKOUTS, ...customWorkoutLibrary]}
           />
         );
@@ -843,63 +1006,70 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="sidebar-logo">Coach<span>Center</span></div>
-          <div className="sidebar-version">v0.2.0 — APEX coach</div>
+          <div className="sidebar-logo">
+            <span className="sidebar-logo-mark">CC</span>
+            Coach<span>Center</span>
+          </div>
+          <div className="sidebar-version">APEX v0.2.0</div>
         </div>
         <nav className="sidebar-nav">
           <div className="nav-section-label">Coach</div>
           <button className={`nav-item${view === VIEWS.COACH ? ' active coach-nav-active' : ''}`} onClick={() => setView(VIEWS.COACH)}>
-            <span className="nav-icon nav-icon-text">&gt;&gt;</span><span>APEX Coach</span>
+            <span className="nav-icon nav-icon-text">AI</span><span>APEX Coach</span>
           </button>
           <button className={`nav-item ${view === VIEWS.ATHLETE_PROFILE ? 'active' : ''}`} onClick={() => setView(VIEWS.ATHLETE_PROFILE)}>
-            <span className="nav-icon nav-icon-text">◌</span><span>Athlete Profile</span>
+            <span className="nav-icon nav-icon-text">AP</span><span>Athlete Profile</span>
           </button>
           <button className={`nav-item ${view === VIEWS.WORKOUT_BUILDER ? 'active' : ''}`} onClick={() => setView(VIEWS.WORKOUT_BUILDER)}>
-            <span className="nav-icon nav-icon-text">▣</span><span>Workout Builder</span>
+            <span className="nav-icon nav-icon-text">WB</span><span>Workout Builder</span>
           </button>
           <button className={`nav-item ${view === VIEWS.GPX_BUILDER ? 'active' : ''}`} onClick={() => setView(VIEWS.GPX_BUILDER)}>
-            <span className="nav-icon nav-icon-text">◉</span><span>GPX Route Builder</span>
+            <span className="nav-icon nav-icon-text">RB</span><span>Route Builder</span>
           </button>
 
           <div className="nav-section-label">Analysis</div>
           <button className={`nav-item ${view === VIEWS.DASHBOARD ? 'active' : ''}`} onClick={() => setView(VIEWS.DASHBOARD)}>
-            <span className="nav-icon nav-icon-text">◈</span><span>Dashboard</span>
+            <span className="nav-icon nav-icon-text">DB</span><span>Dashboard</span>
           </button>
           <button className={`nav-item ${view === VIEWS.PMC ? 'active' : ''}`} onClick={() => setView(VIEWS.PMC)}>
-            <span className="nav-icon nav-icon-text">△</span><span>PMC / Form</span>
+            <span className="nav-icon nav-icon-text">PM</span><span>PMC / Form</span>
           </button>
           <button className={`nav-item ${view === VIEWS.ACTIVITIES ? 'active' : ''}`} onClick={() => setView(VIEWS.ACTIVITIES)}>
-            <span className="nav-icon nav-icon-text">≡</span><span>Activities</span>
+            <span className="nav-icon nav-icon-text">AC</span><span>Activities</span>
           </button>
           <button className={`nav-item ${view === VIEWS.WEEKLY ? 'active' : ''}`} onClick={() => setView(VIEWS.WEEKLY)}>
-            <span className="nav-icon nav-icon-text">▦</span><span>Weekly Load</span>
+            <span className="nav-icon nav-icon-text">WL</span><span>Weekly Load</span>
           </button>
           <button className={`nav-item ${view === VIEWS.CALENDAR ? 'active' : ''}`} onClick={() => setView(VIEWS.CALENDAR)}>
-            <span className="nav-icon nav-icon-text">◷</span><span>Calendar</span>
+            <span className="nav-icon nav-icon-text">CA</span><span>Calendar</span>
           </button>
 
           <div className="nav-section-label">System</div>
           <button className={`nav-item ${view === VIEWS.SETTINGS ? 'active' : ''}`} onClick={() => setView(VIEWS.SETTINGS)}>
-            <span className="nav-icon nav-icon-text">◎</span><span>Settings</span>
+            <span className="nav-icon nav-icon-text">ST</span><span>Settings</span>
           </button>
 
           <div className="nav-section-label">Connections</div>
-          <div className="nav-item" style={{ cursor: 'default', opacity: 0.7 }}>
-            <span className="conn-dot" style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', background: connections.intervals ? 'var(--accent-green)' : 'var(--text-3)' }}></span>
-            <span style={{ fontSize: 11 }}>Intervals.icu</span>
+          <div className="nav-item" style={{ cursor: 'default' }}>
+            <span className="conn-dot" style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: connections.intervals ? 'var(--accent-green)' : 'var(--text-3)' }}></span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Intervals.icu</span>
           </div>
-          <div className="nav-item" style={{ cursor: 'default', opacity: 0.7 }}>
-            <span className="conn-dot" style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', background: connections.strava ? 'var(--accent-green)' : 'var(--text-3)' }}></span>
-            <span style={{ fontSize: 11 }}>Strava</span>
+          <div className="nav-item" style={{ cursor: 'default' }}>
+            <span className="conn-dot" style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: connections.strava ? 'var(--accent-green)' : 'var(--text-3)' }}></span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Strava</span>
           </div>
-          <div className="nav-item" style={{ cursor: 'default', opacity: 0.7 }}>
-            <span className="conn-dot" style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', background: connections.garmin ? 'var(--accent-yellow)' : 'var(--text-3)' }}></span>
-            <span style={{ fontSize: 11 }}>Garmin (via I.icu)</span>
+          <div className="nav-item" style={{ cursor: 'default' }}>
+            <span className="conn-dot" style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: connections.wahoo ? 'var(--accent-green)' : 'var(--text-3)' }}></span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Wahoo</span>
+          </div>
+          <div className="nav-item" style={{ cursor: 'default' }}>
+            <span className="conn-dot" style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: connections.garmin ? 'var(--accent-yellow)' : 'var(--text-3)' }}></span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Garmin (via I.icu)</span>
           </div>
         </nav>
       </aside>
 
-      <main className={`main-content${view === VIEWS.COACH ? ' coach-active' : ''}`}>
+      <main className={`main-content${view === VIEWS.COACH ? ' coach-active' : ''}${view === VIEWS.GPX_BUILDER ? ' gpx-active' : ''}`}>
         {error && view !== VIEWS.COACH && <div className="error-banner"><span className="error-tag">[ERR]</span> {error}</div>}
         {renderView()}
       </main>

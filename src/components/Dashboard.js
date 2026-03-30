@@ -3,6 +3,8 @@ import { LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveCont
 import IntervalsService from '../services/intervals';
 import analytics from '../services/analytics';
 import ActivityHeatmap from './ActivityHeatmap';
+import InfoTip from './InfoTip';
+import { METRICS } from '../data/metricDefs';
 
 function asNumber(...values) {
   for (const v of values) {
@@ -395,7 +397,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       {/* ─── Card 2: PMC Metrics Row ─── */}
       <div className="metrics-row">
         <div className="metric-tile">
-          <div className="metric-label">Fitness (CTL)</div>
+          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>Fitness (CTL)<InfoTip {...METRICS.CTL} /></div>
           <div className="metric-value" style={{ color: 'var(--ctl-color)' }}>
             {ctl != null ? ctl.toFixed(1) : '—'}
           </div>
@@ -407,7 +409,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         </div>
 
         <div className="metric-tile">
-          <div className="metric-label">Fatigue (ATL)</div>
+          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>Fatigue (ATL)<InfoTip {...METRICS.ATL} /></div>
           <div className="metric-value" style={{ color: 'var(--atl-color)' }}>
             {atl != null ? atl.toFixed(1) : '—'}
           </div>
@@ -419,7 +421,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         </div>
 
         <div className="metric-tile">
-          <div className="metric-label">Form (TSB)</div>
+          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>Form (TSB)<InfoTip {...METRICS.TSB} /></div>
           <div className="metric-value" style={{ color: tsb >= 0 ? 'var(--tsb-color)' : 'var(--tsb-negative)' }}>
             {tsb != null ? (tsb >= 0 ? '+' : '') + tsb.toFixed(1) : '—'}
           </div>
@@ -430,7 +432,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         </div>
 
         <div className="metric-tile">
-          <div className="metric-label">FTP</div>
+          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>FTP<InfoTip {...METRICS.FTP} /></div>
           <div className="metric-value">
             {ftpValue || '—'}<span className="metric-unit">W</span>
           </div>
@@ -442,7 +444,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         </div>
 
         <div className="metric-tile">
-          <div className="metric-label">Efficiency Factor</div>
+          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>Efficiency Factor<InfoTip {...METRICS.EF} /></div>
           <div className="metric-value">
             {efTrend?.latest ? efTrend.latest.toFixed(3) : '—'}
           </div>
@@ -454,7 +456,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         </div>
 
         <div className="metric-tile">
-          <div className="metric-label">Resting HR</div>
+          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>Resting HR<InfoTip {...METRICS.RHR} /></div>
           <div className="metric-value">
             {getWellnessRestingHr(latest) || '—'}<span className="metric-unit">bpm</span>
           </div>
@@ -466,27 +468,11 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 12 }}>
-        <div className="card-header">
-          <span className="card-title">Acronym Guide</span>
-          <span className="card-badge">Metrics</span>
-        </div>
-        <div style={{ display: 'grid', gap: 6, fontSize: 12, color: 'var(--text-1)' }}>
-          <div><strong>CTL</strong>: Chronic Training Load (long-term fitness trend, about 42 days).</div>
-          <div><strong>ATL</strong>: Acute Training Load (short-term fatigue trend, about 7 days).</div>
-          <div><strong>TSB</strong>: Training Stress Balance = CTL - ATL (freshness/form).</div>
-          <div><strong>TSS</strong>: Training Stress Score (session load).</div>
-          <div><strong>EF</strong>: Efficiency Factor = average power / average heart rate.</div>
-          <div><strong>RHR</strong>: Resting Heart Rate (from Intervals wellness data).</div>
-          <div><strong>eFTP</strong>: Estimated FTP from Intervals.icu, used as FTP fallback.</div>
-        </div>
-      </div>
-
       {/* ─── Card 3: Weekly Load (last 8 weeks) ─── */}
       {weeklyTSS.length > 0 && (
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Weekly Load — Last 8 Weeks</span>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>Weekly Load — Last 8 Weeks<InfoTip {...METRICS.WEEKLY_TSS} /></span>
             <span className="card-badge">TSS</span>
           </div>
           <div style={{ height: 180, marginTop: 8 }}>

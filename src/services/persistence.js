@@ -219,6 +219,30 @@ const persistence = {
     return next;
   },
 
+  // ─── Saved GPX Routes ────────────────────────────────────
+  async getRoutes() {
+    return (await planningStore.getItem('saved-routes')) || [];
+  },
+
+  async saveRoute(route) {
+    const list   = (await planningStore.getItem('saved-routes')) || [];
+    const safeId = route?.id || `route_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    const normalized = { ...route, id: safeId, savedAt: new Date().toISOString() };
+    const existing   = list.findIndex(r => r.id === safeId);
+    const next = existing >= 0
+      ? list.map((r, i) => (i === existing ? normalized : r))
+      : [normalized, ...list];
+    await planningStore.setItem('saved-routes', next);
+    return next;
+  },
+
+  async deleteRoute(id) {
+    const list = (await planningStore.getItem('saved-routes')) || [];
+    const next = list.filter(r => r.id !== id);
+    await planningStore.setItem('saved-routes', next);
+    return next;
+  },
+
   // ─── Form Impression Log (subjective self-reporting) ─────
   // Date → { date, impression, notes
   async saveFormImpression(dateStr, impression, notes = '') {
