@@ -18,6 +18,7 @@ import Calendar from './components/Calendar';
 import WorkoutBuilder from './components/WorkoutBuilder';
 import SmartWorkoutWizard from './components/SmartWorkoutWizard';
 import GpxRouteBuilder from './components/GpxRouteBuilder';
+import RaceCalendar from './components/RaceCalendar';
 import { LIBRARY_WORKOUTS } from './data/workoutLibrary';
 import './styles/app.css';
 
@@ -41,6 +42,7 @@ const VIEWS = {
   ATHLETE_PROFILE: 'athlete_profile',
   WORKOUT_BUILDER: 'workout_builder',
   GPX_BUILDER: 'gpx_builder',
+  RACE_CALENDAR: 'race_calendar',
   DASHBOARD: 'dashboard',
   PMC: 'pmc',
   ACTIVITIES: 'activities',
@@ -973,6 +975,16 @@ export default function App() {
             />
           </div>
         );
+      case VIEWS.RACE_CALENDAR:
+        return (
+          <div>
+            <div className="page-header">
+              <div className="page-title">Calendrier des courses</div>
+              <div className="page-subtitle">Recherchez des courses FFC · FSGT · UFOLEP · FFCT et ajoutez-les à votre calendrier</div>
+            </div>
+            <RaceCalendar onAddToCalendar={handleAddPlannedEvent} />
+          </div>
+        );
       case VIEWS.DASHBOARD:
         return <Dashboard wellness={wellness} activities={activities} athlete={athlete} loading={loading} error={error} />;
       case VIEWS.PMC:
@@ -1042,6 +1054,9 @@ export default function App() {
           </button>
           <button className={`nav-item ${view === VIEWS.GPX_BUILDER ? 'active' : ''}`} onClick={() => setView(VIEWS.GPX_BUILDER)}>
             <span className="nav-icon nav-icon-text">RB</span><span>Route Builder</span>
+          </button>
+          <button className={`nav-item ${view === VIEWS.RACE_CALENDAR ? 'active' : ''}`} onClick={() => setView(VIEWS.RACE_CALENDAR)}>
+            <span className="nav-icon nav-icon-text">RC</span><span>Calendrier courses</span>
           </button>
 
           <div className="nav-section-label">Analysis</div>

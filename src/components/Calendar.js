@@ -24,6 +24,15 @@ import { intervalsService, buildIcuEventPayload } from '../services/intervals';
 import { buildRuleBasedWorkout, inferTrainingType } from '../services/workout-rules';
 import { LIBRARY_WORKOUTS as DEFAULT_LIBRARY_WORKOUTS } from '../data/workoutLibrary';
 
+// ── Modern glassmorphic design system ───────────────────────────────
+const GLASS = {
+    background: 'rgba(10, 10, 10, 0.90)',
+    backdropFilter: 'blur(24px)',
+    WebkitBackdropFilter: 'blur(24px)',
+    border: '1px solid rgba(255,255,255,0.07)',
+    boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+};
+
 const ZONE_STYLE = {
     Z1: 'z1',
     Z2: 'z2',
@@ -991,12 +1000,32 @@ export default function Calendar({
             recovery: 'Recovery week — reduce fatigue and absorb recent training load',
         };
         const loadLabels = { easy: 'easy/low', moderate: 'moderate', hard: 'hard/high' };
-        const objective = aiPlanGoal
+        const days = aiPlanWeeks ? aiPlanWeeks * 7 : Math.max(3, Math.min(21, Number(aiDays) || 7));
+
+        // Detect upcoming target races in the plan window
+        const today = startOfDay(new Date());
+        const planEnd = new Date(today.getTime() + days * 86400000);
+        const upcomingRaces = plannedEvents.filter(e => {
+            if (e.kind !== 'race' || !e.isTargetRace) return false;
+            const d = new Date(String(e.start_date_local || e.date || '').slice(0, 10));
+            return !isNaN(d) && d >= today && d <= planEnd;
+        });
+
+        let objective = aiPlanGoal
             ? `${goalLabels[aiPlanGoal] || aiPlanGoal} at ${loadLabels[aiPlanLoad] || 'moderate'} intensity`
             : aiObjective;
-        const days = aiPlanWeeks ? aiPlanWeeks * 7 : Math.max(3, Math.min(21, Number(aiDays) || 7));
+
+        if (upcomingRaces.length > 0) {
+            const raceNames = upcomingRaces.map(r => {
+                const d = new Date(String(r.start_date_local || r.date || '').slice(0, 10));
+                const daysUntil = Math.round((d - today) / 86400000);
+                return `${r.title} (J-${daysUntil})`;
+            }).join(', ');
+            objective += `. TARGET RACES detected in this period: ${raceNames}. Include taper (reduce volume 30-40%, keep short intense efforts) the week before each race. Add recovery days after.`;
+        }
+
         try {
-            await onGenerateAiWorkouts({ objective, days });
+            await onGenerateAiWorkouts({ objective, days, upcomingRaces: upcomingRaces.length });
         } catch (err) {
             setPlannerError(err.message || 'AI workout generation failed.');
         } finally {
@@ -1140,15 +1169,34 @@ export default function Calendar({
                                             <div className="calendar-day-events">
                                                 {entries.slice(0, 3).map(entry => {
                                                     const tone = trainingTone(entry);
+                                                    const toneColor = { recovery: '#94a3b8', endurance: '#22c55e', intensive: '#f97316', race: '#f06060' }[tone] || '#4d7fe8';
+                                                    const bgColor = { training: 'var(--bg-2)', objective: 'var(--bg-2)', race: 'var(--bg-2)' }[entry.kind] || 'var(--bg-2)';
                                                     return (
                                                         <div
                                                             key={entry.id}
-                                                            className={`calendar-pill calendar-pill-${entry.kind} calendar-pill-tone-${tone}`}
                                                             title={entry.title}
                                                             onClick={(e) => { e.stopPropagation(); openEventCard(entry); }}
-                                                            style={{ cursor: 'pointer' }}
+                                                            style={{
+                                                                cursor: 'pointer',
+                                                                fontSize: 12,
+                                                                fontWeight: 500,
+                                                                padding: '6px 8px',
+                                                                borderRadius: '6px',
+                                                                background: bgColor,
+                                                                border: '1px solid var(--border)',
+                                                                borderLeft: `3px solid ${toneColor}`,
+                                                                color: 'var(--text-0)',
+                                                                overflow: 'hidden',
+                                                                textOverflow: 'ellipsis',
+                                                                whiteSpace: 'nowrap',
+                                                                transition: 'all 0.15s',
+                                                                display: 'block',
+                                                                marginBottom: 2,
+                                                            }}
+                                                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-3)'; }}
+                                                            onMouseLeave={(e) => { e.currentTarget.style.background = bgColor; }}
                                                         >
-                                                            <span className="calendar-pill-text">{entry.title}</span>
+                                                            <div style={{ fontSize: 12, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', marginBottom: 2 }}>{entry.title}</div>
                                                             {entry.workoutBlocks?.length > 0 && <WorkoutBlocksGraph blocks={entry.workoutBlocks} />}
                                                         </div>
                                                     );
@@ -1158,22 +1206,23 @@ export default function Calendar({
                                                     const nwatts = act.icu_normalized_watts || act.weighted_average_watts || watts;
                                                     const intensity = act.icu_intensity || (nwatts && ftp ? nwatts / ftp : null);
                                                     const zone = zoneFromIF(intensity);
-                                                    const zoneColor = zone ? ZONE_COLORS_DETAIL[zone] : '#22c55e';
+                                                    const zoneColor = zone && zone !== 'Z2' ? ZONE_COLORS_DETAIL[zone] : 'var(--accent-cyan)';
                                                     const name = act.name || act.type || 'Activity';
                                                     return (
                                                         <div
                                                             key={`act_${act.id || i}`}
                                                             style={{
-                                                                fontSize: 10,
-                                                                padding: '2px 5px',
-                                                                borderRadius: 4,
-                                                                background: `${zoneColor}1a`,
+                                                                fontSize: 12,
+                                                                fontWeight: 600,
+                                                                padding: '4px 8px',
+                                                                borderRadius: 6,
+                                                                background: `${zoneColor}15`,
                                                                 borderLeft: `3px solid ${zoneColor}`,
                                                                 color: zoneColor,
                                                                 overflow: 'hidden',
                                                                 whiteSpace: 'nowrap',
                                                                 textOverflow: 'ellipsis',
-                                                                fontFamily: 'var(--font-mono)',
+                                                                fontFamily: 'var(--font-sans)',
                                                                 cursor: 'pointer',
                                                                 marginBottom: 2,
                                                             }}
@@ -1217,22 +1266,39 @@ export default function Calendar({
                                             <div className="calendar-week-events">
                                                 {entries.map(entry => {
                                                     const tone = trainingTone(entry);
+                                                    const toneColor = { recovery: '#94a3b8', endurance: '#22c55e', intensive: '#f97316', race: '#f06060' }[tone] || '#4d7fe8';
                                                     const notesPreview = String(entry.notes || '').replace(/\s+/g, ' ').slice(0, 170);
                                                     const blocksDuration = totalDuration(entry.workoutBlocks || []);
                                                     return (
-                                                        <div key={entry.id} className={`calendar-week-item calendar-week-item-${tone}`} onClick={(e) => { e.stopPropagation(); openEventCard(entry); }} style={{ cursor: 'pointer' }}>
-                                                            <div className="calendar-week-item-head">
-                                                                <div className="calendar-week-item-title">{entry.title}</div>
-                                                                <span className={`calendar-week-tone calendar-week-tone-${tone}`}>{toneLabel(tone)}</span>
+                                                        <div
+                                                            key={entry.id}
+                                                            onClick={(e) => { e.stopPropagation(); openEventCard(entry); }}
+                                                            style={{
+                                                                cursor: 'pointer',
+                                                                border: '1px solid var(--border)',
+                                                                borderLeft: `3px solid ${toneColor}`,
+                                                                borderRadius: '8px',
+                                                                background: 'var(--bg-2)',
+                                                                padding: '10px',
+                                                                transition: 'all 0.15s',
+                                                            }}
+                                                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.borderColor = toneColor; }}
+                                                            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-2)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                                                        >
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                                                                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-0)', flex: 1 }}>{entry.title}</div>
+                                                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, letterSpacing: '0.01em', borderRadius: '999px', padding: '2px 7px', border: `1px solid ${toneColor}33`, background: `${toneColor}1a`, color: toneColor, whiteSpace: 'nowrap' }}>
+                                                                    {toneLabel(tone)}
+                                                                </span>
                                                             </div>
-                                                            <div className="calendar-week-meta">
+                                                            <div style={{ display: 'flex', gap: 10, fontSize: 12, color: 'var(--text-2)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
                                                                 <span>{entry.type || kindLabel(entry.kind)}</span>
                                                                 {blocksDuration > 0 && <span>{blocksDuration} min</span>}
                                                                 <span>{kindLabel(entry.kind)}</span>
                                                             </div>
                                                             <WorkoutBlocksGraph blocks={entry.workoutBlocks} />
                                                             {!!notesPreview && (
-                                                                <div className="calendar-week-notes">{notesPreview}</div>
+                                                                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6, fontFamily: 'var(--font-mono)' }}>{notesPreview}</div>
                                                             )}
                                                         </div>
                                                     );
@@ -1463,7 +1529,16 @@ export default function Calendar({
                             )}
 
                             {/* Step 4: Generate */}
-                            {aiPlanStep === 4 && (
+                            {aiPlanStep === 4 && (() => {
+                                const today = startOfDay(new Date());
+                                const days = aiPlanWeeks ? aiPlanWeeks * 7 : 7;
+                                const planEnd = new Date(today.getTime() + days * 86400000);
+                                const racesInWindow = plannedEvents.filter(e => {
+                                    if (e.kind !== 'race' || !e.isTargetRace) return false;
+                                    const d = new Date(String(e.start_date_local || e.date || '').slice(0, 10));
+                                    return !isNaN(d) && d >= today && d <= planEnd;
+                                });
+                                return (
                                 <div>
                                     <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 10 }}>Ready to generate your plan:</div>
                                     <div style={{
@@ -1479,6 +1554,24 @@ export default function Calendar({
                                             easy: 'Easy', moderate: 'Moderate', hard: 'Hard'
                                         }[aiPlanLoad]}</div>
                                     </div>
+                                    {racesInWindow.length > 0 && (
+                                        <div style={{
+                                            marginBottom: 12, padding: '8px 12px', borderRadius: 8,
+                                            background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.35)',
+                                        }}>
+                                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: '#f97316', marginBottom: 4 }}>
+                                                🏁 {racesInWindow.length} course{racesInWindow.length > 1 ? 's' : ''} détectée{racesInWindow.length > 1 ? 's' : ''} dans cette période
+                                            </div>
+                                            {racesInWindow.map(r => (
+                                                <div key={r.id} style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-2)' }}>
+                                                    · {r.title}
+                                                </div>
+                                            ))}
+                                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', marginTop: 4 }}>
+                                                Le plan inclura automatiquement l'affûtage et la récupération.
+                                            </div>
+                                        </div>
+                                    )}
                                     <button
                                         className="btn btn-primary"
                                         style={{ width: '100%', padding: '10px 0', fontSize: 14 }}
@@ -1495,7 +1588,8 @@ export default function Calendar({
                                         Start over
                                     </button>
                                 </div>
-                            )}
+                                );
+                            })()}
 
                             <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
                                 AI generates a training block and adds sessions directly to your calendar.
@@ -1536,11 +1630,30 @@ export default function Calendar({
                     </div>
 
                     <div className="planner-section">
-                        <button className="planner-toggle" onClick={() => toggleSection('manual')}>
-                            <span>Quick Manual Entry</span>
-                            <span>{collapsed.manual ? '+' : '-'}</span>
+                        <button
+                            onClick={() => toggleSection('manual')}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 12,
+                                width: '100%', padding: '14px 16px', borderRadius: 0, cursor: 'pointer',
+                                background: collapsed.manual
+                                    ? 'linear-gradient(135deg, rgba(77,127,232,0.08) 0%, rgba(249,115,22,0.08) 100%)'
+                                    : 'linear-gradient(135deg, rgba(77,127,232,0.14) 0%, rgba(249,115,22,0.14) 100%)',
+                                border: 'none',
+                                transition: 'all 0.2s',
+                                fontFamily: 'var(--font-sans)',
+                                fontSize: 15,
+                                fontWeight: 700,
+                                color: 'var(--text-0)',
+                            }}
+                        >
+                            <div style={{ fontSize: 22, lineHeight: 1 }}>⚡</div>
+                            <div style={{ flex: 1 }}>
+                                <div>Quick Manual Entry</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-blue)', marginTop: 2 }}>Add single sessions directly</div>
+                            </div>
+                            <span style={{ fontSize: 14, color: 'var(--text-3)' }}>{collapsed.manual ? '▼' : '▲'}</span>
                         </button>
-                        {!collapsed.manual && <div className="calendar-planner-box">
+                        {!collapsed.manual && <div style={{ padding: '16px', background: 'rgba(77,127,232,0.04)', border: '1px solid rgba(77,127,232,0.2)', borderTop: 'none' }}>
                             <div className="card-title" style={{ marginBottom: 8 }}>Quick Manual Entry</div>
                             <input className="form-input calendar-form-input" type="date" value={manualDate} onChange={e => setManualDate(e.target.value)} />
                             <input className="form-input calendar-form-input" placeholder="Session title" value={manualTitle} onChange={e => setManualTitle(e.target.value)} />
@@ -1563,11 +1676,30 @@ export default function Calendar({
                     </div>
 
                     <div className="planner-section">
-                        <button className="planner-toggle" onClick={() => toggleSection('library')}>
-                            <span>Training Library (Drag & Drop)</span>
-                            <span>{collapsed.library ? '+' : '-'}</span>
+                        <button
+                            onClick={() => toggleSection('library')}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 12,
+                                width: '100%', padding: '14px 16px', borderRadius: 0, cursor: 'pointer',
+                                background: collapsed.library
+                                    ? 'linear-gradient(135deg, rgba(62,207,110,0.08) 0%, rgba(240,180,41,0.08) 100%)'
+                                    : 'linear-gradient(135deg, rgba(62,207,110,0.14) 0%, rgba(240,180,41,0.14) 100%)',
+                                border: 'none',
+                                transition: 'all 0.2s',
+                                fontFamily: 'var(--font-sans)',
+                                fontSize: 15,
+                                fontWeight: 700,
+                                color: 'var(--text-0)',
+                            }}
+                        >
+                            <div style={{ fontSize: 22, lineHeight: 1 }}>📚</div>
+                            <div style={{ flex: 1 }}>
+                                <div>Training Library (Drag & Drop)</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-green)', marginTop: 2 }}>Drag workouts to calendar</div>
+                            </div>
+                            <span style={{ fontSize: 14, color: 'var(--text-3)' }}>{collapsed.library ? '▼' : '▲'}</span>
                         </button>
-                        {!collapsed.library && <div className="calendar-planner-box">
+                        {!collapsed.library && <div style={{ padding: '16px', background: 'rgba(62,207,110,0.04)', border: '1px solid rgba(62,207,110,0.2)', borderTop: 'none' }}>
                             <div className="card-title" style={{ marginBottom: 8 }}>Training Library</div>
                             <div className="calendar-library-list">
                                 {libraryWorkouts.map((workout, idx) => (
@@ -1598,11 +1730,30 @@ export default function Calendar({
 
 
                     <div className="planner-section">
-                        <button className="planner-toggle" onClick={() => toggleSection('csv')}>
-                            <span>Import CSV Plan</span>
-                            <span>{collapsed.csv ? '+' : '-'}</span>
+                        <button
+                            onClick={() => toggleSection('csv')}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 12,
+                                width: '100%', padding: '14px 16px', borderRadius: 0, cursor: 'pointer',
+                                background: collapsed.csv
+                                    ? 'linear-gradient(135deg, rgba(240,180,41,0.08) 0%, rgba(240,97,58,0.08) 100%)'
+                                    : 'linear-gradient(135deg, rgba(240,180,41,0.14) 0%, rgba(240,97,58,0.14) 100%)',
+                                border: 'none',
+                                transition: 'all 0.2s',
+                                fontFamily: 'var(--font-sans)',
+                                fontSize: 15,
+                                fontWeight: 700,
+                                color: 'var(--text-0)',
+                            }}
+                        >
+                            <div style={{ fontSize: 22, lineHeight: 1 }}>📤</div>
+                            <div style={{ flex: 1 }}>
+                                <div>Import CSV Plan</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-orange)', marginTop: 2 }}>Bulk import from spreadsheet</div>
+                            </div>
+                            <span style={{ fontSize: 14, color: 'var(--text-3)' }}>{collapsed.csv ? '▼' : '▲'}</span>
                         </button>
-                        {!collapsed.csv && <div className="calendar-planner-box">
+                        {!collapsed.csv && <div style={{ padding: '16px', background: 'rgba(240,180,41,0.04)', border: '1px solid rgba(240,180,41,0.2)', borderTop: 'none' }}>
                             <div className="card-title" style={{ marginBottom: 8 }}>Import CSV Plan</div>
                             <input
                                 ref={csvInputRef}
@@ -1655,12 +1806,31 @@ export default function Calendar({
 
                     {/* ── Send to Garmin ───────────────────────────────── */}
                     <div className="planner-section">
-                        <button className="planner-toggle" onClick={() => toggleSection('garmin')}>
-                            <span>Send to Garmin</span>
-                            <span>{collapsed.garmin ? '+' : '-'}</span>
+                        <button
+                            onClick={() => toggleSection('garmin')}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 12,
+                                width: '100%', padding: '14px 16px', borderRadius: 0, cursor: 'pointer',
+                                background: collapsed.garmin
+                                    ? 'linear-gradient(135deg, rgba(159,122,234,0.08) 0%, rgba(240,97,58,0.08) 100%)'
+                                    : 'linear-gradient(135deg, rgba(159,122,234,0.14) 0%, rgba(240,97,58,0.14) 100%)',
+                                border: 'none',
+                                transition: 'all 0.2s',
+                                fontFamily: 'var(--font-sans)',
+                                fontSize: 15,
+                                fontWeight: 700,
+                                color: 'var(--text-0)',
+                            }}
+                        >
+                            <div style={{ fontSize: 22, lineHeight: 1 }}>⌚</div>
+                            <div style={{ flex: 1 }}>
+                                <div>Send to Garmin</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-purple)', marginTop: 2 }}>Export to device and Intervals.icu</div>
+                            </div>
+                            <span style={{ fontSize: 14, color: 'var(--text-3)' }}>{collapsed.garmin ? '▼' : '▲'}</span>
                         </button>
                         {!collapsed.garmin && (
-                            <div className="calendar-planner-box">
+                            <div style={{ padding: '16px', background: 'rgba(159,122,234,0.04)', border: '1px solid rgba(159,122,234,0.2)', borderTop: 'none' }}>
                                 <div className="card-title" style={{ marginBottom: 4 }}>Send to Garmin</div>
                                 <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 12 }}>
                                     {upcomingStructured.length} structured workout{upcomingStructured.length !== 1 ? 's' : ''} ready to export
