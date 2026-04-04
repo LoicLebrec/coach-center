@@ -140,18 +140,19 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
     return true;
   }), [allRaces, selectedDept, selectedDate, fedFilter]);
 
-  // ── Calendar grid: 8 weeks starting from Monday of current week ──────────
+  // ── Calendar grid: 16 weeks starting from Monday of current week ─────────
   const calendarWeeks = useMemo(() => {
     const weekStart = startOfWeek(today, { weekStartsOn: 1 });
     const weeks = [];
-    for (let w = 0; w < 8; w++) {
+    for (let w = 0; w < 16; w++) {
       const days = [];
       for (let d = 0; d < 7; d++) {
         const date = addDays(weekStart, w * 7 + d);
         const key = format(date, 'yyyy-MM-dd');
         days.push({ date, key, count: countByDate[key] || 0 });
       }
-      weeks.push(days);
+      const weekTotal = days.reduce((s, d) => s + d.count, 0);
+      weeks.push({ days, weekTotal });
     }
     return weeks;
   }, [countByDate, today]);
@@ -401,74 +402,103 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
             </div>
 
             {/* Day headers */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
-              {['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(d => (
-                <div key={d} style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', padding: '2px 0', textTransform: 'uppercase' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '28px repeat(7, 1fr)', gap: 3, marginBottom: 4 }}>
+              <div />
+              {['L','M','M','J','V','S','D'].map((d, i) => (
+                <div key={i} style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', padding: '2px 0' }}>
                   {d}
                 </div>
               ))}
             </div>
 
             {/* Week rows */}
-            {calendarWeeks.map((week, wi) => (
-              <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
-                {week.map(({ date, key, count }) => {
-                  const isSelected = selectedDate === key;
-                  const isToday = key === format(today, 'yyyy-MM-dd');
-                  const isPast = date < today;
-                  const hasRaces = count > 0;
-                  return (
-                    <div
-                      key={key}
-                      onClick={() => hasRaces && setSelectedDate(prev => prev === key ? null : key)}
-                      style={{
-                        padding: '6px 4px', borderRadius: 8, textAlign: 'center',
-                        cursor: hasRaces ? 'pointer' : 'default',
-                        background: isSelected
-                          ? 'var(--accent-cyan)'
-                          : hasRaces ? 'rgba(77,127,232,0.15)'
-                          : 'var(--bg-2)',
-                        border: `1px solid ${isSelected ? 'var(--accent-cyan)' : isToday ? 'rgba(255,255,255,0.25)' : 'transparent'}`,
-                        opacity: isPast && !isSelected ? 0.45 : 1,
-                        transition: 'all 0.12s',
-                      }}
-                    >
-                      <div style={{
-                        fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 700, lineHeight: 1.2,
-                        color: isSelected ? '#000' : isToday ? 'var(--accent-cyan)' : 'var(--text-0)',
-                      }}>
-                        {format(date, 'd')}
-                      </div>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: isSelected ? '#00000080' : 'var(--text-4)', textTransform: 'uppercase' }}>
-                        {format(date, 'MMM', { locale: fr })}
-                      </div>
-                      {hasRaces && (
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: 2, marginTop: 3 }}>
-                          {Array.from({ length: Math.min(count, 4) }).map((_, i) => (
-                            <div key={i} style={{ width: 4, height: 4, borderRadius: '50%', background: isSelected ? '#000' : 'var(--accent-cyan)' }} />
-                          ))}
-                          {count > 4 && <div style={{ fontSize: 8, color: isSelected ? '#000' : 'var(--accent-cyan)', lineHeight: 1.1 }}>+</div>}
-                        </div>
+            {calendarWeeks.map(({ days, weekTotal }, wi) => {
+              // Show month label when month changes
+              const firstDay = days[0];
+              const prevWeekFirst = wi > 0 ? calendarWeeks[wi - 1].days[0] : null;
+              const showMonth = wi === 0 || format(firstDay.date, 'MM') !== format(prevWeekFirst.date, 'MM');
+              return (
+                <React.Fragment key={wi}>
+                  {showMonth && (
+                    <div style={{ gridColumn: '1 / -1', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: 'var(--accent-blue)', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '6px 2px 3px', marginTop: wi > 0 ? 4 : 0 }}>
+                      {format(firstDay.date, 'MMMM yyyy', { locale: fr })}
+                    </div>
+                  )}
+                  <div style={{ display: 'grid', gridTemplateColumns: '28px repeat(7, 1fr)', gap: 3, marginBottom: 3 }}>
+                    {/* Week total */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {weekTotal > 0 && (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--accent-blue)', fontWeight: 700, background: 'rgba(77,127,232,0.15)', borderRadius: 4, padding: '1px 4px' }}>
+                          {weekTotal}
+                        </span>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            ))}
+                    {days.map(({ date, key, count }) => {
+                      const isSelected = selectedDate === key;
+                      const isTodayCell = key === format(today, 'yyyy-MM-dd');
+                      const isPast = date < today;
+                      const hasRaces = count > 0;
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => hasRaces && setSelectedDate(prev => prev === key ? null : key)}
+                          title={hasRaces ? `${count} course${count > 1 ? 's' : ''} le ${format(date, 'd MMMM', { locale: fr })}` : ''}
+                          style={{
+                            padding: '5px 2px', borderRadius: 7, textAlign: 'center',
+                            cursor: hasRaces ? 'pointer' : 'default',
+                            background: isSelected ? 'var(--accent-cyan)'
+                              : hasRaces ? 'rgba(77,127,232,0.18)'
+                              : 'var(--bg-2)',
+                            border: `1px solid ${isSelected ? 'var(--accent-cyan)' : isTodayCell ? 'rgba(255,255,255,0.3)' : 'transparent'}`,
+                            opacity: isPast && !isSelected ? 0.4 : 1,
+                            transition: 'all 0.12s',
+                          }}
+                        >
+                          <div style={{
+                            fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 700, lineHeight: 1.2,
+                            color: isSelected ? '#000' : isTodayCell ? 'var(--accent-cyan)' : 'var(--text-0)',
+                          }}>
+                            {format(date, 'd')}
+                          </div>
+                          {hasRaces ? (
+                            <div style={{
+                              fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, marginTop: 1,
+                              color: isSelected ? '#000' : 'var(--accent-cyan)',
+                            }}>
+                              {count > 9 ? '9+' : count}
+                            </div>
+                          ) : (
+                            <div style={{ height: 14 }} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </React.Fragment>
+              );
+            })}
           </div>
 
           {/* Race list */}
           <div className="card" style={{ padding: '12px 14px' }}>
-            <div style={{ fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 700, color: 'var(--text-0)', marginBottom: 10 }}>
-              {selectedDate
-                ? format(parseISO(selectedDate), "EEEE d MMMM", { locale: fr })
-                : selectedDept
-                  ? `${selectedDept} — ${DEPT_NAMES[selectedDept] || ''}`
-                  : 'Courses à venir'}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 700, color: 'var(--text-0)' }}>
+                {selectedDate
+                  ? format(parseISO(selectedDate), "EEEE d MMMM", { locale: fr })
+                  : selectedDept
+                    ? `${selectedDept} — ${DEPT_NAMES[selectedDept] || ''}`
+                    : 'Courses à venir'}
+              </span>
               {filteredRaces.length > 0 && (
-                <span style={{ marginLeft: 8, fontWeight: 400, fontSize: 12, color: 'var(--text-4)', fontFamily: 'var(--font-mono)' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent-cyan)', fontWeight: 700 }}>
                   {filteredRaces.length} course{filteredRaces.length > 1 ? 's' : ''}
                 </span>
+              )}
+              {(selectedDate || selectedDept) && (
+                <button onClick={() => { setSelectedDate(null); setSelectedDept(null); setMapBounds(null); }}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-4)', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                  Tout afficher
+                </button>
               )}
             </div>
 
@@ -488,15 +518,13 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
               <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-4)' }}>
                 <div style={{ fontSize: 26, marginBottom: 8 }}>🚴</div>
                 <div style={{ fontSize: 13 }}>
-                  {selectedDate || selectedDept
-                    ? 'Aucune course pour cette sélection.'
-                    : 'Cliquez sur un département ou une date.'}
+                  {selectedDate || selectedDept ? 'Aucune course pour cette sélection.' : 'Aucune course chargée.'}
                 </div>
               </div>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
-              {filteredRaces.slice(0, 40).map(race => {
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 420, overflowY: 'auto' }}>
+              {filteredRaces.slice(0, 60).map(race => {
                 const saved = alreadySaved(race);
                 const daysLeft = race.date ? differenceInDays(parseISO(race.date), today) : null;
                 return (
