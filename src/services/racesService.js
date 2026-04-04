@@ -108,7 +108,7 @@ function parseRacesFromHtml(html, federation) {
     }
 
     // ── Course link (single OR double quotes) ─────────────────────────────────
-    const linkM = row.match(/href=['"](\\/course-(\\d+)-([^'"]+)\\.html)['"]/i);
+    const linkM = row.match(/href=['"](\/course-(\d+)-([^'"]+)\.html)['"]/i);
     if (!linkM) continue;
 
     const path = linkM[1];

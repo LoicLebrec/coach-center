@@ -69,7 +69,7 @@ function parseRaces(html, federation) {
     }
 
     // Course link — handles both single and double quotes
-    const linkM = row.match(/href=['"](\\/course-(\\d+)-([^'"]+)\\.html)['"]/i);
+    const linkM = row.match(/href=['"](\/course-(\d+)-([^'"]+)\.html)['"]/i);
     if (!linkM) continue;
 
     const path = linkM[1];
