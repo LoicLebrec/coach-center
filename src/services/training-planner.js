@@ -287,17 +287,17 @@ function detectPhase(wellness, efTrend, tsb, signals, nextRace) {
   const avgCTL = lastWellness ? (lastWellness.icu_ctl || 0) : 0;
 
   const efDeclining = efTrend && efTrend.trendPct < -3;
-  if (efDeclining || avgCTL < 40 || hasLowBase) {
+  if (efDeclining || avgCTL < 30 || hasLowBase) {
     let reason = 'Construction de la base aérobie';
-    if (avgCTL < 40) reason = `CTL bas (${Math.round(avgCTL)}) — priorité au volume aérobie.`;
+    if (avgCTL < 30) reason = `CTL bas (${Math.round(avgCTL)}) — priorité au volume aérobie avant d'intensifier.`;
     else if (efDeclining) reason = `EF en baisse (${efTrend.trendPct.toFixed(1)}%) — retour au travail de base.`;
-    else if (hasLowBase) reason = 'Distribution de zones déséquilibrée — trop de "junk miles", renforcer Z2.';
+    else if (hasLowBase) reason = 'Trop de "junk miles" Z3 — renforcer la base Z2 et polariser l\'entraînement.';
     return { phase: 'BASE', phaseReason: reason };
   }
 
   return {
     phase: 'BUILD',
-    phaseReason: `CTL suffisant (${Math.round(avgCTL)}) et forme stable — bloc de développement pour hausser le plafond aérobie.`,
+    phaseReason: `CTL ${Math.round(avgCTL)}, forme stable — bloc de développement : 2 séances qualité + volume Z2.`,
   };
 }
 
@@ -408,22 +408,23 @@ function buildWeekTemplate(phase, signals, ftp, weekDates, nextRace) {
       ['endurance', 60, 'Clôture de semaine en endurance douce.'],
     ];
   } else if (phase === 'BASE') {
+    // BASE = polarisé : 1 séance qualité (sweetspot), reste Z2. Jamais que du Z2.
+    const qualityType = hasPoorCompliance ? 'endurance' : 'sweetspot';
+    const qualityReason = hasPoorCompliance
+      ? 'Z2 long — compliance faible, on reste en aérobie pur cette semaine.'
+      : 'Sweet Spot 2×15min pour maintenir le stimulus seuil tout en construisant la base.';
     template = [
       ['rest', 0, 'Repos pour assimiler le travail de la semaine précédente.'],
-      [hasLacksThreshold ? 'sweetspot' : 'endurance', hasLacksThreshold ? 75 : 90,
-        hasLacksThreshold
-          ? 'Sweet Spot pour combler le déficit au seuil tout en construisant la base.'
-          : 'Long bloc Z2 pour augmenter le volume aérobie.'],
-      ['endurance', 75, 'Volume continu Z2 pour développer les mitochondries.'],
-      ['endurance', 90, 'Sortie longue en semaine pour accumuler le volume aérobie.'],
-      ['rest', 0, 'Repos pour préparer le week-end de charge.'],
-      ['endurance', 150, 'Longue sortie fondamentale du week-end — effort aérobie soutenu.'],
-      ['recovery', 45, 'Flush actif pour terminer la semaine et accélérer la récupération.'],
+      [qualityType, 75, qualityReason],
+      ['endurance', 70, 'Z2 continu — développement des mitochondries et de l\'économie aérobie.'],
+      [hasLacksAnaerobic ? 'openers' : 'endurance', hasLacksAnaerobic ? 60 : 90,
+        hasLacksAnaerobic
+          ? 'Activateurs avec 6×10s sprints intégrés — neuromuscular sans fatigue aérobie.'
+          : 'Sortie longue en semaine — volume clé pour progresser en fond.'],
+      ['rest', 0, 'Repos avant le long week-end.'],
+      ['endurance', 150, 'Longue sortie fondamentale — rythme conversationnel, carburant adapté.'],
+      ['recovery', 45, 'Flush actif — faire tourner les jambes sans créer de fatigue.'],
     ];
-    // If LACKS_ANAEROBIC: add short openers logic — replace day 4 endurance with openers
-    if (hasLacksAnaerobic) {
-      template[3] = ['openers', 60, 'Session activateurs pour combler le déficit anaérobie.'];
-    }
   } else if (phase === 'BUILD') {
     let day1Type = 'vo2';
     let day3Type = 'sweetspot';

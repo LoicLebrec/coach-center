@@ -694,18 +694,147 @@ function ActivitySelector({ activities, selectedId, onChange }) {
   );
 }
 
+// ─── Section: Planned vs Actual ──────────────────────────────────────────────
+
+const ZONE_COLORS_PVA = { Z1:'#475569', Z2:'#22c55e', Z3:'#eab308', Z4:'#f97316', Z5:'#ef4444', Z6:'#a855f7', Z7:'#8b5cf6' };
+const ZONE_PCT_PVA    = { Z1:[45,55], Z2:[56,75], Z3:[76,90], Z4:[91,105], Z5:[106,120], Z6:[121,150], Z7:[151,200] };
+
+function PlannedVsActualSection({ plannedEvent, activity, ftp }) {
+  if (!activity) return null;
+  const blocks = plannedEvent?.workoutBlocks || [];
+  const totalPlannedMin = blocks.reduce((s, b) => s + (Number(b.durationMin) || 0), 0);
+  const plannedTSS = plannedEvent?.estimatedTSS || plannedEvent?.icu_training_load || null;
+  const actualTSS  = activity.icu_training_load || activity.training_load || null;
+  const actualDur  = activity.moving_time || activity.elapsed_time || 0;
+  const actualWatts = activity.icu_average_watts || activity.average_watts || null;
+  const actualNP    = activity.icu_normalized_watts || activity.weighted_average_watts || null;
+  const actualIF    = ftp && actualNP ? (actualNP / ftp) : null;
+
+  const tssCompliance = plannedTSS && actualTSS ? Math.round((actualTSS / plannedTSS) * 100) : null;
+  const compColor = tssCompliance == null ? 'var(--text-2)' : tssCompliance >= 95 ? '#3ecf6e' : tssCompliance >= 80 ? '#f77f3a' : '#f06060';
+
+  return (
+    <SectionCard style={{ marginBottom: 14 }}>
+      <SectionHeader
+        title="Prévu vs Réalisé"
+        badges={
+          tssCompliance != null && (
+            <Badge
+              label={`Compliance ${tssCompliance}%`}
+              color={compColor}
+              bg={compColor + '18'}
+            />
+          )
+        }
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        {/* Planned */}
+        <div style={{ background: 'var(--bg-2)', borderRadius: 8, padding: '12px' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.07em', marginBottom: 8 }}>
+            PRÉVU {plannedEvent ? `· ${plannedEvent.title || plannedEvent.name || ''}` : '· Non planifié'}
+          </div>
+          {blocks.length > 0 ? (
+            <>
+              <div style={{ display: 'flex', height: 36, borderRadius: 6, overflow: 'hidden', marginBottom: 8, gap: 2 }}>
+                {blocks.map((b, i) => {
+                  const pct = ((Number(b.durationMin) || 0) / Math.max(1, totalPlannedMin)) * 100;
+                  const zId = String(b.zone || 'Z2').toUpperCase();
+                  const color = ZONE_COLORS_PVA[zId] || '#22c55e';
+                  const zonePct = ZONE_PCT_PVA[zId] || ZONE_PCT_PVA.Z2;
+                  const barH = Math.max(20, Math.round(((zonePct[0] + zonePct[1]) / 2) / 2));
+                  return (
+                    <div key={i} style={{ width: `${Math.max(2, pct)}%`, display: 'flex', alignItems: 'flex-end' }} title={`${b.label} · ${b.durationMin}min @ ${zId}`}>
+                      <div style={{ width: '100%', height: `${barH}%`, background: color, opacity: 0.85, borderRadius: '3px 3px 0 0' }} />
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {blocks.map((b, i) => {
+                  const zId = String(b.zone || 'Z2').toUpperCase();
+                  const color = ZONE_COLORS_PVA[zId] || '#22c55e';
+                  const pct = ZONE_PCT_PVA[zId] || ZONE_PCT_PVA.Z2;
+                  const loW = ftp ? Math.round((pct[0] / 100) * ftp) : null;
+                  const hiW = ftp ? Math.round((pct[1] / 100) * ftp) : null;
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, borderLeft: `2px solid ${color}`, paddingLeft: 6 }}>
+                      <span style={{ fontWeight: 600, color: 'var(--text-1)' }}>{b.label}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-3)' }}>
+                        {b.durationMin}min{loW ? ` · ${loW}–${hiW}W` : ` · ${zId}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {totalPlannedMin > 0 && (
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginTop: 6, textAlign: 'right' }}>
+                  {totalPlannedMin} min{plannedTSS ? ` · ~${Math.round(plannedTSS)} TSS` : ''}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ color: 'var(--text-3)', fontSize: 12, fontFamily: 'var(--font-mono)', padding: '8px 0' }}>
+              Aucune séance planifiée ce jour-là
+            </div>
+          )}
+        </div>
+
+        {/* Actual */}
+        <div style={{ background: 'var(--bg-2)', borderRadius: 8, padding: '12px' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.07em', marginBottom: 8 }}>
+            RÉALISÉ · {activity.name || 'Activité'}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            {actualWatts != null && (
+              <div style={{ background: 'var(--bg-3)', borderRadius: 6, padding: '8px 10px' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 2 }}>MOY PUISSANCE</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700, color: 'var(--accent-blue)' }}>{Math.round(actualWatts)}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-3)', marginLeft: 2 }}>W</span></div>
+              </div>
+            )}
+            {actualNP != null && (
+              <div style={{ background: 'var(--bg-3)', borderRadius: 6, padding: '8px 10px' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 2 }}>NP</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700, color: 'var(--accent-cyan)' }}>{Math.round(actualNP)}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-3)', marginLeft: 2 }}>W</span></div>
+              </div>
+            )}
+            {actualIF != null && (
+              <div style={{ background: 'var(--bg-3)', borderRadius: 6, padding: '8px 10px' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 2 }}>IF</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700, color: 'var(--text-0)' }}>{actualIF.toFixed(2)}</div>
+              </div>
+            )}
+            {actualTSS != null && (
+              <div style={{ background: 'var(--bg-3)', borderRadius: 6, padding: '8px 10px', borderLeft: tssCompliance != null ? `3px solid ${compColor}` : undefined }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 2 }}>TSS RÉEL</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700, color: compColor }}>{Math.round(actualTSS)}</div>
+              </div>
+            )}
+          </div>
+          {actualDur > 0 && (
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginTop: 6, textAlign: 'right' }}>
+              {formatDuration(actualDur)}
+            </div>
+          )}
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function WorkoutAnalysis({ activities, athlete }) {
+export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) {
   const ftp = athlete?.icu_ftp || athlete?.ftp || null;
 
-  const [selectedId, setSelectedId]           = useState(null);
-  const [loading, setLoading]                 = useState(false);
-  const [error, setError]                     = useState(null);
+  const [selectedId, setSelectedId]             = useState(null);
+  const [selectedActivity, setSelectedActivity] = useState(null);
+  const [matchedPlan, setMatchedPlan]           = useState(null);
+  const [loading, setLoading]                   = useState(false);
+  const [error, setError]                       = useState(null);
   const [intervalAnalysis, setIntervalAnalysis] = useState(null);
-  const [fatigueCurve, setFatigueCurve]       = useState(null);
-  const [raceAnalysis, setRaceAnalysis]       = useState(null);
-  const [isRace, setIsRace]                   = useState(false);
+  const [fatigueCurve, setFatigueCurve]         = useState(null);
+  const [raceAnalysis, setRaceAnalysis]         = useState(null);
+  const [isRace, setIsRace]                     = useState(false);
 
   const handleSelect = useCallback(async (id) => {
     if (!id) return;
@@ -716,11 +845,24 @@ export default function WorkoutAnalysis({ activities, athlete }) {
     setFatigueCurve(null);
     setRaceAnalysis(null);
     setIsRace(false);
+    setSelectedActivity(null);
+    setMatchedPlan(null);
 
     try {
       const activity = (activities || []).find(a => String(a.id) === String(id));
       const actIsRace = activity ? isRaceActivity(activity) : false;
       setIsRace(actIsRace);
+      setSelectedActivity(activity || null);
+
+      // Match to planned event by date
+      if (activity) {
+        const actDate = String(activity.start_date_local || '').slice(0, 10);
+        const plan = (plannedEvents || []).find(ev => {
+          const evDate = String(ev.start_date_local || ev.date || '').slice(0, 10);
+          return evDate === actDate;
+        }) || null;
+        setMatchedPlan(plan);
+      }
 
       // Fetch streams and intervals in parallel
       const [rawStreams, rawIntervals] = await Promise.all([
@@ -784,6 +926,12 @@ export default function WorkoutAnalysis({ activities, athlete }) {
               </div>
             )}
           </SectionCard>
+
+          <PlannedVsActualSection
+            plannedEvent={matchedPlan}
+            activity={selectedActivity}
+            ftp={ftp}
+          />
 
           {loading && (
             <div className="loading-state">

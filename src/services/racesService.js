@@ -1,8 +1,22 @@
 // Fetches French amateur race calendar from cyclisme-amateur.com
 // Tries the Vercel serverless function first (/api/races),
-// falls back to a CORS proxy for local dev.
+// then multiple CORS proxies in sequence.
 
-const CORS_PROXY = 'https://api.allorigins.win/get?url=';
+// Each proxy entry: { url: fn(target) => string, extract: fn(data) => html }
+const CORS_PROXIES = [
+  {
+    build: t => `https://api.allorigins.win/get?url=${t}`,
+    extract: d => d.contents || '',
+  },
+  {
+    build: t => `https://corsproxy.io/?${t}`,
+    extract: d => typeof d === 'string' ? d : '',
+  },
+  {
+    build: t => `https://api.codetabs.com/v1/proxy?quest=${t}`,
+    extract: d => typeof d === 'string' ? d : '',
+  },
+];
 
 const FRENCH_MONTHS = {
   janvier: '01', février: '02', fevrier: '02', mars: '03', avril: '04',
@@ -76,11 +90,19 @@ function parseRacesFromHtml(html, federation) {
 
 async function fetchViaProxy(fed) {
   const target = encodeURIComponent(`https://www.cyclisme-amateur.com/course.php?fed=${fed}`);
-  const res = await fetch(`${CORS_PROXY}${target}`);
-  if (!res.ok) throw new Error(`proxy ${res.status}`);
-  const data = await res.json();
-  const html = data.contents || '';
-  return parseRacesFromHtml(html, fed);
+  for (const proxy of CORS_PROXIES) {
+    try {
+      const res = await fetch(proxy.build(target), { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) continue;
+      const data = await res.json().catch(() => res.text());
+      const html = proxy.extract(data);
+      if (html && html.length > 500) {
+        const races = parseRacesFromHtml(html, fed);
+        if (races.length > 0) return races;
+      }
+    } catch { /* try next proxy */ }
+  }
+  return [];
 }
 
 export async function fetchRaces({ date, department, fed } = {}) {
