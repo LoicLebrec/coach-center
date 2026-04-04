@@ -79,7 +79,19 @@ export default function FormPredictor({ wellness, plannedEvents }) {
     return data;
   }, [wellness, plannedEvents]);
 
-  if (!projection.length) return null;
+  if (!projection.length) {
+    return (
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-header">
+          <span className="card-title">Form Predictor</span>
+          <span className="card-badge" style={{ color: 'var(--accent-blue)' }}>8-week projection</span>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+          No wellness history available yet. Connect Intervals/Strava and sync activities to enable CTL/ATL projection.
+        </div>
+      </div>
+    );
+  }
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
