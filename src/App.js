@@ -20,6 +20,7 @@ import SmartWorkoutWizard from './components/SmartWorkoutWizard';
 import GpxRouteBuilder from './components/GpxRouteBuilder';
 import RaceCalendar from './components/RaceCalendar';
 import WorkoutAnalysis from './components/WorkoutAnalysis';
+import FormPredictor from './components/FormPredictor';
 import { LIBRARY_WORKOUTS } from './data/workoutLibrary';
 import './styles/app.css';
 
@@ -992,7 +993,12 @@ export default function App() {
       case VIEWS.DASHBOARD:
         return <Dashboard wellness={wellness} activities={activities} athlete={athlete} loading={loading} error={error} />;
       case VIEWS.PMC:
-        return <PMCChart wellness={wellness} activities={activities} athlete={athlete} loading={loading} />;
+        return (
+          <>
+            <PMCChart wellness={wellness} activities={activities} athlete={athlete} loading={loading} />
+            <FormPredictor wellness={wellness} plannedEvents={plannedEvents} />
+          </>
+        );
       case VIEWS.ACTIVITIES:
         return <Activities activities={activities} athlete={athlete} loading={loading} />;
       case VIEWS.WEEKLY:
