@@ -42,6 +42,49 @@ function parseDate(d) {
   return new Date(y, m - 1, day);
 }
 
+function asNumber(...values) {
+  for (const v of values) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function getWellnessDate(entry) {
+  return entry?.id || entry?.date || entry?.day || null;
+}
+
+function getLatestWellnessEntry(wellness = []) {
+  if (!Array.isArray(wellness) || wellness.length === 0) return null;
+
+  const withDate = wellness
+    .map((entry) => ({
+      entry,
+      date: parseDate(getWellnessDate(entry)),
+    }))
+    .filter((x) => x.date instanceof Date && !Number.isNaN(x.date.getTime()));
+
+  if (withDate.length === 0) return wellness[wellness.length - 1] || null;
+
+  withDate.sort((a, b) => a.date - b.date);
+  return withDate[withDate.length - 1].entry;
+}
+
+function getCurrentPmcState(wellness = []) {
+  const latest = getLatestWellnessEntry(wellness);
+  if (!latest) return { ctl: 0, atl: 0, tsb: 0, latest: null };
+
+  const ctl = asNumber(latest.icu_ctl, latest.ctl, latest.fitness, latest.current_ctl) ?? 0;
+  const atl = asNumber(latest.icu_atl, latest.atl, latest.fatigue, latest.current_atl) ?? 0;
+
+  return {
+    ctl,
+    atl,
+    tsb: ctl - atl,
+    latest,
+  };
+}
+
 /**
  * Difference in calendar days between two dates (b - a).
  */
@@ -283,8 +326,7 @@ function detectPhase(wellness, efTrend, tsb, signals, nextRace) {
   if (tsb < -28) return { phase: 'RECOVERY', phaseReason: "TSB très négatif (surcharge) — récupération prioritaire avant de reprendre la charge." };
 
   const hasLowBase = signals.some(s => s.code === 'LOW_AEROBIC_BASE');
-  const lastWellness = wellness && wellness.length > 0 ? wellness[wellness.length - 1] : null;
-  const avgCTL = lastWellness ? (lastWellness.icu_ctl || 0) : 0;
+  const avgCTL = getCurrentPmcState(wellness).ctl;
 
   const efDeclining = efTrend && efTrend.trendPct < -3;
   if (efDeclining || avgCTL < 30 || hasLowBase) {
@@ -418,9 +460,9 @@ function buildWeekTemplate(phase, signals, ftp, weekDates, nextRace) {
       [qualityType, 75, qualityReason],
       ['endurance', 70, 'Z2 continu — développement des mitochondries et de l\'économie aérobie.'],
       [hasLacksAnaerobic ? 'openers' : 'endurance', hasLacksAnaerobic ? 60 : 90,
-        hasLacksAnaerobic
-          ? 'Activateurs avec 6×10s sprints intégrés — neuromuscular sans fatigue aérobie.'
-          : 'Sortie longue en semaine — volume clé pour progresser en fond.'],
+      hasLacksAnaerobic
+        ? 'Activateurs avec 6×10s sprints intégrés — neuromuscular sans fatigue aérobie.'
+        : 'Sortie longue en semaine — volume clé pour progresser en fond.'],
       ['rest', 0, 'Repos avant le long week-end.'],
       ['endurance', 150, 'Longue sortie fondamentale — rythme conversationnel, carburant adapté.'],
       ['recovery', 45, 'Flush actif — faire tourner les jambes sans créer de fatigue.'],
@@ -527,11 +569,8 @@ const trainingPlanner = {
       return toDateStr(d);
     });
 
-    // Current TSB from last wellness entry
-    const lastWellness = wellness.length > 0 ? wellness[wellness.length - 1] : null;
-    const currentCTL = lastWellness?.icu_ctl || 0;
-    const currentATL = lastWellness?.icu_atl || 0;
-    const tsb = currentCTL - currentATL;
+    // Current TSB from latest wellness entry (date-based, resilient to shape/order)
+    const { tsb } = getCurrentPmcState(wellness);
 
     // EF trend
     const efTrend = analytics.computeEFTrend(activities);

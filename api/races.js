@@ -1,28 +1,51 @@
 // Vercel serverless function — scrapes cyclisme-amateur.com race calendar
-// GET /api/races?date=2026-03-30&department=75&fed=FFC
+// GET /api/races?date=2026-04-05&department=06&fed=FFC
 
 const FRENCH_MONTHS = {
-  janvier: '01', février: '02', mars: '03', avril: '04',
-  mai: '05', juin: '06', juillet: '07', août: '08',
-  septembre: '09', octobre: '10', novembre: '11', décembre: '12',
+  janvier: '01', janv: '01', 'janv.': '01',
+  février: '02', fevrier: '02', févr: '02', 'févr.': '02', fevr: '02', fev: '02',
+  mars: '03',
+  avril: '04', avri: '04', 'avri.': '04', avr: '04', 'avr.': '04',
+  mai: '05',
+  juin: '06',
+  juillet: '07', juil: '07', 'juil.': '07',
+  août: '08', aout: '08',
+  septembre: '09', sept: '09', 'sept.': '09',
+  octobre: '10', oct: '10', 'oct.': '10',
+  novembre: '11', nov: '11', 'nov.': '11',
+  décembre: '12', decembre: '12', déc: '12', dec: '12', 'déc.': '12',
 };
 
 function parseFrenchDate(str) {
-  // "Lun 30 Mars" or "30 Mars" → "2026-03-30"
-  const clean = str.toLowerCase().replace(/^(lun|mar|mer|jeu|ven|sam|dim)\s+/, '').trim();
-  const parts = clean.split(/\s+/);
+  if (!str) return null;
+  const clean = str.toLowerCase()
+    .replace(/&[a-z]+;/g, '')
+    .replace(/^(lun|mar|mer|jeu|ven|sam|dim)\.?\s+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const parts = clean.split(/[\s.]+/).filter(Boolean);
   if (parts.length < 2) return null;
-  const day = parts[0].padStart(2, '0');
-  const month = FRENCH_MONTHS[parts[1]];
+
+  const day = String(parseInt(parts[0], 10) || 0).padStart(2, '0');
+  if (day === '00') return null;
+
+  let month = null;
+  for (let i = 1; i < parts.length; i++) {
+    const candidate = parts[i].replace(/\.$/, '');
+    month = FRENCH_MONTHS[candidate] || FRENCH_MONTHS[candidate + '.'] || null;
+    if (month) break;
+  }
   if (!month) return null;
-  // Determine year: if month already passed use next year
+
   const now = new Date();
+  const mNum = parseInt(month, 10);
+  const dNum = parseInt(day, 10);
   const currentMonth = now.getMonth() + 1;
   const currentDay = now.getDate();
   const currentYear = now.getFullYear();
-  const mNum = parseInt(month, 10);
   let year = currentYear;
-  if (mNum < currentMonth || (mNum === currentMonth && parseInt(day, 10) < currentDay)) {
+  if (mNum < currentMonth || (mNum === currentMonth && dNum < currentDay)) {
     year = currentYear + 1;
   }
   return `${year}-${month}-${day}`;
@@ -30,56 +53,59 @@ function parseFrenchDate(str) {
 
 function parseRaces(html, federation) {
   const races = [];
+  let currentDate = null;
 
-  // Match table rows or list items with race data
-  // Pattern: date cell, department cell, name link, category cell
-  // The site uses <td> cells; we look for course links
-  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  const linkRegex = /href="(\/course-(\d+)-([^"]+)\.html)"/i;
-  const dateRegex = /([A-Za-zÀ-ÿ]+\s+\d{1,2}\s+[A-Za-zÀ-ÿé]+)/;
-  const deptRegex = /\[(\d{2,3})\]/;
-  const catRegex = /(elite\s*open|open|pro|3[eè]me\s*cat|2[eè]me\s*cat|1[eè]re\s*cat|junior|espoir|f[eé]minine|cyclosport|randonn[eé]e|vtc|vtt|gravel|ufolep|fsgt|ffct)/i;
-
+  const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   let rowMatch;
-  while ((rowMatch = rowRegex.exec(html)) !== null) {
+
+  while ((rowMatch = rowRe.exec(html)) !== null) {
     const row = rowMatch[1];
-    if (!row.includes('/course-')) continue;
 
-    const linkMatch = linkRegex.exec(row);
-    if (!linkMatch) continue;
+    // Date cell (only in first row of a date group)
+    const dateDivM = row.match(/cellule_td_course[^>]*>([^<]+)</i);
+    if (dateDivM) {
+      const parsed = parseFrenchDate(dateDivM[1].trim());
+      if (parsed) currentDate = parsed;
+    }
 
-    const path = linkMatch[1];
-    const id = linkMatch[2];
-    // Extract name from slug
-    const slug = linkMatch[3].replace(/-ffc$|-fsgt$|-ufolep$|-ffct$/i, '');
-    const nameFromSlug = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    // Course link — handles both single and double quotes
+    const linkM = row.match(/href=['"](\\/course-(\\d+)-([^'"]+)\\.html)['"]/i);
+    if (!linkM) continue;
 
-    // Try to extract visible name from anchor text
-    const anchorTextMatch = row.match(new RegExp(`href="${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>([^<]+)<`));
-    const name = anchorTextMatch ? anchorTextMatch[1].trim() : nameFromSlug;
+    const path = linkM[1];
+    const id   = linkM[2];
+    const slug = linkM[3].replace(/-ffc$|-fsgt$|-ufolep$|-ffct$/i, '');
 
-    // Extract date
-    const dateMatch = dateRegex.exec(row);
-    const isoDate = dateMatch ? parseFrenchDate(dateMatch[1]) : null;
-    if (!isoDate) continue;
+    // Name: skip closing > of <a href='...'>, then strip HTML
+    const afterHref = row.slice(row.indexOf(linkM[0]) + linkM[0].length);
+    const closeTag = afterHref.indexOf('>');
+    const afterTag = closeTag >= 0 ? afterHref.slice(closeTag + 1) : afterHref;
+    const nameRaw = afterTag.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split('.')[0].trim();
+    const name = (nameRaw || slug.replace(/-/g, ' '))
+      .replace(/\b\w/g, c => c.toUpperCase())
+      .trim();
 
-    // Extract department
-    const deptMatch = deptRegex.exec(row);
-    const department = deptMatch ? deptMatch[1] : null;
+    // Department
+    const deptM = row.match(/href=['"]https?:\/\/[^'"]*['"][^>]*>\s*(\d{2,3})\s*<\/a>/i);
+    const department = deptM ? deptM[1].trim() : null;
 
-    // Extract category
-    const catMatch = catRegex.exec(row);
-    const category = catMatch ? catMatch[0].trim() : null;
+    // Federation
+    const fedM = row.match(/\|\s*(FFC|FSGT|UFOLEP|FFCT)\b/i);
+    const fed = fedM ? fedM[1].toUpperCase() : federation.toUpperCase();
 
-    // Strip HTML tags for location hints
-    const textOnly = row.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    // Category
+    const text = row.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/g, ' ').replace(/\s+/g, ' ');
+    const catM = text.match(/(elite\s*open|open|toute|pro|3[eè]me|2[eè]me|1[eè]re|junior|espoir|f[eé]minine|cyclosport|randonn[eé]e)/i);
+    const category = catM ? catM[0].trim().toLowerCase() : null;
+
+    if (!currentDate) continue;
 
     races.push({
       id,
-      name,
-      date: isoDate,
+      name: name || 'Course',
+      date: currentDate,
       department,
-      federation,
+      federation: fed,
       category,
       url: `https://www.cyclisme-amateur.com${path}`,
     });
@@ -104,15 +130,13 @@ export default async function handler(req, res) {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CoachCenterApp/1.0)' },
         });
         if (!response.ok) return;
-        const html = await response.text();
-        const races = parseRaces(html, federation);
-        allRaces.push(...races);
-      } catch {
-        // skip failed federation
-      }
+        const buffer = await response.arrayBuffer();
+        // Site uses latin-1 encoding
+        const html = new TextDecoder('latin-1').decode(buffer);
+        allRaces.push(...parseRaces(html, federation));
+      } catch { /* skip failed federation */ }
     }));
 
-    // Deduplicate by id
     const seen = new Set();
     const unique = allRaces.filter(r => {
       if (seen.has(r.id)) return false;
@@ -120,10 +144,8 @@ export default async function handler(req, res) {
       return true;
     });
 
-    // Sort by date
-    unique.sort((a, b) => a.date.localeCompare(b.date));
+    unique.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-    // Filter
     let result = unique;
     if (date) result = result.filter(r => r.date === date);
     if (department) result = result.filter(r => r.department === department);
