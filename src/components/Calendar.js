@@ -19,6 +19,7 @@ import {
 } from 'date-fns';
 import WorkoutBuilder from './WorkoutBuilder';
 import SmartWorkoutWizard from './SmartWorkoutWizard';
+import SuggestedWeek from './SuggestedWeek';
 import { exportWorkoutFit, exportWorkoutFitFromBlocks, hasWorkoutContent, exportPlanAsZip } from '../services/workout-exporter';
 import { intervalsService, buildIcuEventPayload } from '../services/intervals';
 import { buildRuleBasedWorkout, inferTrainingType } from '../services/workout-rules';
@@ -337,6 +338,7 @@ export default function Calendar({
     events,
     plannedEvents,
     activities = [],
+    wellness = [],
     athlete,
     loading,
     onAddPlannedEvent,
@@ -1118,6 +1120,15 @@ export default function Calendar({
                 </div>
             </div>
 
+            <SuggestedWeek
+                wellness={wellness}
+                activities={activities}
+                plannedEvents={plannedEvents}
+                athlete={athlete}
+                onAddSession={onAddPlannedEvent}
+                onAddAll={(sessions) => sessions.forEach(s => onAddPlannedEvent(s))}
+            />
+
             <div className="calendar-layout">
                 <div>
                     <div className="card" style={{ marginBottom: 0 }}>
@@ -1539,55 +1550,55 @@ export default function Calendar({
                                     return !isNaN(d) && d >= today && d <= planEnd;
                                 });
                                 return (
-                                <div>
-                                    <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 10 }}>Ready to generate your plan:</div>
-                                    <div style={{
-                                        background: 'var(--bg-3)', borderRadius: 8, padding: '10px 14px',
-                                        fontFamily: 'var(--font-mono)', fontSize: 13, marginBottom: 12,
-                                        borderLeft: '3px solid var(--accent-cyan)',
-                                    }}>
-                                        <div><span style={{ color: 'var(--text-3)' }}>Goal</span> — {{
-                                            race: 'Race Prep', ftp: 'FTP Build', base: 'Build Base', recovery: 'Recovery'
-                                        }[aiPlanGoal]}</div>
-                                        <div style={{ marginTop: 4 }}><span style={{ color: 'var(--text-3)' }}>Duration</span> — {aiPlanWeeks} week{aiPlanWeeks > 1 ? 's' : ''}</div>
-                                        <div style={{ marginTop: 4 }}><span style={{ color: 'var(--text-3)' }}>Load</span> — {{
-                                            easy: 'Easy', moderate: 'Moderate', hard: 'Hard'
-                                        }[aiPlanLoad]}</div>
-                                    </div>
-                                    {racesInWindow.length > 0 && (
+                                    <div>
+                                        <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 10 }}>Ready to generate your plan:</div>
                                         <div style={{
-                                            marginBottom: 12, padding: '8px 12px', borderRadius: 8,
-                                            background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.35)',
+                                            background: 'var(--bg-3)', borderRadius: 8, padding: '10px 14px',
+                                            fontFamily: 'var(--font-mono)', fontSize: 13, marginBottom: 12,
+                                            borderLeft: '3px solid var(--accent-cyan)',
                                         }}>
-                                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: '#f97316', marginBottom: 4 }}>
-                                                🏁 {racesInWindow.length} course{racesInWindow.length > 1 ? 's' : ''} détectée{racesInWindow.length > 1 ? 's' : ''} dans cette période
-                                            </div>
-                                            {racesInWindow.map(r => (
-                                                <div key={r.id} style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-2)' }}>
-                                                    · {r.title}
-                                                </div>
-                                            ))}
-                                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', marginTop: 4 }}>
-                                                Le plan inclura automatiquement l'affûtage et la récupération.
-                                            </div>
+                                            <div><span style={{ color: 'var(--text-3)' }}>Goal</span> — {{
+                                                race: 'Race Prep', ftp: 'FTP Build', base: 'Build Base', recovery: 'Recovery'
+                                            }[aiPlanGoal]}</div>
+                                            <div style={{ marginTop: 4 }}><span style={{ color: 'var(--text-3)' }}>Duration</span> — {aiPlanWeeks} week{aiPlanWeeks > 1 ? 's' : ''}</div>
+                                            <div style={{ marginTop: 4 }}><span style={{ color: 'var(--text-3)' }}>Load</span> — {{
+                                                easy: 'Easy', moderate: 'Moderate', hard: 'Hard'
+                                            }[aiPlanLoad]}</div>
                                         </div>
-                                    )}
-                                    <button
-                                        className="btn btn-primary"
-                                        style={{ width: '100%', padding: '10px 0', fontSize: 14 }}
-                                        disabled={isGenerating}
-                                        onClick={handleGenerateAi}
-                                    >
-                                        {isGenerating ? 'Building plan...' : 'Generate Plan →'}
-                                    </button>
-                                    <button
-                                        className="btn"
-                                        style={{ width: '100%', marginTop: 6, fontSize: 12 }}
-                                        onClick={() => { setAiPlanStep(1); setAiPlanGoal(null); setAiPlanWeeks(null); setAiPlanLoad(null); }}
-                                    >
-                                        Start over
-                                    </button>
-                                </div>
+                                        {racesInWindow.length > 0 && (
+                                            <div style={{
+                                                marginBottom: 12, padding: '8px 12px', borderRadius: 8,
+                                                background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.35)',
+                                            }}>
+                                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: '#f97316', marginBottom: 4 }}>
+                                                    🏁 {racesInWindow.length} course{racesInWindow.length > 1 ? 's' : ''} détectée{racesInWindow.length > 1 ? 's' : ''} dans cette période
+                                                </div>
+                                                {racesInWindow.map(r => (
+                                                    <div key={r.id} style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-2)' }}>
+                                                        · {r.title}
+                                                    </div>
+                                                ))}
+                                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', marginTop: 4 }}>
+                                                    Le plan inclura automatiquement l'affûtage et la récupération.
+                                                </div>
+                                            </div>
+                                        )}
+                                        <button
+                                            className="btn btn-primary"
+                                            style={{ width: '100%', padding: '10px 0', fontSize: 14 }}
+                                            disabled={isGenerating}
+                                            onClick={handleGenerateAi}
+                                        >
+                                            {isGenerating ? 'Building plan...' : 'Generate Plan →'}
+                                        </button>
+                                        <button
+                                            className="btn"
+                                            style={{ width: '100%', marginTop: 6, fontSize: 12 }}
+                                            onClick={() => { setAiPlanStep(1); setAiPlanGoal(null); setAiPlanWeeks(null); setAiPlanLoad(null); }}
+                                        >
+                                            Start over
+                                        </button>
+                                    </div>
                                 );
                             })()}
 

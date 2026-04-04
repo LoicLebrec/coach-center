@@ -19,6 +19,7 @@ import WorkoutBuilder from './components/WorkoutBuilder';
 import SmartWorkoutWizard from './components/SmartWorkoutWizard';
 import GpxRouteBuilder from './components/GpxRouteBuilder';
 import RaceCalendar from './components/RaceCalendar';
+import WorkoutAnalysis from './components/WorkoutAnalysis';
 import { LIBRARY_WORKOUTS } from './data/workoutLibrary';
 import './styles/app.css';
 
@@ -43,6 +44,7 @@ const VIEWS = {
   WORKOUT_BUILDER: 'workout_builder',
   GPX_BUILDER: 'gpx_builder',
   RACE_CALENDAR: 'race_calendar',
+  WORKOUT_ANALYSIS: 'workout_analysis',
   DASHBOARD: 'dashboard',
   PMC: 'pmc',
   ACTIVITIES: 'activities',
@@ -985,6 +987,8 @@ export default function App() {
             <RaceCalendar onAddToCalendar={handleAddPlannedEvent} />
           </div>
         );
+      case VIEWS.WORKOUT_ANALYSIS:
+        return <WorkoutAnalysis activities={activities} athlete={athlete} />;
       case VIEWS.DASHBOARD:
         return <Dashboard wellness={wellness} activities={activities} athlete={athlete} loading={loading} error={error} />;
       case VIEWS.PMC:
@@ -999,6 +1003,7 @@ export default function App() {
             events={events}
             plannedEvents={plannedEvents}
             activities={activities}
+            wellness={wellness}
             athlete={athlete}
             loading={loading}
             onAddPlannedEvent={handleAddPlannedEvent}
@@ -1060,6 +1065,9 @@ export default function App() {
           </button>
 
           <div className="nav-section-label">Analysis</div>
+          <button className={`nav-item ${view === VIEWS.WORKOUT_ANALYSIS ? 'active' : ''}`} onClick={() => setView(VIEWS.WORKOUT_ANALYSIS)}>
+            <span className="nav-icon nav-icon-text">WA</span><span>Workout Analysis</span>
+          </button>
           <button className={`nav-item ${view === VIEWS.DASHBOARD ? 'active' : ''}`} onClick={() => setView(VIEWS.DASHBOARD)}>
             <span className="nav-icon nav-icon-text">DB</span><span>Dashboard</span>
           </button>
