@@ -3,13 +3,13 @@ const path = require('path');
 
 // Use a file-based database for Vercel compatibility
 // (In-memory won't persist across requests)
-const DB_PATH = process.env.NODE_ENV === 'production' 
-  ? '/tmp/coach-center.db' 
-  : path.join(__dirname, 'coach-center.db');
+const DB_PATH = process.env.NODE_ENV === 'production'
+    ? '/tmp/coach-center.db'
+    : path.join(__dirname, 'coach-center.db');
 
 const db = new sqlite3.Database(DB_PATH, (err) => {
-  if (err) console.error('DB connection error:', err);
-  else console.log('Connected to SQLite:', DB_PATH);
+    if (err) console.error('DB connection error:', err);
+    else console.log('Connected to SQLite:', DB_PATH);
 });
 
 // Enable foreign keys
@@ -17,9 +17,9 @@ db.run('PRAGMA foreign_keys = ON');
 
 // Initialize tables
 const initDb = () => {
-  db.serialize(() => {
-    // Users table
-    db.run(`
+    db.serialize(() => {
+        // Users table
+        db.run(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
@@ -31,8 +31,8 @@ const initDb = () => {
       )
     `);
 
-    // OAuth tokens table
-    db.run(`
+        // OAuth tokens table
+        db.run(`
       CREATE TABLE IF NOT EXISTS oauth_tokens (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -48,8 +48,8 @@ const initDb = () => {
       )
     `);
 
-    // Cached athlete data
-    db.run(`
+        // Cached athlete data
+        db.run(`
       CREATE TABLE IF NOT EXISTS athlete_data (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -61,8 +61,8 @@ const initDb = () => {
       )
     `);
 
-    // Wellness data
-    db.run(`
+        // Wellness data
+        db.run(`
       CREATE TABLE IF NOT EXISTS wellness (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -77,8 +77,8 @@ const initDb = () => {
       )
     `);
 
-    // Activities
-    db.run(`
+        // Activities
+        db.run(`
       CREATE TABLE IF NOT EXISTS activities (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -96,35 +96,35 @@ const initDb = () => {
       )
     `);
 
-    console.log('✓ Database tables initialized');
-  });
+        console.log('✓ Database tables initialized');
+    });
 };
 
 const run = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
-      if (err) reject(err);
-      else resolve({ lastID: this.lastID, changes: this.changes });
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function (err) {
+            if (err) reject(err);
+            else resolve({ lastID: this.lastID, changes: this.changes });
+        });
     });
-  });
 };
 
 const get = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+        });
     });
-  });
 };
 
 const all = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows || []);
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+        });
     });
-  });
 };
 
 initDb();
