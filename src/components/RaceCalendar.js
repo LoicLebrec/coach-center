@@ -102,6 +102,28 @@ const DATE_PRESETS = [
   { label: 'Tout', days: 400 },
 ];
 
+// ── Nominatim geocoder (lazy, rate-limited, session-cached) ──────────────────
+const geocodeCache = {}; // city_dept → [lat, lng] | null
+
+async function geocodeCity(city, dept, countryCode = 'fr') {
+  const key = `${city}|${dept}`;
+  if (key in geocodeCache) return geocodeCache[key];
+  try {
+    const q = encodeURIComponent(`${city}, France`);
+    const url = `https://nominatim.openstreetmap.org/search?q=${q}&countrycodes=${countryCode}&limit=1&format=json`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'fr', 'User-Agent': 'CoachCenterApp/1.0' } });
+    if (!res.ok) { geocodeCache[key] = null; return null; }
+    const data = await res.json();
+    if (data.length > 0) {
+      const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+      geocodeCache[key] = coords;
+      return coords;
+    }
+  } catch { /* ignore */ }
+  geocodeCache[key] = null;
+  return null;
+}
+
 // ── MapZoomer ─────────────────────────────────────────────────────────────
 function MapZoomer({ bounds }) {
   const map = useMap();
@@ -134,8 +156,10 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
   const [rangePreset, setRangePreset] = useState(1); // index into DATE_PRESETS, default 1 mois
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [cityCoords, setCityCoords] = useState({}); // "city|dept" → [lat, lng]
 
   const geoLayerRef = useRef(null);
+  const geocodeQueueRef = useRef(null);
   const today = startOfToday();
 
   const rangeStart = customStart || localDateStr(today);
@@ -158,6 +182,40 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
       .catch(() => setError('Impossible de charger les courses. Vérifiez votre connexion.'))
       .finally(() => setLoading(false));
   }, []);
+
+  // ── Lazy geocoding: resolve city names → precise [lat, lng] ──────────────
+  useEffect(() => {
+    if (allRaces.length === 0) return;
+    // Cancel previous queue
+    if (geocodeQueueRef.current) clearTimeout(geocodeQueueRef.current);
+
+    // Collect unique city|dept pairs that have a city but no cached coords
+    const toGeocode = [];
+    const seen = new Set();
+    for (const r of allRaces) {
+      if (!r.city || !r.department) continue;
+      const key = `${r.city}|${r.department}`;
+      if (seen.has(key) || key in geocodeCache) continue;
+      seen.add(key);
+      toGeocode.push({ city: r.city, dept: r.department, key });
+    }
+    if (toGeocode.length === 0) return;
+
+    // Process one at a time with 300ms delay (Nominatim rate limit: 1 req/s)
+    let i = 0;
+    const processNext = async () => {
+      if (i >= toGeocode.length) return;
+      const { city, dept, key } = toGeocode[i++];
+      const coords = await geocodeCity(city, dept);
+      if (coords) {
+        setCityCoords(prev => ({ ...prev, [key]: coords }));
+      }
+      geocodeQueueRef.current = setTimeout(processNext, 350);
+    };
+    geocodeQueueRef.current = setTimeout(processNext, 500);
+
+    return () => { if (geocodeQueueRef.current) clearTimeout(geocodeQueueRef.current); };
+  }, [allRaces]);
 
   // ── Race counts by date (within range) ───────────────────────────────────
   const countByDate = useMemo(() => {
@@ -195,16 +253,22 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
     return true;
   }), [allRaces, selectedDept, selectedDate, fedFilter, rangeStart, rangeEnd]);
 
-  // ── Races grouped by dept for map markers ────────────────────────────────
-  const racesByDept = useMemo(() => {
+  // ── Race markers: group by precise city coords (or dept centroid fallback) ──
+  const raceMarkers = useMemo(() => {
     const m = {};
     filteredRaces.forEach(r => {
-      if (!r.department || !DEPT_CENTROIDS[r.department]) return;
-      if (!m[r.department]) m[r.department] = [];
-      m[r.department].push(r);
+      const cityKey = r.city && r.department ? `${r.city}|${r.department}` : null;
+      const precise = cityKey ? (cityCoords[cityKey] || geocodeCache[cityKey] || null) : null;
+      const fallback = r.department ? DEPT_CENTROIDS[r.department] : null;
+      const coords = precise || fallback;
+      if (!coords) return;
+      // Use precise coords as key if available, else dept
+      const markerKey = precise ? cityKey : `dept:${r.department}`;
+      if (!m[markerKey]) m[markerKey] = { coords, races: [], precise: !!precise, dept: r.department };
+      m[markerKey].races.push(r);
     });
-    return m;
-  }, [filteredRaces]);
+    return Object.values(m);
+  }, [filteredRaces, cityCoords]);
 
   // ── Calendar grid: weeks covering the selected range ─────────────────────
   const calendarWeeks = useMemo(() => {
@@ -463,23 +527,27 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
               />
               {mapBounds && <MapZoomer bounds={mapBounds} />}
 
-              {/* Race dots per department */}
-              {Object.entries(racesByDept).map(([dept, races]) => {
-                const [lat, lng] = DEPT_CENTROIDS[dept];
+              {/* Race dots — precise city location or dept centroid fallback */}
+              {raceMarkers.map((marker, mi) => {
+                const { coords, races, precise, dept } = marker;
                 const count = races.length;
                 const isSelected = dept === selectedDept;
-                const radius = Math.min(6 + count * 1.5, 18);
-                const fedColor = isSelected ? '#22d3ee' : (FED_COLORS[races[0]?.federation] || '#f97316');
+                const radius = precise
+                  ? Math.min(5 + count * 1.2, 12)   // smaller when precise
+                  : Math.min(8 + count * 1.5, 20);  // bigger centroid blob
+                const fedColor = isSelected ? '#22d3ee'
+                  : races.length === 1 ? (FED_COLORS[races[0]?.federation] || '#f97316')
+                  : '#f97316';
                 return (
                   <CircleMarker
-                    key={dept}
-                    center={[lat, lng]}
+                    key={mi}
+                    center={coords}
                     radius={radius}
                     pathOptions={{
                       fillColor: fedColor,
-                      fillOpacity: isSelected ? 1 : 0.75,
-                      color: isSelected ? '#fff' : 'rgba(0,0,0,0.4)',
-                      weight: isSelected ? 2 : 1,
+                      fillOpacity: precise ? 0.9 : 0.55,
+                      color: isSelected ? '#fff' : precise ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)',
+                      weight: isSelected ? 2 : precise ? 1 : 0.5,
                     }}
                     eventHandlers={{
                       click: () => {
@@ -491,16 +559,21 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                     }}
                   >
                     <Popup>
-                      <div style={{ fontFamily: 'sans-serif', fontSize: 12, minWidth: 160 }}>
-                        <div style={{ fontWeight: 700, marginBottom: 4 }}>{dept} — {DEPT_NAMES[dept] || dept}</div>
-                        <div style={{ color: '#666', marginBottom: 6 }}>{count} course{count > 1 ? 's' : ''}</div>
-                        {races.slice(0, 5).map(r => (
+                      <div style={{ fontFamily: 'sans-serif', fontSize: 12, minWidth: 170 }}>
+                        <div style={{ fontWeight: 700, marginBottom: 2 }}>
+                          {races[0]?.city || (dept ? `${dept} — ${DEPT_NAMES[dept] || dept}` : '—')}
+                          {!precise && dept && <span style={{ fontWeight: 400, color: '#888', fontSize: 10 }}> (centroïde)</span>}
+                        </div>
+                        <div style={{ color: '#888', marginBottom: 6, fontSize: 11 }}>{count} course{count > 1 ? 's' : ''}</div>
+                        {races.slice(0, 6).map(r => (
                           <div key={r.id} style={{ borderTop: '1px solid #eee', paddingTop: 4, marginTop: 4 }}>
                             <div style={{ fontWeight: 600 }}>{r.name}</div>
-                            <div style={{ color: '#888', fontSize: 11 }}>{r.date} · {r.federation}</div>
+                            <div style={{ color: '#888', fontSize: 10 }}>
+                              {r.date} · {r.federation}{r.discipline ? ` · ${r.discipline}` : ''}
+                            </div>
                           </div>
                         ))}
-                        {races.length > 5 && <div style={{ color: '#888', marginTop: 4, fontSize: 11 }}>+{races.length - 5} autres…</div>}
+                        {races.length > 6 && <div style={{ color: '#888', marginTop: 4, fontSize: 10 }}>+{races.length - 6} autres…</div>}
                       </div>
                     </Popup>
                   </CircleMarker>
@@ -808,14 +881,14 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                               </span>
                             )}
 
-                            {/* Category */}
-                            {race.category && (
+                            {/* Discipline or category */}
+                            {(race.discipline || race.category) && (
                               <span style={{
                                 flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 9,
-                                color: 'var(--text-3)', maxWidth: 60,
+                                color: 'var(--text-3)', maxWidth: 70,
                                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                               }}>
-                                {race.category}
+                                {race.discipline || race.category}
                               </span>
                             )}
 
