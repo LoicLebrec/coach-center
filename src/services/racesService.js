@@ -172,6 +172,80 @@ async function fetchViaProxy(fed) {
   return [];
 }
 
+// ── FFC (competitions.ffc.fr) ─────────────────────────────────────────────────
+
+function parseFfcDate(str) {
+  if (!str) return null;
+  const m = str.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+function parseFfcRacesFromHtml(html) {
+  const races = [];
+  const today = new Date().toISOString().split('T')[0];
+  const orgRe = /<a\b[^>]*class="[^"]*organisation-titre[^"]*"([^>]*)>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = orgRe.exec(html)) !== null) {
+    const attrs = m[1];
+    const block = m[2];
+    if (/annule/i.test(attrs + block)) continue;
+
+    const dateM = block.match(/organisation-titre-jours[^>]*>\s*([^<]+)\s*</i);
+    const date = parseFfcDate(dateM?.[1] || '');
+    if (!date || date < today) continue;
+
+    const nameM = block.match(/organisation-titre-libelle[^>]*>\s*([^<]+)\s*</i);
+    const name = (nameM?.[1] || '').trim().replace(/\s+/g, ' ');
+    if (!name) continue;
+
+    const locM = block.match(/organisation-titre-localisation[^>]*>\s*([^<]+)\s*</i);
+    const loc = (locM?.[1] || '').trim();
+    const deptM = loc.match(/\b(\d{2,3})\s*$/);
+    const department = deptM ? String(parseInt(deptM[1], 10)).padStart(2, '0') : null;
+
+    const hrefM = attrs.match(/href="([^"]+)"/i);
+    const url = hrefM
+      ? (hrefM[1].startsWith('http') ? hrefM[1] : `https://competitions.ffc.fr${hrefM[1]}`)
+      : 'https://competitions.ffc.fr/calendrier/';
+
+    races.push({
+      id: `ffc-${date}-${name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16)}`,
+      name: name.replace(/\b\w/g, c => c.toUpperCase()),
+      date,
+      department,
+      federation: 'FFC',
+      category: null,
+      url,
+    });
+  }
+  return races;
+}
+
+async function fetchFfcViaProxy() {
+  const fmt = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  const today = new Date();
+  const fin = new Date(today); fin.setDate(fin.getDate() + 120);
+  const ffcUrl = `https://competitions.ffc.fr/calendrier/calendrier.aspx?debut=${fmt(today)}&fin=${fmt(fin)}&discipline=Route`;
+  const target = encodeURIComponent(ffcUrl);
+
+  for (const proxy of CORS_PROXIES) {
+    try {
+      const res = await fetch(proxy.build(target), {
+        signal: AbortSignal.timeout ? AbortSignal.timeout(12000) : undefined,
+      });
+      if (!res.ok) continue;
+      const data = proxy.json ? await res.json() : await res.text();
+      const html = proxy.extract(data);
+      if (html && html.length > 1000) {
+        const races = parseFfcRacesFromHtml(html);
+        if (races.length > 0) return races;
+      }
+    } catch { /* try next proxy */ }
+  }
+  return [];
+}
+
 export async function fetchRaces({ date, department, fed } = {}) {
   // 1. Try Vercel serverless function (production)
   try {
@@ -192,9 +266,12 @@ export async function fetchRaces({ date, department, fed } = {}) {
   // 2. CORS proxy fallback (local dev / GitHub Pages)
   const feds = fed ? [fed.toUpperCase()] : ['FFC', 'FSGT', 'UFOLEP', 'FFCT'];
   const allRaces = [];
-  await Promise.allSettled(
-    feds.map(f => fetchViaProxy(f).then(r => allRaces.push(...r)).catch(() => {}))
-  );
+  await Promise.allSettled([
+    // cyclisme-amateur.com per federation
+    ...feds.map(f => fetchViaProxy(f).then(r => allRaces.push(...r)).catch(() => {})),
+    // FFC official calendar (route discipline, next 4 months)
+    fetchFfcViaProxy().then(r => allRaces.push(...r)).catch(() => {}),
+  ]);
 
   // Deduplicate by id
   const seen = new Set();

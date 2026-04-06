@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import trainingPlanner from '../services/training-planner.js';
+import persistence from '../services/persistence';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

@@ -554,8 +554,17 @@ function buildWeekTemplate(phase, signals, ftp, weekDates, nextRace) {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
+// Weekly hours option → target minutes
+const WEEKLY_HOURS_MIN = {
+  '< 5 hours': 240,
+  '5-8 hours': 390,
+  '8-12 hours': 600,
+  '12-16 hours': 840,
+  '16+ hours': 960,
+};
+
 const trainingPlanner = {
-  buildWeekPrescription(wellness = [], activities = [], plannedEvents = [], athlete = {}) {
+  buildWeekPrescription(wellness = [], activities = [], plannedEvents = [], athlete = {}, athleteProfile = null) {
     const ftp = athlete.icu_ftp || athlete.ftp || 250;
 
     // Next Monday
@@ -584,8 +593,44 @@ const trainingPlanner = {
     // Phase
     const { phase, phaseReason } = detectPhase(wellness, efTrend, tsb, signals, nextRace);
 
-    // Build sessions
-    const sessions = buildWeekTemplate(phase, signals, ftp, weekDates, nextRace);
+    // Build sessions from template
+    let sessions = buildWeekTemplate(phase, signals, ftp, weekDates, nextRace);
+
+    // ─── Apply athlete profile constraints ──────────────────────────────────
+
+    // 1. Available days (0=Mon … 6=Sun); default = all days
+    const availableDays = Array.isArray(athleteProfile?.availableDays) && athleteProfile.availableDays.length > 0
+      ? athleteProfile.availableDays
+      : [0, 1, 2, 3, 4, 5, 6];
+
+    sessions = sessions.map((sess, i) => {
+      if (sess.isRaceDay || sess.type === 'rest') return sess;
+      if (!availableDays.includes(i)) {
+        return makeSession({
+          dayIndex: i,
+          date: weekDates[i],
+          type: 'rest',
+          durationMin: 0,
+          ftp,
+          reasoning: 'Jour non disponible selon votre profil.',
+        });
+      }
+      return sess;
+    });
+
+    // 2. Scale session durations to match target weekly hours
+    const targetMin = WEEKLY_HOURS_MIN[athleteProfile?.weeklyHours] ?? 600;
+    const workSessions = sessions.filter(s => s.type !== 'rest' && !s.isRaceDay && s.durationMin > 0);
+    const currentTotal = workSessions.reduce((sum, s) => sum + s.durationMin, 0);
+
+    if (currentTotal > 0 && Math.abs(currentTotal - targetMin) > 30) {
+      const scale = Math.max(0.4, Math.min(2.5, targetMin / currentTotal));
+      sessions = sessions.map(sess => {
+        if (sess.type === 'rest' || sess.isRaceDay || sess.durationMin === 0) return sess;
+        const newDur = Math.max(20, Math.round(sess.durationMin * scale / 5) * 5);
+        return { ...sess, durationMin: newDur, estimatedTSS: estimateTSS(sess.type, newDur) };
+      });
+    }
 
     // Week TSS
     const weekTSS = sessions.reduce((s, sess) => s + (sess.estimatedTSS || 0), 0);

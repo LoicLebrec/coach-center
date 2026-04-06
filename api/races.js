@@ -114,6 +114,67 @@ function parseRaces(html, federation) {
   return races;
 }
 
+// ── FFC (competitions.ffc.fr) parser ─────────────────────────────────────────
+
+function parseFfcDate(str) {
+  if (!str) return null;
+  // "Le 05/04/2026" or "Du 05/04/2026 au 12/04/2026" → take first date
+  const m = str.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]}`; // YYYY-MM-DD
+}
+
+function parseFfcRaces(html) {
+  const races = [];
+  // Match each clickable organisation-titre anchor block
+  const orgRe = /<a\b[^>]*class="[^"]*organisation-titre[^"]*"([^>]*)>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = orgRe.exec(html)) !== null) {
+    const attrs = m[1];
+    const block = m[2];
+
+    // Skip cancelled races
+    if (/annule/i.test(attrs + block)) continue;
+
+    const dateM = block.match(/organisation-titre-jours[^>]*>\s*([^<]+)\s*</i);
+    const date = parseFfcDate(dateM?.[1] || '');
+    if (!date) continue;
+
+    // Only future races
+    const today = new Date().toISOString().split('T')[0];
+    if (date < today) continue;
+
+    const nameM = block.match(/organisation-titre-libelle[^>]*>\s*([^<]+)\s*</i);
+    const name = (nameM?.[1] || '').trim().replace(/\s+/g, ' ');
+    if (!name) continue;
+
+    const locM = block.match(/organisation-titre-localisation[^>]*>\s*([^<]+)\s*</i);
+    const loc = (locM?.[1] || '').trim();
+    // Extract dept code from trailing 2-digit number: "BOLLENE 84" → "84"
+    const deptM = loc.match(/\b(\d{2,3})\s*$/);
+    const department = deptM ? String(parseInt(deptM[1], 10)).padStart(2, '0') : null;
+
+    // Href for the organisation (may be relative like /calendrier/competition/...)
+    const hrefM = attrs.match(/href="([^"]+)"/i);
+    const url = hrefM
+      ? (hrefM[1].startsWith('http') ? hrefM[1] : `https://competitions.ffc.fr${hrefM[1]}`)
+      : 'https://competitions.ffc.fr/calendrier/';
+
+    const id = `ffc-${date}-${name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16)}`;
+
+    races.push({
+      id,
+      name: name.replace(/\b\w/g, c => c.toUpperCase()),
+      date,
+      department,
+      federation: 'FFC',
+      category: null,
+      url,
+    });
+  }
+  return races;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
@@ -123,6 +184,7 @@ export default async function handler(req, res) {
   try {
     const allRaces = [];
 
+    // ── Source 1: cyclisme-amateur.com ──────────────────────────────────────
     await Promise.all(feds.map(async (federation) => {
       try {
         const url = `https://www.cyclisme-amateur.com/course.php?fed=${federation}`;
@@ -131,11 +193,25 @@ export default async function handler(req, res) {
         });
         if (!response.ok) return;
         const buffer = await response.arrayBuffer();
-        // Site uses latin-1 encoding
         const html = new TextDecoder('latin-1').decode(buffer);
         allRaces.push(...parseRaces(html, federation));
-      } catch { /* skip failed federation */ }
+      } catch { /* skip */ }
     }));
+
+    // ── Source 2: FFC official calendar (Route discipline, next 90 days) ───
+    try {
+      const fmt = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+      const today = new Date();
+      const fin90 = new Date(today); fin90.setDate(fin90.getDate() + 120);
+      const ffcUrl = `https://competitions.ffc.fr/calendrier/calendrier.aspx?debut=${fmt(today)}&fin=${fmt(fin90)}&discipline=Route`;
+      const ffcResp = await fetch(ffcUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CoachCenterApp/1.0)' },
+      });
+      if (ffcResp.ok) {
+        const ffcHtml = await ffcResp.text();
+        allRaces.push(...parseFfcRaces(ffcHtml));
+      }
+    } catch { /* skip FFC */ }
 
     const seen = new Set();
     const unique = allRaces.filter(r => {

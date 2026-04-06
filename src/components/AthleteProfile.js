@@ -856,6 +856,32 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                         </select>
                     </div>
 
+                    <div style={{ marginTop: 10, marginBottom: 4 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 6 }}>Jours disponibles pour l'entraînement</div>
+                        <div style={{ display: 'flex', gap: 5 }}>
+                            {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((day, i) => {
+                                const avail = profile.availableDays == null || profile.availableDays.includes(i);
+                                return (
+                                    <button key={i} type="button" onClick={() => {
+                                        const current = profile.availableDays ?? [0, 1, 2, 3, 4, 5, 6];
+                                        const next = avail
+                                            ? current.filter(d => d !== i)
+                                            : [...current, i].sort((a, b) => a - b);
+                                        update('availableDays', next);
+                                    }} style={{
+                                        padding: '5px 9px', borderRadius: 6, fontSize: 12,
+                                        border: `1px solid ${avail ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                                        background: avail ? 'rgba(34,211,238,0.12)' : 'var(--bg-3)',
+                                        color: avail ? 'var(--accent-cyan)' : 'var(--text-4)',
+                                        cursor: 'pointer', fontFamily: 'var(--font-mono)',
+                                    }}>
+                                        {day}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
                     <div className="calendar-form-row">
                         <select className="form-input calendar-form-input" value={profile.coachStyle || 'Brutal honesty - no mercy'} onChange={e => update('coachStyle', e.target.value)}>
                             <option>Brutal honesty - no mercy</option>
