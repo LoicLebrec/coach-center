@@ -352,12 +352,19 @@ export default function SuggestedWeek({
   onAddAll,
 }) {
   const [athleteProfile, setAthleteProfile] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     persistence.getAthleteProfile().then(p => {
       if (p && typeof p === 'object') setAthleteProfile(p);
     }).catch(() => {});
   }, []);
+
+  const updateProfile = async (field, value) => {
+    const next = { ...(athleteProfile || {}), [field]: value };
+    setAthleteProfile(next);
+    await persistence.saveAthleteProfile(next).catch(() => {});
+  };
 
   const prescription = useMemo(() => {
     try {
@@ -457,6 +464,20 @@ export default function SuggestedWeek({
           ~{weekTSS} TSS
         </span>
 
+        {/* Settings toggle */}
+        <button
+          onClick={() => setShowSettings(s => !s)}
+          style={{
+            background: showSettings ? 'rgba(34,211,238,0.1)' : 'none',
+            border: `1px solid ${showSettings ? 'var(--accent-cyan)' : 'var(--border)'}`,
+            borderRadius: 6, padding: '4px 10px', fontSize: 11,
+            color: showSettings ? 'var(--accent-cyan)' : 'var(--text-3)',
+            cursor: 'pointer', fontFamily: 'var(--font-mono)',
+          }}
+        >
+          ⚙ Dispo
+        </button>
+
         {/* Add all button */}
         <button
           className="btn btn-primary"
@@ -466,6 +487,58 @@ export default function SuggestedWeek({
           Ajouter tout
         </button>
       </div>
+
+      {/* ── Inline availability settings ── */}
+      {showSettings && (
+        <div style={{
+          marginBottom: 12,
+          padding: '10px 14px',
+          background: 'var(--bg-2)',
+          borderRadius: 8,
+          border: '1px solid var(--border)',
+          display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
+        }}>
+          <div>
+            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 5 }}>JOURS DISPONIBLES</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((label, i) => {
+                const avail = !athleteProfile?.availableDays || athleteProfile.availableDays.includes(i);
+                return (
+                  <button key={i} type="button" onClick={() => {
+                    const current = athleteProfile?.availableDays ?? [0, 1, 2, 3, 4, 5, 6];
+                    const next = avail ? current.filter(d => d !== i) : [...current, i].sort((a, b) => a - b);
+                    updateProfile('availableDays', next);
+                  }} style={{
+                    width: 28, height: 28, borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-mono)',
+                    border: `1px solid ${avail ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                    background: avail ? 'rgba(34,211,238,0.12)' : 'var(--bg-3)',
+                    color: avail ? 'var(--accent-cyan)' : 'var(--text-4)',
+                    cursor: 'pointer', fontWeight: 700,
+                  }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 5 }}>HEURES / SEMAINE</div>
+            <select value={athleteProfile?.weeklyHours || '8-12 hours'}
+              onChange={e => updateProfile('weeklyHours', e.target.value)}
+              style={{
+                background: 'var(--bg-3)', border: '1px solid var(--border)',
+                color: 'var(--text-1)', borderRadius: 6, padding: '4px 8px',
+                fontSize: 12, fontFamily: 'var(--font-mono)', cursor: 'pointer',
+              }}>
+              <option>{'< 5 hours'}</option>
+              <option>5-8 hours</option>
+              <option>8-12 hours</option>
+              <option>12-16 hours</option>
+              <option>16+ hours</option>
+            </select>
+          </div>
+        </div>
+      )}
 
       {/* ── Phase reason subtitle ── */}
       <div

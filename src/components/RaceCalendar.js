@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import 'leaflet/dist/leaflet.css';
-import { MapContainer, TileLayer, GeoJSON as LeafletGeoJSON, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON as LeafletGeoJSON, CircleMarker, Popup, useMap } from 'react-leaflet';
 import { format, parseISO, addDays, startOfToday, startOfWeek, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { fetchRaces } from '../services/racesService';
@@ -58,6 +58,50 @@ const FED_COLORS = {
   FFC: '#4d7fe8', FSGT: '#22c55e', UFOLEP: '#f97316', FFCT: '#a855f7',
 };
 
+// ── Department centroid coordinates [lat, lng] ──────────────────────────────
+const DEPT_CENTROIDS = {
+  '01':[46.21,5.22],'02':[49.55,3.61],'03':[46.34,3.12],'04':[44.10,6.24],
+  '05':[44.70,6.37],'06':[43.92,7.18],'07':[44.80,4.54],'08':[49.72,4.72],
+  '09':[42.92,1.52],'10':[48.32,4.11],'11':[43.12,2.35],'12':[44.32,2.68],
+  '13':[43.52,5.43],'14':[49.10,-0.35],'15':[45.05,2.65],'16':[45.70,0.16],
+  '17':[45.83,-0.73],'18':[47.08,2.42],'19':[45.37,1.88],'21':[47.31,4.83],
+  '22':[48.42,-2.75],'23':[46.00,2.03],'24':[45.03,0.88],'25':[47.12,6.37],
+  '26':[44.73,5.10],'27':[49.12,1.07],'28':[48.43,1.38],'29':[48.24,-4.12],
+  '30':[44.00,4.13],'31':[43.45,1.45],'32':[43.64,0.58],'33':[44.83,-0.57],
+  '34':[43.60,3.55],'35':[48.09,-1.68],'36':[46.59,1.58],'37':[47.19,0.68],
+  '38':[45.18,5.72],'39':[46.73,5.57],'40':[44.00,-0.69],'41':[47.59,1.31],
+  '42':[45.60,4.32],'43':[45.12,3.92],'44':[47.32,-1.70],'45':[47.91,2.31],
+  '46':[44.60,1.66],'47':[44.35,0.53],'48':[44.55,3.48],'49':[47.39,-0.56],
+  '50':[49.09,-1.27],'51':[49.05,4.35],'52':[48.09,5.32],'53':[48.06,-0.60],
+  '54':[48.69,6.18],'55':[48.89,5.38],'56':[47.91,-2.77],'57':[49.05,6.82],
+  '58':[47.14,3.67],'59':[50.52,3.12],'60':[49.32,2.52],'61':[48.55,0.08],
+  '62':[50.52,2.49],'63':[45.73,3.12],'64':[43.35,-0.78],'65':[43.10,0.17],
+  '66':[42.74,2.55],'67':[48.58,7.48],'68':[47.89,7.26],'69':[45.74,4.66],
+  '70':[47.60,6.18],'71':[46.52,4.72],'72':[47.93,0.20],'73':[45.48,6.43],
+  '74':[46.00,6.41],'75':[48.86,2.33],'76':[49.60,1.10],'77':[48.64,2.94],
+  '78':[48.81,1.81],'79':[46.50,-0.45],'80':[49.92,2.31],'81':[43.90,2.10],
+  '82':[44.02,1.30],'83':[43.39,6.22],'84':[43.95,5.29],'85':[46.67,-1.27],
+  '86':[46.58,0.37],'87':[45.82,1.27],'88':[48.18,6.47],'89':[47.73,3.57],
+  '90':[47.64,6.87],'91':[48.52,2.28],'92':[48.89,2.22],'93':[48.91,2.42],
+  '94':[48.79,2.47],'95':[49.08,2.10],'2A':[41.86,9.02],'2B':[42.35,9.25],
+};
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
+function localDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+const DATE_PRESETS = [
+  { label: '2 sem', days: 14 },
+  { label: '1 mois', days: 31 },
+  { label: '3 mois', days: 92 },
+  { label: '6 mois', days: 184 },
+  { label: 'Tout', days: 400 },
+];
+
 // ── MapZoomer ─────────────────────────────────────────────────────────────
 function MapZoomer({ bounds }) {
   const map = useMap();
@@ -87,9 +131,15 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
   const [saveModal, setSaveModal] = useState(null);
   const [taperEnabled, setTaperEnabled] = useState(true);
   const [savedIds, setSavedIds] = useState(new Set());
+  const [rangePreset, setRangePreset] = useState(1); // index into DATE_PRESETS, default 1 mois
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
 
   const geoLayerRef = useRef(null);
   const today = startOfToday();
+
+  const rangeStart = customStart || localDateStr(today);
+  const rangeEnd = customEnd || localDateStr(addDays(today, DATE_PRESETS[rangePreset]?.days ?? 31));
 
   // ── Load GeoJSON ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -109,54 +159,76 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
       .finally(() => setLoading(false));
   }, []);
 
-  // ── Race counts by date ───────────────────────────────────────────────────
+  // ── Race counts by date (within range) ───────────────────────────────────
   const countByDate = useMemo(() => {
     const m = {};
     allRaces.forEach(r => {
       if (!r.date) return;
+      if (r.date < rangeStart || r.date > rangeEnd) return;
       if (selectedDept && r.department !== selectedDept) return;
       if (fedFilter && r.federation !== fedFilter) return;
       m[r.date] = (m[r.date] || 0) + 1;
     });
     return m;
-  }, [allRaces, selectedDept, fedFilter]);
+  }, [allRaces, selectedDept, fedFilter, rangeStart, rangeEnd]);
 
-  // ── Race counts by dept ───────────────────────────────────────────────────
+  // ── Race counts by dept (within range) ───────────────────────────────────
   const countByDept = useMemo(() => {
     const m = {};
     allRaces.forEach(r => {
       if (!r.department) return;
+      if (r.date < rangeStart || r.date > rangeEnd) return;
       if (fedFilter && r.federation !== fedFilter) return;
       if (selectedDate && r.date !== selectedDate) return;
       m[r.department] = (m[r.department] || 0) + 1;
     });
     return m;
-  }, [allRaces, fedFilter, selectedDate]);
+  }, [allRaces, fedFilter, selectedDate, rangeStart, rangeEnd]);
 
-  // ── Filtered races ────────────────────────────────────────────────────────
+  // ── Filtered races (within range) ────────────────────────────────────────
   const filteredRaces = useMemo(() => allRaces.filter(r => {
+    if (!r.date) return false;
+    if (r.date < rangeStart || r.date > rangeEnd) return false;
     if (selectedDept && r.department !== selectedDept) return false;
     if (selectedDate && r.date !== selectedDate) return false;
     if (fedFilter && r.federation !== fedFilter) return false;
     return true;
-  }), [allRaces, selectedDept, selectedDate, fedFilter]);
+  }), [allRaces, selectedDept, selectedDate, fedFilter, rangeStart, rangeEnd]);
 
-  // ── Calendar grid: 16 weeks starting from Monday of current week ─────────
+  // ── Races grouped by dept for map markers ────────────────────────────────
+  const racesByDept = useMemo(() => {
+    const m = {};
+    filteredRaces.forEach(r => {
+      if (!r.department || !DEPT_CENTROIDS[r.department]) return;
+      if (!m[r.department]) m[r.department] = [];
+      m[r.department].push(r);
+    });
+    return m;
+  }, [filteredRaces]);
+
+  // ── Calendar grid: weeks covering the selected range ─────────────────────
   const calendarWeeks = useMemo(() => {
-    const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+    const start = parseISO(rangeStart);
+    const end = parseISO(rangeEnd);
+    const weekStart = startOfWeek(start, { weekStartsOn: 1 });
     const weeks = [];
-    for (let w = 0; w < 16; w++) {
+    let w = 0;
+    while (true) {
+      const wStart = addDays(weekStart, w * 7);
+      if (wStart > end) break;
+      if (w > 52) break; // safety cap
       const days = [];
       for (let d = 0; d < 7; d++) {
-        const date = addDays(weekStart, w * 7 + d);
+        const date = addDays(wStart, d);
         const key = format(date, 'yyyy-MM-dd');
-        days.push({ date, key, count: countByDate[key] || 0 });
+        days.push({ date, key, count: countByDate[key] || 0, inRange: key >= rangeStart && key <= rangeEnd });
       }
       const weekTotal = days.reduce((s, d) => s + d.count, 0);
       weeks.push({ days, weekTotal });
+      w++;
     }
     return weeks;
-  }, [countByDate, today]);
+  }, [countByDate, rangeStart, rangeEnd]);
 
   // ── Map style ─────────────────────────────────────────────────────────────
   const styleFeature = useCallback((feature) => {
@@ -273,12 +345,13 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-      {/* ── Federation filter ── */}
+      {/* ── Filters bar ── */}
       <div className="card" style={{ padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginRight: 4 }}>Fédération :</span>
+        {/* Federation */}
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', marginRight: 2 }}>Fédération :</span>
         {['', 'FFC', 'FSGT', 'UFOLEP', 'FFCT'].map(f => (
           <button key={f} onClick={() => setFedFilter(f)} style={{
-            padding: '5px 14px', borderRadius: 7, fontSize: 12, fontFamily: 'var(--font-mono)',
+            padding: '4px 11px', borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-mono)',
             fontWeight: 700, cursor: 'pointer', border: '1px solid',
             borderColor: fedFilter === f ? (FED_COLORS[f] || 'var(--accent-cyan)') : 'var(--border)',
             background: fedFilter === f ? `${FED_COLORS[f] || 'var(--accent-cyan)'}25` : 'var(--bg-2)',
@@ -288,6 +361,38 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
             {f || 'Toutes'}
           </button>
         ))}
+
+        {/* Divider */}
+        <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
+
+        {/* Date range presets */}
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)' }}>Période :</span>
+        {DATE_PRESETS.map((p, i) => (
+          <button key={p.label} onClick={() => { setRangePreset(i); setCustomStart(''); setCustomEnd(''); setSelectedDate(null); }} style={{
+            padding: '4px 10px', borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-mono)',
+            fontWeight: 600, cursor: 'pointer', border: '1px solid',
+            borderColor: rangePreset === i && !customStart ? 'var(--accent-cyan)' : 'var(--border)',
+            background: rangePreset === i && !customStart ? 'rgba(34,211,238,0.12)' : 'var(--bg-2)',
+            color: rangePreset === i && !customStart ? 'var(--accent-cyan)' : 'var(--text-3)',
+            transition: 'all 0.15s',
+          }}>
+            {p.label}
+          </button>
+        ))}
+
+        {/* Custom date pickers */}
+        <input type="date" value={customStart} onChange={e => { setCustomStart(e.target.value); setSelectedDate(null); }}
+          style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 6, color: customStart ? 'var(--text-1)' : 'var(--text-4)', fontSize: 11, padding: '3px 7px', fontFamily: 'var(--font-mono)', cursor: 'pointer' }}
+        />
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)' }}>→</span>
+        <input type="date" value={customEnd} onChange={e => { setCustomEnd(e.target.value); setSelectedDate(null); }}
+          style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 6, color: customEnd ? 'var(--text-1)' : 'var(--text-4)', fontSize: 11, padding: '3px 7px', fontFamily: 'var(--font-mono)', cursor: 'pointer' }}
+        />
+        {(customStart || customEnd) && (
+          <button onClick={() => { setCustomStart(''); setCustomEnd(''); }} style={{ background: 'none', border: 'none', color: 'var(--text-4)', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+            ✕ réinitialiser
+          </button>
+        )}
 
         {/* Active filters */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
@@ -357,6 +462,50 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                 ref={geoLayerRef}
               />
               {mapBounds && <MapZoomer bounds={mapBounds} />}
+
+              {/* Race dots per department */}
+              {Object.entries(racesByDept).map(([dept, races]) => {
+                const [lat, lng] = DEPT_CENTROIDS[dept];
+                const count = races.length;
+                const isSelected = dept === selectedDept;
+                const radius = Math.min(6 + count * 1.5, 18);
+                const fedColor = isSelected ? '#22d3ee' : (FED_COLORS[races[0]?.federation] || '#f97316');
+                return (
+                  <CircleMarker
+                    key={dept}
+                    center={[lat, lng]}
+                    radius={radius}
+                    pathOptions={{
+                      fillColor: fedColor,
+                      fillOpacity: isSelected ? 1 : 0.75,
+                      color: isSelected ? '#fff' : 'rgba(0,0,0,0.4)',
+                      weight: isSelected ? 2 : 1,
+                    }}
+                    eventHandlers={{
+                      click: () => {
+                        setSelectedDept(prev => prev === dept ? null : dept);
+                        setSelectedDate(null);
+                        setSelectedRegion(null);
+                        setMapBounds(null);
+                      }
+                    }}
+                  >
+                    <Popup>
+                      <div style={{ fontFamily: 'sans-serif', fontSize: 12, minWidth: 160 }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>{dept} — {DEPT_NAMES[dept] || dept}</div>
+                        <div style={{ color: '#666', marginBottom: 6 }}>{count} course{count > 1 ? 's' : ''}</div>
+                        {races.slice(0, 5).map(r => (
+                          <div key={r.id} style={{ borderTop: '1px solid #eee', paddingTop: 4, marginTop: 4 }}>
+                            <div style={{ fontWeight: 600 }}>{r.name}</div>
+                            <div style={{ color: '#888', fontSize: 11 }}>{r.date} · {r.federation}</div>
+                          </div>
+                        ))}
+                        {races.length > 5 && <div style={{ color: '#888', marginTop: 4, fontSize: 11 }}>+{races.length - 5} autres…</div>}
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                );
+              })}
             </MapContainer>
           ) : (
             <div style={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
@@ -365,7 +514,8 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
           )}
 
           {/* Map legend */}
-          <div style={{ padding: '8px 14px', display: 'flex', gap: 12, flexWrap: 'wrap', borderTop: '1px solid var(--border)' }}>
+          <div style={{ padding: '8px 14px', display: 'flex', gap: 14, flexWrap: 'wrap', borderTop: '1px solid var(--border)', alignItems: 'center' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-4)', letterSpacing: '0.06em' }}>DÉPARTEMENTS</span>
             {[
               { color: '#3b82f6', label: '1–2' },
               { color: '#2563eb', label: '3–4' },
@@ -375,6 +525,14 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <div style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0 }} />
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)' }}>{label}</span>
+              </div>
+            ))}
+            <div style={{ width: 1, height: 14, background: 'var(--border)' }} />
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-4)', letterSpacing: '0.06em' }}>POINTS</span>
+            {Object.entries(FED_COLORS).map(([fed, color]) => (
+              <div key={fed} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)' }}>{fed}</span>
               </div>
             ))}
           </div>
@@ -448,24 +606,25 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                         </span>
                       )}
                     </div>
-                    {days.map(({ date, key, count }) => {
+                    {days.map(({ date, key, count, inRange }) => {
                       const isSelected = selectedDate === key;
                       const isTodayCell = key === format(today, 'yyyy-MM-dd');
                       const isPast = date < today;
                       const hasRaces = count > 0;
+                      const outOfRange = !inRange;
                       return (
                         <div
                           key={key}
-                          onClick={() => hasRaces && setSelectedDate(prev => prev === key ? null : key)}
+                          onClick={() => hasRaces && inRange && setSelectedDate(prev => prev === key ? null : key)}
                           title={hasRaces ? `${count} course${count > 1 ? 's' : ''} le ${format(date, 'd MMMM', { locale: fr })}` : ''}
                           style={{
                             padding: '5px 2px', borderRadius: 7, textAlign: 'center',
-                            cursor: hasRaces ? 'pointer' : 'default',
+                            cursor: hasRaces && inRange ? 'pointer' : 'default',
                             background: isSelected ? 'var(--accent-cyan)'
                               : hasRaces ? 'rgba(77,127,232,0.18)'
                               : 'var(--bg-2)',
                             border: `1px solid ${isSelected ? 'var(--accent-cyan)' : isTodayCell ? 'rgba(255,255,255,0.3)' : 'transparent'}`,
-                            opacity: isPast && !isSelected ? 0.4 : 1,
+                            opacity: outOfRange ? 0.2 : isPast && !isSelected ? 0.45 : 1,
                             transition: 'all 0.12s',
                           }}
                         >
@@ -545,81 +704,149 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
               </div>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 420, overflowY: 'auto' }}>
-              {filteredRaces.slice(0, 60).map(race => {
-                const saved = alreadySaved(race);
-                const daysLeft = race.date ? differenceInDays(parseISO(race.date), today) : null;
-                return (
-                  <div key={race.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', borderRadius: 10,
-                    background: 'var(--bg-2)',
-                    border: `1px solid ${saved ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`,
-                  }}>
-                    {/* Date pill */}
-                    {race.date && (
-                      <div style={{
-                        flexShrink: 0, minWidth: 38, textAlign: 'center',
-                        background: 'var(--bg-3)', borderRadius: 8, padding: '5px 6px',
-                      }}>
-                        <div style={{ fontFamily: 'var(--font-sans)', fontSize: 17, fontWeight: 800, color: 'var(--text-0)', lineHeight: 1 }}>
-                          {format(parseISO(race.date), 'd')}
-                        </div>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-4)', textTransform: 'uppercase' }}>
-                          {format(parseISO(race.date), 'MMM', { locale: fr })}
-                        </div>
-                      </div>
-                    )}
+            <div style={{ overflowY: 'auto', maxHeight: 440 }}>
+              {/* Group races by date for better readability */}
+              {(() => {
+                const races = filteredRaces.slice(0, 80);
+                // Group by date
+                const groups = [];
+                let currentGroup = null;
+                races.forEach(race => {
+                  if (!currentGroup || currentGroup.date !== race.date) {
+                    currentGroup = { date: race.date, races: [] };
+                    groups.push(currentGroup);
+                  }
+                  currentGroup.races.push(race);
+                });
 
-                    {/* Info */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {race.name}
+                return groups.map(group => {
+                  const dateObj = group.date ? parseISO(group.date) : null;
+                  const daysLeft = dateObj ? differenceInDays(dateObj, today) : null;
+                  const isWeekend = dateObj ? [0, 6].includes(dateObj.getDay()) : false;
+
+                  return (
+                    <div key={group.date || Math.random()}>
+                      {/* Date header */}
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '7px 4px 4px',
+                        borderBottom: '1px solid var(--border)',
+                        marginBottom: 2,
+                        position: 'sticky', top: 0,
+                        background: 'var(--bg-1)',
+                        zIndex: 1,
+                      }}>
+                        <span style={{
+                          fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700,
+                          color: isWeekend ? 'var(--accent-cyan)' : 'var(--text-1)',
+                          textTransform: 'uppercase', letterSpacing: '0.06em',
+                        }}>
+                          {dateObj ? format(dateObj, 'EEEE d MMMM', { locale: fr }) : '—'}
                         </span>
-                        {daysLeft !== null && daysLeft <= 14 && (
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#f97316', fontWeight: 700, flexShrink: 0 }}>
-                            {daysUntil(race.date)}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                        {race.federation && (
+                        {daysLeft !== null && daysLeft >= 0 && daysLeft <= 30 && (
                           <span style={{
                             fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700,
-                            padding: '1px 6px', borderRadius: 4,
-                            background: `${FED_COLORS[race.federation] || '#47556920'}25`,
-                            color: FED_COLORS[race.federation] || '#94a3b8',
-                          }}>{race.federation}</span>
+                            color: daysLeft <= 7 ? '#f97316' : 'var(--text-4)',
+                          }}>
+                            {daysLeft === 0 ? "Aujourd'hui" : daysLeft === 1 ? 'Demain' : `J-${daysLeft}`}
+                          </span>
                         )}
-                        {race.category && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)' }}>{race.category}</span>}
-                        {race.department && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)' }}>Dép. {race.department}</span>}
-                        <a href={race.url} target="_blank" rel="noopener noreferrer"
-                          style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-cyan)' }}>
-                          Détails ↗
-                        </a>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', marginLeft: 'auto' }}>
+                          {group.races.length} course{group.races.length > 1 ? 's' : ''}
+                        </span>
                       </div>
-                    </div>
 
-                    {/* Add button */}
-                    <button
-                      disabled={saved}
-                      onClick={() => { setSaveModal(race); setTaperEnabled(true); }}
-                      style={{
-                        flexShrink: 0, padding: '6px 10px', borderRadius: 7, fontSize: 11,
-                        fontWeight: 700, cursor: saved ? 'default' : 'pointer',
-                        border: '1px solid',
-                        borderColor: saved ? 'rgba(34,197,94,0.5)' : 'var(--accent-cyan)',
-                        background: saved ? 'rgba(34,197,94,0.1)' : 'rgba(34,211,238,0.1)',
-                        color: saved ? '#22c55e' : 'var(--accent-cyan)',
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      {saved ? '✓' : '+'}
-                    </button>
-                  </div>
-                );
-              })}
+                      {/* Race rows for this date */}
+                      {group.races.map(race => {
+                        const saved = alreadySaved(race);
+                        const fedColor = FED_COLORS[race.federation] || '#94a3b8';
+                        return (
+                          <div key={race.id} style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '6px 4px',
+                            borderBottom: '1px solid rgba(255,255,255,0.04)',
+                            background: saved ? 'rgba(34,197,94,0.04)' : 'transparent',
+                            borderRadius: 4,
+                          }}
+                          onMouseEnter={e => { if (!saved) e.currentTarget.style.background = 'var(--bg-2)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = saved ? 'rgba(34,197,94,0.04)' : 'transparent'; }}
+                          >
+                            {/* Fed badge */}
+                            <span style={{
+                              flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 9,
+                              fontWeight: 800, padding: '2px 5px', borderRadius: 3,
+                              background: `${fedColor}22`, color: fedColor,
+                              minWidth: 44, textAlign: 'center', letterSpacing: '0.04em',
+                            }}>
+                              {race.federation || '—'}
+                            </span>
+
+                            {/* Name */}
+                            <a
+                              href={race.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                flex: 1, minWidth: 0,
+                                fontSize: 12, fontWeight: 600,
+                                color: saved ? '#22c55e' : 'var(--text-0)',
+                                textDecoration: 'none',
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              }}
+                              title={race.name}
+                            >
+                              {race.name}
+                            </a>
+
+                            {/* Dept */}
+                            {race.department && (
+                              <span style={{
+                                flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 10,
+                                color: 'var(--text-4)', minWidth: 22, textAlign: 'right',
+                              }}>
+                                {race.department}
+                              </span>
+                            )}
+
+                            {/* Category */}
+                            {race.category && (
+                              <span style={{
+                                flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 9,
+                                color: 'var(--text-3)', maxWidth: 60,
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              }}>
+                                {race.category}
+                              </span>
+                            )}
+
+                            {/* Add button */}
+                            <button
+                              disabled={saved}
+                              onClick={() => { setSaveModal(race); setTaperEnabled(true); }}
+                              title={saved ? 'Déjà ajoutée' : 'Ajouter au calendrier'}
+                              style={{
+                                flexShrink: 0, width: 24, height: 24,
+                                borderRadius: 6, fontSize: 13, lineHeight: 1,
+                                fontWeight: 700, cursor: saved ? 'default' : 'pointer',
+                                border: `1px solid ${saved ? 'rgba(34,197,94,0.4)' : 'rgba(34,211,238,0.35)'}`,
+                                background: saved ? 'rgba(34,197,94,0.1)' : 'rgba(34,211,238,0.08)',
+                                color: saved ? '#22c55e' : 'var(--accent-cyan)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'all 0.12s',
+                              }}
+                              onMouseEnter={e => { if (!saved) { e.currentTarget.style.background = 'rgba(34,211,238,0.2)'; } }}
+                              onMouseLeave={e => { if (!saved) { e.currentTarget.style.background = 'rgba(34,211,238,0.08)'; } }}
+                            >
+                              {saved ? '✓' : '+'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                      <div style={{ height: 6 }} />
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
