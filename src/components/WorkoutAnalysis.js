@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import HelpPopup from './HelpPopup';
 import {
   BarChart, Bar,
   ComposedChart, Line,
@@ -49,11 +50,12 @@ function SectionCard({ children, style }) {
   );
 }
 
-function SectionHeader({ title, badges, style }) {
+function SectionHeader({ title, badges, help, style }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, ...style }}>
-      <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, color: 'var(--text-0)' }}>
+      <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, color: 'var(--text-0)', display: 'flex', alignItems: 'center' }}>
         {title}
+        {help && <HelpPopup {...help} />}
       </span>
       {badges}
     </div>
@@ -179,6 +181,11 @@ function IntervalSetSection({ intervalAnalysis, ftp }) {
     <SectionCard>
       <SectionHeader
         title="Analyse des intervalles"
+        help={{ title: 'Analyse des intervalles', content: [
+          { heading: 'Barres bleues', text: 'Puissance cible planifiée pour chaque intervalle (zone de l\'entraînement prévu).' },
+          { heading: 'Barres colorées', text: 'Puissance réelle réalisée. Vert = objectif atteint, orange = léger écart, rouge = sous-performance.' },
+          { heading: 'Index de fatigue', text: 'Mesure à quel point votre puissance baisse au fil de la séance. Un index élevé indique une mauvaise gestion de l\'effort ou un manque de récupération.' },
+        ], tips: ['Comparez systématiquement les intervalles du début et de fin de séance', 'Un IF final > IF initial = bonne progression de la fatigue', 'Sous-performance répétée → réduire les cibles ou augmenter la récupération'] }}
         badges={
           <>
             <Badge label={`${repCount} reps`} />
@@ -301,6 +308,11 @@ function FatigueCurveSection({ fatigueCurve }) {
     <SectionCard>
       <SectionHeader
         title="Courbe de fatigue"
+        help={{ title: 'Courbe de fatigue', content: [
+          { heading: 'Ligne bleue — Puissance normalisée', text: 'NP calculée sur des fenêtres glissantes de 30s tout au long de la séance. Une pente descendante = vous faiblissez.' },
+          { heading: 'Ligne rouge — Fréquence cardiaque', text: 'FC moyenne sur chaque segment. Souvent elle monte même si la puissance baisse = découplage aérobie (fatigue cardiovasculaire).' },
+          { heading: 'Découplage', text: 'Quand la puissance baisse mais la FC monte, votre cœur travaille plus pour moins de watts. Signe de fatigue ou de déshydratation.' },
+        ], tips: ['Une courbe NP plate = excellente gestion de l\'effort', 'FC qui monte sans augmentation de puissance → vous chauffez ou vous déshydratez', 'Comparez plusieurs séances similaires pour voir votre progression'] }}
         badges={
           <>
             {durationBadge && <Badge label={durationBadge} />}
@@ -578,6 +590,11 @@ function RaceSection({ raceAnalysis, ftp }) {
     <SectionCard>
       <SectionHeader
         title="Analyse de course"
+        help={{ title: 'Analyse de course', content: [
+          { heading: 'Match burning', text: 'Efforts dépassant 150% du FTP pendant ≥ 2 secondes consécutives. Chaque "match" brûlé consomme vos réserves anaérobies. Budget limité — dépensez-les stratégiquement.' },
+          { heading: 'MMP — Max Mean Power', text: 'Meilleure puissance moyenne soutenue pour des durées clés (5s, 1min, 5min, 20min). Reflète votre profil de coureur.' },
+          { heading: 'Distribution des zones', text: 'Temps passé dans chaque zone. Une course typique = beaucoup de Z2 avec des pics Z5/Z6 dans les moments clés.' },
+        ], tips: ['Peu de matches brûlés + bon résultat = vous avez bien géré vos efforts', 'MMP 5min bas = manque de capacité VO2 — travaillez les intervalles 3–6min', '20min MMP ÷ 0.95 ≈ votre FTP estimé'] }}
         badges={
           <>
             <Badge
@@ -717,6 +734,11 @@ function PlannedVsActualSection({ plannedEvent, activity, ftp }) {
     <SectionCard style={{ marginBottom: 14 }}>
       <SectionHeader
         title="Prévu vs Réalisé"
+        help={{ title: 'Prévu vs Réalisé', content: [
+          { heading: 'Blocs planifiés (gauche)', text: 'Structure de la séance telle que prévue dans Intervals.icu — zones cibles avec puissances basse et haute.' },
+          { heading: 'Métriques réalisées (droite)', text: 'Ce que vous avez réellement produit : NP, IF, TSS et puissance moyenne.' },
+          { heading: 'Badge de compliance', text: 'Vert (≥95%) = objectif atteint. Orange (80–95%) = léger manque. Rouge (<80%) = séance sous-performée.' },
+        ], tips: ['Une compliance régulièrement faible → cibles trop élevées ou récupération insuffisante', 'Comparez IF réel vs IF cible pour évaluer l\'intensité globale', 'TSS réel > TSS prévu = séance plus longue ou plus intense que prévu'] }}
         badges={
           tssCompliance != null && (
             <Badge

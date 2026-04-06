@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import trainingPlanner from '../services/training-planner.js';
 import persistence from '../services/persistence';
+import HelpPopup from './HelpPopup';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -424,6 +425,14 @@ export default function SuggestedWeek({
           }}
         >
           Semaine suggérée
+          <HelpPopup title="Semaine suggérée"
+            content={[
+              { heading: 'Comment ça fonctionne', text: 'Le plan est généré à partir de votre CTL, ATL, TSB actuels, de la prochaine course, et des signaux détectés dans vos entraînements récents.' },
+              { heading: 'Phases d\'entraînement', text: 'BASE : construction aérobie. BUILD : développement avec séances intenses. PEAK : maintien avant course. TAPER : affûtage. RECOVERY : récupération après surcharge.' },
+              { heading: 'Signaux', text: 'Les chips colorées indiquent les déséquilibres détectés : base aérobie faible, manque de seuil, travail anaérobie insuffisant, ou monotonie d\'entraînement.' },
+            ]}
+            tips={['Ajustez les jours disponibles et les heures hebdomadaires dans votre profil', 'Cliquez sur "+" pour ajouter une séance au calendrier', 'Le TSS estimé s\'adapte à votre volume cible']}
+          />
         </span>
 
         {/* Phase badge */}

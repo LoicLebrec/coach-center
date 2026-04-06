@@ -4,6 +4,7 @@ import IntervalsService from '../services/intervals';
 import analytics from '../services/analytics';
 import ActivityHeatmap from './ActivityHeatmap';
 import InfoTip from './InfoTip';
+import HelpPopup from './HelpPopup';
 import { METRICS } from '../data/metricDefs';
 
 function asNumber(...values) {
@@ -370,7 +371,16 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       {/* ─── Card 1: Training Readiness ─── */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header">
-          <span className="card-title">Training Readiness</span>
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+            Training Readiness
+            <HelpPopup title="Training Readiness"
+              content={[
+                { heading: 'What is it?', text: 'Your current form score (0–100%) calculated from TSB (Training Stress Balance). It tells you how fresh and ready you are to perform.' },
+                { heading: 'TSB = CTL − ATL', text: 'A positive TSB means you are fresh (more fitness than fatigue). A negative TSB means you are tired but adapting.' },
+              ]}
+              tips={['Optimal race form: TSB between +5 and +25', 'TSB below −25 signals overreaching — rest before intensity', 'TSB above +20 for >10 days means you may be under-training']}
+            />
+          </span>
           {formState && (
             <span className="card-badge" style={{ background: `${formState.color}18`, color: formState.color }}>
               {formState.label}
@@ -472,7 +482,17 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       {weeklyTSS.length > 0 && (
         <div className="card">
           <div className="card-header">
-            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>Weekly Load — Last 8 Weeks<InfoTip {...METRICS.WEEKLY_TSS} /></span>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+              Weekly Load — Last 8 Weeks
+              <InfoTip {...METRICS.WEEKLY_TSS} />
+              <HelpPopup title="Weekly Load"
+                content={[
+                  { heading: 'What is TSS?', text: 'Training Stress Score measures the total training dose of a session — combining duration, intensity, and your FTP. 100 TSS ≈ a maximal 1-hour effort at FTP.' },
+                  { heading: 'Reading the chart', text: 'Each bar is the sum of all TSS for that week. Consistent bars = consistent training. A sudden spike risks injury or burnout.' },
+                ]}
+                tips={['A sustainable weekly TSS increase is ~5–7% per week', 'Plan 1 recovery week every 3–4 weeks with 40–50% lower TSS', 'Compare to your CTL target (weekly TSS ÷ 7 ≈ daily CTL contribution)']}
+              />
+            </span>
             <span className="card-badge">TSS</span>
           </div>
           <div style={{ height: 180, marginTop: 8 }}>
@@ -512,7 +532,13 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       {weeklyMetrics.length > 0 && (
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Weekly Distance — Last 8 Weeks</span>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+              Weekly Distance — Last 8 Weeks
+              <HelpPopup title="Weekly Distance"
+                content="Total kilometres ridden each week over the last 8 weeks. Useful for tracking volume trends. Compare with Weekly Load to see if your km are getting more or less intense."
+                tips={['Flat distance with rising TSS = sessions are getting harder', 'Consistent distance = good training discipline', 'A big drop in distance usually signals a rest week — that\'s healthy']}
+              />
+            </span>
             <span className="card-badge">KM</span>
           </div>
           <div style={{ height: 150, marginTop: 8 }}>
@@ -552,7 +578,16 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       {weeklyMetrics.length > 0 && (
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Weekly Avg Power — Last 8 Weeks</span>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+              Weekly Avg Power — Last 8 Weeks
+              <HelpPopup title="Weekly Average Power"
+                content={[
+                  { heading: 'What it shows', text: 'Average normalized power (NP) across all rides each week. NP accounts for variations in effort, giving a more accurate picture than simple average power.' },
+                  { heading: 'Why it matters', text: 'Rising NP over weeks = you\'re getting stronger or training harder. Flat NP with rising distance = you\'re adding easy volume.' },
+                ]}
+                tips={['NP rising faster than distance → intensity is climbing', 'A power meter is required for accurate data — otherwise this is estimated', 'Compare NP to your FTP: NP/FTP = IF (Intensity Factor)']}
+              />
+            </span>
             <span className="card-badge">W</span>
           </div>
           <div style={{ height: 150, marginTop: 8 }}>
@@ -591,7 +626,17 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       {/* ─── Card 4: Form & Fatigue 30-day chart ─── */}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">Form & Fatigue — 30 days</span>
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+            Form & Fatigue — 30 days
+            <HelpPopup title="Form & Fatigue (PMC)"
+              content={[
+                { heading: 'CTL — Fitness (42-day avg)', text: 'Chronic Training Load. Rises slowly with consistent training. Think of it as your "engine size".' },
+                { heading: 'ATL — Fatigue (7-day avg)', text: 'Acute Training Load. Spikes after hard blocks. Represents short-term tiredness.' },
+                { heading: 'TSB — Form (CTL − ATL)', text: 'Positive = fresh, negative = tired. Optimal race window: TSB +5 to +25.' },
+              ]}
+              tips={['Peak for a race by resting: ATL drops, CTL stays high', 'CTL drops ~5% per week without training', 'Source: Banister (1991), Coggan & Allen (2010)']}
+            />
+          </span>
           <span className="card-badge">PMC</span>
         </div>
         <div className="chart-container" style={{ height: 200 }}>
@@ -623,7 +668,13 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       {evolutionData.length > 0 && (
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Evolution — Load & Form (60d)</span>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+              Evolution — Load & Form (60d)
+              <HelpPopup title="Load & Form Evolution"
+                content="Shows how your CTL (fitness), ATL (fatigue), and TSB (form) have evolved over the past 60 days. Useful to spot training blocks, recovery weeks, and form peaks."
+                tips={['Look for a CTL upward trend over months', 'ATL spikes followed by drops = structured block + recovery', 'TSB peaks before races = good planning']}
+              />
+            </span>
             <span className="card-badge">Trend</span>
           </div>
           <div className="chart-container" style={{ height: 220 }}>
@@ -661,7 +712,17 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       {evolutionData.length > 0 && (
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Evolution — Physiology (60d)</span>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+              Evolution — Physiology (60d)
+              <HelpPopup title="Physiology Evolution"
+                content={[
+                  { heading: 'Resting HR', text: 'Lower resting HR over time is a sign of improving aerobic fitness. A spike (+5–7 bpm above baseline) signals incomplete recovery.' },
+                  { heading: 'Efficiency Factor (EF)', text: 'EF = Power ÷ Heart Rate. Rising EF means you produce more power for the same cardiac cost — the key marker of aerobic adaptation.' },
+                  { heading: 'Weight', text: 'Body weight trend from your wellness logs. Relevant for W/kg tracking.' },
+                ]}
+                tips={['Track all three together for a full recovery picture', 'Declining EF + elevated RHR = overreaching signal']}
+              />
+            </span>
             <span className="card-badge">RHR / EF / Weight</span>
           </div>
           <div className="chart-container" style={{ height: 220 }}>
@@ -690,7 +751,17 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       {efTrend && (
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Efficiency Factor Assessment</span>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+              Efficiency Factor Assessment
+              <HelpPopup title="Efficiency Factor (EF)"
+                content={[
+                  { heading: 'Formula', text: 'EF = Normalized Power (W) ÷ Average Heart Rate (bpm). Calculated from your recent Z2 rides.' },
+                  { heading: 'What it means', text: 'A rising EF means your aerobic system is adapting — you\'re producing more power per heartbeat. This is the primary goal of base training.' },
+                  { heading: 'Declining EF', text: 'Can indicate overtraining, insufficient Z2 work, or accumulated fatigue. If EF drops >3%, shift back to base building.' },
+                ]}
+                tips={['EF is most meaningful on easy, steady Z2 rides', 'Requires a power meter + HR monitor for accuracy', 'Compare EF on the same route/conditions for the cleanest signal']}
+              />
+            </span>
             <span className="card-badge" style={{
               background: efTrend.assessment.startsWith('DECLINING') ? 'rgba(239,68,68,0.1)' :
                 efTrend.assessment.startsWith('IMPROVING') ? 'rgba(34,197,94,0.1)' : 'var(--bg-3)',
@@ -716,7 +787,13 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       {/* ─── Card 6: Recent Activities ─── */}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">Recent Activities</span>
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+            Recent Activities
+            <HelpPopup title="Recent Activities"
+              content="Your 10 most recent rides synced from Intervals.icu. Shows TSS, duration, and intensity factor (IF) for each session."
+              tips={['Click a session in Workout Analysis to see interval breakdown', 'IF > 1.0 = harder than your FTP — common in races or short maximal efforts', 'IF 0.75–0.85 = sweet spot / threshold zone']}
+            />
+          </span>
           <span className="card-badge">{recentActivities.length} shown</span>
         </div>
         <div className="activity-row activity-row-header">

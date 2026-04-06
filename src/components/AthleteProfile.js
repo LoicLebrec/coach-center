@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import HelpPopup from './HelpPopup';
 import persistence from '../services/persistence';
 
 function clamp(v, min, max) {
@@ -498,7 +499,16 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                 {/* ─── RIDER PROFILE ─── */}
                 <div className="card" style={{ marginBottom: 0 }}>
                     <div className="card-header">
-                        <span className="card-title">Rider Profile</span>
+                        <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+                            Rider Profile
+                            <HelpPopup title="Rider Profile"
+                                content={[
+                                    { heading: 'Classification W/kg', text: 'Votre FTP divisé par votre poids (watts/kg). C\'est l\'étalon universel pour classer les cyclistes selon le tableau de Coggan (2010).' },
+                                    { heading: 'Archétype', text: 'Profil estimé selon votre W/kg et vos heures d\'entraînement : grimpeur, rouleur, sprinteur, diesel... Guidé par vos données, pas un verdict définitif.' },
+                                ]}
+                                tips={['Augmentez votre FTP ou réduisez votre poids pour progresser dans la classification', 'Le W/kg est surtout pertinent sur les montées et en course chronométrée', 'Source : Coggan A. (2010) — Power profiling table']}
+                            />
+                        </span>
                         {riderLevel && (
                             <button
                                 onClick={() => setShowCatBreakdown(s => !s)}
@@ -667,7 +677,16 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
                 {/* ─── PERFORMANCE INSIGHTS ─── */}
                 <div className="card" style={{ marginBottom: 0 }}>
                     <div className="card-header">
-                        <span className="card-title">What To Focus On</span>
+                        <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+                            What To Focus On
+                            <HelpPopup title="Performance Insights"
+                                content={[
+                                    { heading: 'Comment sont générés ces insights', text: 'Analyse automatique de votre CTL, ATL, TSB, FTP actuel vs cible, et prochaine course. Chaque insight cite sa source scientifique.' },
+                                    { heading: 'Types d\'insights', text: 'Vert = point positif à maintenir. Orange = attention requise. Rouge = action urgente. Bleu = information à surveiller.' },
+                                ]}
+                                tips={['Les insights changent avec votre état de forme — revenez après un bloc difficile', 'Chaque insight est sourcé : vérifiez les références pour approfondir', 'Configurez un événement cible pour activer l\'analyse de progression FTP']}
+                            />
+                        </span>
                         <span className="card-badge">{insights.length} insight{insights.length !== 1 ? 's' : ''}</span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -740,7 +759,13 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
 
                 <div className="card" style={{ marginBottom: 0 }}>
                     <div className="card-header">
-                        <span className="card-title">Next 4 Weekends</span>
+                        <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+                            Next 4 Weekends
+                            <HelpPopup title="Next 4 Weekends"
+                                content="Affiche les 4 prochains week-ends avec les courses qui y correspondent (depuis vos événements planifiés). Cliquez sur un week-end pour marquer si vous comptez courir — cela influence la planification."
+                                tips={['Un week-end marqué "racing" force une séance de tapering la veille dans la semaine suggérée', 'Les courses apparaissent ici une fois ajoutées depuis le Calendrier de courses']}
+                            />
+                        </span>
                         <span className="card-badge">{next4Weekends.reduce((s, w) => s + w.raceCount, 0)} races</span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -791,7 +816,16 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
             {(profile.targetEventName || profile.targetFtp) && (
                 <div className="card" style={{ marginBottom: 16 }}>
                     <div className="card-header">
-                        <span className="card-title">Target Goal</span>
+                        <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+                            Target Goal
+                            <HelpPopup title="Target Goal"
+                                content={[
+                                    { heading: 'Progression FTP requise', text: 'Calcul du gain hebdomadaire nécessaire pour atteindre votre FTP cible avant l\'événement. > 2.5W/sem est très ambitieux, > 4W/sem est irréaliste.' },
+                                    { heading: 'Readiness score', text: 'Estimé depuis votre TSB actuel. Optimal pour la performance : TSB entre +5 et +25.' },
+                                ]}
+                                tips={['Définissez un événement cible ET un FTP cible pour activer cette analyse', 'Si la progression requise est trop élevée, repoussez la date ou ajustez l\'objectif', 'Configurez via le bouton Settings']}
+                            />
+                        </span>
                         <span className="card-badge">{report.daysLeft != null ? `${report.daysLeft}d remaining` : 'No date set'}</span>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>

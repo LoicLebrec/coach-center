@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, GeoJSON as LeafletGeoJSON, useMap } from 'reac
 import { format, parseISO, addDays, startOfToday, startOfWeek, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { fetchRaces } from '../services/racesService';
+import HelpPopup from './HelpPopup';
 
 // ── GeoJSON ────────────────────────────────────────────────────────────────
 const GEOJSON_URL =
@@ -323,8 +324,15 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
         {/* ── LEFT: France map ── */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 700, color: 'var(--text-0)' }}>
+            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 700, color: 'var(--text-0)', display: 'flex', alignItems: 'center' }}>
               Carte des courses
+              <HelpPopup title="Carte des courses"
+                content={[
+                  { heading: 'Lecture de la carte', text: 'Chaque département est coloré selon le nombre de courses : bleu clair (1–2), bleu moyen (3–4), bleu foncé (5+). Cliquez un département pour filtrer la liste.' },
+                  { heading: 'Sources', text: 'Données issues de cyclisme-amateur.com (FFC, FSGT, UFOLEP, FFCT) et du calendrier officiel competitions.ffc.fr.' },
+                ]}
+                tips={['Utilisez les boutons de région en bas pour zoomer rapidement', 'Combinez filtre département + filtre fédération pour affiner', 'Cliquez à nouveau sur un département sélectionné pour le désélectionner']}
+              />
             </span>
             {loading && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)' }}>chargement…</span>}
           </div>
@@ -397,8 +405,15 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
 
           {/* Calendar grid */}
           <div className="card" style={{ padding: '12px 14px' }}>
-            <div style={{ fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 700, color: 'var(--text-0)', marginBottom: 10 }}>
+            <div style={{ fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 700, color: 'var(--text-0)', marginBottom: 10, display: 'flex', alignItems: 'center' }}>
               Choisir une date
+              <HelpPopup title="Calendrier des courses"
+                content={[
+                  { heading: 'Lire le calendrier', text: 'Les cellules bleues ont des courses ce jour-là. Le chiffre indique le nombre. Le badge à gauche est le total de la semaine.' },
+                  { heading: 'Filtrer', text: 'Cliquez une date pour voir uniquement les courses ce jour-là. Combinez avec le filtre fédération en haut.' },
+                ]}
+                tips={['Les en-têtes de mois apparaissent automatiquement quand le mois change', 'Le calendrier couvre les 16 prochaines semaines', 'Cliquez à nouveau sur une date sélectionnée pour revenir à toutes les dates']}
+              />
             </div>
 
             {/* Day headers */}
@@ -482,12 +497,19 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
           {/* Race list */}
           <div className="card" style={{ padding: '12px 14px' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-              <span style={{ fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 700, color: 'var(--text-0)' }}>
+              <span style={{ fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 700, color: 'var(--text-0)', display: 'flex', alignItems: 'center' }}>
                 {selectedDate
                   ? format(parseISO(selectedDate), "EEEE d MMMM", { locale: fr })
                   : selectedDept
                     ? `${selectedDept} — ${DEPT_NAMES[selectedDept] || ''}`
                     : 'Courses à venir'}
+                <HelpPopup title="Liste des courses"
+                  content={[
+                    { heading: 'Ajouter une course', text: 'Cliquez le bouton vert "+" pour ajouter la course à votre calendrier. Vous pouvez activer l\'affûtage automatique (J-10) et la récupération post-course.' },
+                    { heading: 'Affûtage automatique', text: 'Si activé, un bloc d\'affûtage est créé 10 jours avant la course et une note de récupération le lendemain.' },
+                  ]}
+                  tips={['Filtrez par département ou fédération pour cibler vos courses', 'Cliquez une date sur le calendrier pour voir uniquement les courses de ce jour', 'Les courses sauvegardées apparaissent en vert']}
+                />
               </span>
               {filteredRaces.length > 0 && (
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent-cyan)', fontWeight: 700 }}>

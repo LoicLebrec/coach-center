@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import persistence from '../services/persistence';
 import InfoTip from './InfoTip';
+import HelpPopup from './HelpPopup';
 import { METRICS } from '../data/metricDefs';
 
 const IMPRESSION_OPTIONS = [
@@ -376,6 +377,14 @@ export default function PMCChart({ wellness, activities, athlete, loading }) {
           <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
             CTL / ATL / TSB
             <InfoTip {...METRICS.CTL} />
+            <HelpPopup title="Performance Manager Chart"
+              content={[
+                { heading: 'CTL (Fitness)', text: 'Chronic Training Load — 42-day exponential average of daily TSS. Your long-term fitness base. Builds slowly, decays slowly.' },
+                { heading: 'ATL (Fatigue)', text: 'Acute Training Load — 7-day exponential average. Spikes quickly after hard sessions. Represents your current tiredness.' },
+                { heading: 'TSB (Form)', text: 'Training Stress Balance = CTL − ATL. Positive = fresh. Negative = fatigued but adapting. Race-ready zone: +5 to +25.' },
+              ]}
+              tips={['Blue area up = gaining fitness', 'Red spikes = heavy training blocks', 'Yellow line near zero and rising = tapering for a race correctly', 'Source: Banister (1991), Coggan & Allen — Training and Racing with a Power Meter']}
+            />
           </span>
           <span className="card-badge">{data.length} days</span>
         </div>
@@ -542,7 +551,13 @@ export default function PMCChart({ wellness, activities, athlete, loading }) {
       {/* Form Impression Logger */}
       <div className="card" style={{ marginTop: 12 }}>
         <div className="card-header">
-          <span className="card-title">How Do You Feel?</span>
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+            How Do You Feel?
+            <HelpPopup title="Subjective Form Logger"
+              content="Rate how you feel after each session. Over time, this creates a subjective overlay on your PMC chart, revealing the connection between your TSB and perceived readiness."
+              tips={['Log consistently — even on rest days', 'Compare subjective feel to TSB: do they match?', 'Chronic mismatch (feel bad but TSB good) may signal lifestyle stressors']}
+            />
+          </span>
           <span className="card-badge">Subjective Form Log</span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
@@ -607,7 +622,16 @@ export default function PMCChart({ wellness, activities, athlete, loading }) {
       {data.some(d => d.rhr) && (
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Resting Heart Rate Trend</span>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
+              Resting Heart Rate Trend
+              <HelpPopup title="Resting Heart Rate"
+                content={[
+                  { heading: 'What it measures', text: 'Your resting HR (bpm) from wellness logs. Lower = better aerobic adaptation. Elite cyclists often have RHR of 35–50 bpm.' },
+                  { heading: 'Recovery signal', text: 'A rise of +5–7 bpm above your personal baseline signals incomplete recovery. This often appears 1–2 days before subjective tiredness.' },
+                ]}
+                tips={['Measure RHR first thing in the morning before getting up', 'Log it daily in Intervals.icu wellness for the best trend', 'Consistently elevated RHR → reduce training load this week']}
+              />
+            </span>
             <span className="card-badge">Recovery indicator</span>
           </div>
           <div className="chart-container" style={{ height: 180 }}>
