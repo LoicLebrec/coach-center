@@ -350,19 +350,28 @@ export default function SuggestedWeek({
   onAddSession,
   onAddAll,
 }) {
+  const [athleteProfile, setAthleteProfile] = useState(null);
+
+  useEffect(() => {
+    persistence.getAthleteProfile().then(p => {
+      if (p && typeof p === 'object') setAthleteProfile(p);
+    }).catch(() => {});
+  }, []);
+
   const prescription = useMemo(() => {
     try {
       return trainingPlanner.buildWeekPrescription(
         wellness || [],
         activities || [],
         plannedEvents || [],
-        athlete || {}
+        athlete || {},
+        athleteProfile
       );
     } catch (err) {
       console.error('[SuggestedWeek] buildWeekPrescription failed:', err);
       return null;
     }
-  }, [wellness, activities, plannedEvents, athlete]);
+  }, [wellness, activities, plannedEvents, athlete, athleteProfile]);
 
   if (!prescription) {
     return (
