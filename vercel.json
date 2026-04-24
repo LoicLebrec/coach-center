@@ -2,49 +2,19 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "build",
-  "builds": [
-    {
-      "src": "api/index.js",
-      "use": "@vercel/node",
-      "config": {
-        "maxDuration": 30
-      }
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 30
     }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "api/index.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/build/index.html"
-    }
-  ],
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "destination": "/api/index.js"
     },
     {
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "FRONTEND_URL": "@frontend_url",
-    "JWT_SECRET": "@jwt_secret",
-    "JWT_EXPIRE": "30d",
-    "GOOGLE_CLIENT_ID": "@google_client_id",
-    "GOOGLE_CLIENT_SECRET": "@google_client_secret",
-    "INTERVALS_CLIENT_ID": "@intervals_client_id",
-    "INTERVALS_CLIENT_SECRET": "@intervals_client_secret",
-    "STRAVA_CLIENT_ID": "@strava_client_id",
-    "STRAVA_CLIENT_SECRET": "@strava_client_secret",
-    "GARMIN_CLIENT_ID": "@garmin_client_id",
-    "GARMIN_CLIENT_SECRET": "@garmin_client_secret",
-    "WAHOO_CLIENT_ID": "@wahoo_client_id",
-    "WAHOO_CLIENT_SECRET": "@wahoo_client_secret"
-  }
+  ]
 }
