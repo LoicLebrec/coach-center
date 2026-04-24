@@ -1,17 +1,35 @@
 # Coach Center API
 
-Backend OAuth centralisé pour Coach Center. Gère l'authentification et les connexions OAuth pour Intervals.icu, Strava, Garmin et Wahoo.
+Backend Node.js/Express pour Coach Center - gestion des comptes utilisateurs et intégration OAuth sécurisée avec les applications sportives.
+
+🎯 **Restructuration 2026:** Architecture repensée avec gestion des comptes par utilisateur et connexions OAuth sécurisées (pas d'API keys partagées).
 
 ## Installation locale
 
 ```bash
 cd api
 npm install
-cp .env.example .env
+cp .env.example .env        # Edit with your values
 npm run dev
 ```
 
 L'API démarre sur `http://localhost:3001`
+
+⚠️ **Note:** Le backend a été restructurisé pour la production. Voir `BACKEND_DEPLOYMENT.md` pour le guide complet.
+
+## Architecture
+
+### 🔐 Sécurité (Nouveau)
+- ✅ Tokens OAuth stockés server-side (jamais exposés au browser)
+- ✅ CSRF protection via états de session temporaires (15 min expiry)
+- ✅ Per-user token isolation (chaque user a ses propres tokens)
+- ✅ JWT-based authentication (30 jours)
+
+### 📊 Base de données
+- `users` - Comptes utilisateurs
+- `oauth_tokens` - Tokens par provider (Strava, Garmin, etc.)
+- `oauth_sessions` - États temporaires pour OAuth (sécurité CSRF)
+- `app_connections` - Cache metadata pour la UI
 
 ## Variables d'environnement (.env)
 
@@ -91,13 +109,82 @@ Response:
 
 ### OAuth
 
-**GET** `/api/auth/intervals/callback?code=...&state=userId`
-Redirect to frontend on success
+**POST** `/api/providers/:provider/start` *(Nouveau. Protected)*
+```bash
+curl -X POST http://localhost:3001/api/providers/strava/start \
+  -H "Authorization: Bearer <token>"
+```
+Response:
+```json
+{
+  "authUrl": "https://www.strava.com/oauth/authorize?client_id=...&state=..."
+}
+```
+Le frontend redirige vers cet URL. Backend valide le callback automatiquement.
 
-**GET** `/api/auth/strava/callback?code=...&state=userId`
-Redirect to frontend on success
+**GET** `/api/auth/:provider/callback?code=...&state=...` *(Automatique)*
+Utilisé par le provider pour retourner le code. Backend échange le code pour un token, puis redirige le frontend.
 
-**GET** `/api/auth/garmin/callback?code=...&state=userId`
+**GET** `/api/connections` *(Protected)* - ✨ Nouveau/Amélioré
+```bash
+curl http://localhost:3001/api/connections \
+  -H "Authorization: Bearer <token>"
+```
+Response:
+```json
+{
+  "strava": true,
+  "garmin": false,
+  "intervals": true,
+  "wahoo": false
+}
+```
+
+**GET** `/api/connections/:provider` *(Nouveau. Protected)*
+Détails de la connexion (athlete ID, expiration, etc.)
+
+**DELETE** `/api/connections/:provider` *(Nouveau. Protected)*
+Déconnecter un provider
+
+---
+
+## ⚡ Changements 2026 - À NOTER
+
+**Avant:** L'userId était passé comme paramètre `state` (INSECURISÉ)
+```javascript
+// ❌ ANCIEN
+window.location.href = `${auth_url}&state=${userId}`;  // DANGER!
+```
+
+**Après:** Proper OAuth flow avec validation server-side
+```javascript
+// ✅ NOUVEAU
+const res = await fetch('/api/providers/strava/start', {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+const { authUrl } = await res.json();
+window.location.href = authUrl; // state géré server-side
+```
+
+## 📚 Documentation
+
+- **[BACKEND_DEPLOYMENT.md](../BACKEND_DEPLOYMENT.md)** - Guide complet de déploiement, architecture database, checklist production
+- **[FRONTEND_INTEGRATION.md](../FRONTEND_INTEGRATION.md)** - Guide pour développeurs frontend, exemples de code
+- **[BACKEND_CHANGES_SUMMARY.md](../BACKEND_CHANGES_SUMMARY.md)** - Résumé détaillé des changements d'architecture
+
+## 🚀 Quick Deploy
+
+```bash
+# Vercel
+npm install -g vercel
+vercel deploy
+
+# Render / Railway / Other platforms - set DATABASE_URL and oauth env vars
+git push origin main
+```
+
+
 Redirect to frontend on success
 
 **GET** `/api/auth/wahoo/callback?code=...&state=userId`

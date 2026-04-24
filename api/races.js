@@ -284,9 +284,11 @@ function parseFfcRaces(html) {
     const name = decodeHtmlEntities((nameM?.[1] || '').trim().replace(/\s+/g, ' '));
     if (!name) continue;
 
-    // Location: "BOLLENE 84" → city="BOLLENE", dept="84"
-    const locM = block.match(/organisation-titre-localisation[^>]*>\s*([^<]+)\s*</i);
-    const loc = decodeHtmlEntities((locM?.[1] || '').replace(/\s+/g, ' ').trim());
+    // Location: nested icon div before text — strip inner HTML
+    const locM = block.match(/organisation-titre-localisation[^>]*>([\s\S]*?)<\/div>/i);
+    const loc = locM
+      ? decodeHtmlEntities(locM[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
+      : '';
     const city = loc.replace(/\s*\d{2,3}\s*$/, '').trim() || null;
 
     // Discipline: Route, VTT, BMX, Cyclo-Cross, etc.

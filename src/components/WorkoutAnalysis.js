@@ -10,7 +10,28 @@ import {
   Cell,
 } from 'recharts';
 import { intervalsService } from '../services/intervals';
+import { stravaService } from '../services/strava';
 import workoutAnalyzer from '../services/workout-analyzer';
+
+// Convert Strava laps array → format expected by workoutAnalyzer.parseIntervals()
+function stravaLapsToIntervals(laps) {
+  if (!Array.isArray(laps)) return [];
+  return laps
+    .filter(l => (l.moving_time || 0) > 10)
+    .map((l, i) => ({
+      group: false,
+      type: 'WORK',
+      label: l.name || `Lap ${i + 1}`,
+      average_watts:     l.average_watts     ?? null,
+      max_watts:         l.max_watts         ?? null,
+      normalized_watts:  l.weighted_average_watts ?? null,
+      average_heartrate: l.average_heartrate ?? null,
+      average_cadence:   l.average_cadence   ?? null,
+      target_power_low:  null,
+      target_power_high: null,
+      moving_time:       l.moving_time       ?? l.elapsed_time ?? null,
+    }));
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -640,8 +661,12 @@ function RaceSection({ raceAnalysis, ftp }) {
 
 function ActivitySelector({ activities, selectedId, onChange }) {
   const eligible = (activities || [])
-    .filter(a => (a.icu_average_watts || a.average_watts || 0) > 0)
-    .slice(0, 30);
+    .filter(a => a.start_date_local && (
+      (a.icu_average_watts || a.average_watts || 0) > 0 ||
+      (a.average_heartrate || 0) > 0 ||
+      (a.moving_time || 0) > 300
+    ))
+    .slice(0, 60);
 
   const selectedActivity = eligible.find(a => String(a.id) === String(selectedId));
   const isRace = selectedActivity ? isRaceActivity(selectedActivity) : false;
@@ -871,10 +896,7 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
     setMatchedPlan(null);
 
     try {
-      const activity = (activities || []).find(a => String(a.id) === String(id));
-      const actIsRace = activity ? isRaceActivity(activity) : false;
-      setIsRace(actIsRace);
-      setSelectedActivity(activity || null);
+      let activity = (activities || []).find(a => String(a.id) === String(id));
 
       // Match to planned event by date
       if (activity) {
@@ -886,18 +908,74 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
         setMatchedPlan(plan);
       }
 
-      // Fetch streams and intervals in parallel
-      const [rawStreams, rawIntervals] = await Promise.all([
-        intervalsService.getActivityStreams(id, ['watts', 'heartrate', 'cadence']),
-        intervalsService.getActivityIntervals(id).catch(() => []),
-      ]);
+      const stravaConnected = stravaService.isConfigured();
+      let rawStreams = null;
+      let rawIntervals = [];
+      let source = 'none';
 
-      // Run all analyzers
-      const curve    = workoutAnalyzer.computeFatigueCurve(rawStreams);
-      const ivSet    = workoutAnalyzer.analyzeIntervalSet(rawIntervals, ftp);
-      const race     = actIsRace && ftp
-        ? workoutAnalyzer.analyzeRace(rawStreams, ftp)
-        : null;
+      // ── Try Strava first — richer second-by-second data ──────────────
+      if (stravaConnected) {
+        try {
+          const [stravaStreams, stravaLaps, stravaDetail] = await Promise.allSettled([
+            stravaService.getActivityStreams(id, ['watts', 'heartrate', 'cadence', 'velocity_smooth']),
+            stravaService.getActivityLaps(id),
+            stravaService.getActivity(id),
+          ]);
+
+          if (stravaStreams.status === 'fulfilled' && stravaStreams.value) {
+            rawStreams = stravaStreams.value;
+            source = 'strava';
+          }
+
+          if (stravaLaps.status === 'fulfilled' && Array.isArray(stravaLaps.value) && stravaLaps.value.length > 1) {
+            rawIntervals = stravaLapsToIntervals(stravaLaps.value);
+          }
+
+          // Enrich activity with NP / full metrics from Strava detail
+          if (stravaDetail.status === 'fulfilled' && stravaDetail.value) {
+            const d = stravaDetail.value;
+            activity = {
+              ...activity,
+              weighted_average_watts:  d.weighted_average_watts  ?? activity?.weighted_average_watts,
+              icu_normalized_watts:    d.weighted_average_watts  ?? activity?.icu_normalized_watts,
+              average_watts:           d.average_watts           ?? activity?.average_watts,
+              icu_average_watts:       d.average_watts           ?? activity?.icu_average_watts,
+              average_heartrate:       d.average_heartrate       ?? activity?.average_heartrate,
+              max_heartrate:           d.max_heartrate           ?? activity?.max_heartrate,
+              total_elevation_gain:    d.total_elevation_gain    ?? activity?.total_elevation_gain,
+              moving_time:             d.moving_time             ?? activity?.moving_time,
+              icu_training_load:       activity?.icu_training_load ?? null,
+            };
+          }
+        } catch (_) {
+          // Strava fetch failed entirely — fall through to ICU
+        }
+      }
+
+      // ── Fall back to Intervals.icu streams / intervals ────────────────
+      if (!rawStreams && intervalsService.isConfigured()) {
+        try {
+          const [icuStreams, icuIntervals] = await Promise.allSettled([
+            intervalsService.getActivityStreams(id, ['watts', 'heartrate', 'cadence']),
+            intervalsService.getActivityIntervals(id),
+          ]);
+          if (icuStreams.status === 'fulfilled') rawStreams = icuStreams.value;
+          if (icuIntervals.status === 'fulfilled' && Array.isArray(icuIntervals.value) && icuIntervals.value.length > 0) {
+            rawIntervals = icuIntervals.value;
+            source = 'icu';
+          } else if (source === 'none') source = 'icu';
+        } catch (_) {}
+      }
+
+      if (!rawStreams) throw new Error(`Impossible de récupérer les données de stream (source: ${source})`);
+
+      const actIsRace = activity ? isRaceActivity(activity) : false;
+      setIsRace(actIsRace);
+      setSelectedActivity(activity || null);
+
+      const curve = workoutAnalyzer.computeFatigueCurve(rawStreams);
+      const ivSet = workoutAnalyzer.analyzeIntervalSet(rawIntervals, ftp);
+      const race  = actIsRace && ftp ? workoutAnalyzer.analyzeRace(rawStreams, ftp) : null;
 
       setFatigueCurve(curve);
       setIntervalAnalysis(ivSet);
@@ -907,9 +985,13 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
     } finally {
       setLoading(false);
     }
-  }, [activities, ftp]);
+  }, [activities, plannedEvents, ftp]);
 
-  const eligible = (activities || []).filter(a => (a.icu_average_watts || a.average_watts || 0) > 0);
+  const eligible = (activities || []).filter(a => a.start_date_local && (
+    (a.icu_average_watts || a.average_watts || 0) > 0 ||
+    (a.average_heartrate || 0) > 0 ||
+    (a.moving_time || 0) > 300
+  ));
 
   return (
     <div>

@@ -2,6 +2,36 @@
 // Tries the Vercel serverless function first (/api/races),
 // then multiple CORS proxies in sequence.
 
+// ── Persistent caches (localStorage) ────────────────────────────────────────
+const RACES_CACHE_KEY   = 'cc_races_cache_v2';
+const GEOCODE_CACHE_KEY = 'cc_geocodes_v2';
+const RACES_TTL_MS      = 3 * 60 * 60 * 1000; // 3 hours
+
+function loadGeocodeCache() {
+  try { return JSON.parse(localStorage.getItem(GEOCODE_CACHE_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function saveGeocodeCache(cache) {
+  try { localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(cache)); }
+  catch { /* quota exceeded — ignore */ }
+}
+
+function loadRacesCache() {
+  try {
+    const raw = localStorage.getItem(RACES_CACHE_KEY);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > RACES_TTL_MS) return null;
+    return data;
+  } catch { return null; }
+}
+
+function saveRacesCache(races) {
+  try { localStorage.setItem(RACES_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: races })); }
+  catch { /* quota exceeded — ignore */ }
+}
+
 // Each proxy: build(encodedUrl) → fetchUrl, extract(responseData) → htmlString
 const CORS_PROXIES = [
   {
@@ -184,59 +214,55 @@ function parseFfcDate(str) {
 }
 
 /**
- * Geocode a French city name to lat/lon using OpenStreetMap Nominatim
- * Returns { lat, lon } or null if not found
- * Rate-limited to respect Nominatim terms of service (1 req/sec)
+ * Geocode a French city name → [lat, lng].
+ * Results persist in localStorage across sessions.
+ * Rate-limited to 1 req/s (Nominatim ToS).
  */
-const geocodeCache = {}; // city → [lat, lon] | null
-let lastGeocodeTime = 0;
+let _geocodeCache = null; // lazy-loaded from localStorage
+let _lastGeocodeTime = 0;
+
+function getGeocodeCache() {
+  if (!_geocodeCache) _geocodeCache = loadGeocodeCache();
+  return _geocodeCache;
+}
+
+export function getPersistedGeocode(cityName, deptCode) {
+  const key = `${cityName}|${deptCode || ''}`;
+  return getGeocodeCache()[key] ?? null;
+}
 
 async function geocodeCity(cityName, deptCode = null) {
   if (!cityName) return null;
+  const cache = getGeocodeCache();
+  const key = `${cityName}|${deptCode || ''}`;
+  if (key in cache) return cache[key];
 
-  const cacheKey = `${cityName}|${deptCode || ''}`;
-  if (cacheKey in geocodeCache) return geocodeCache[cacheKey];
+  const wait = Math.max(0, 1100 - (Date.now() - _lastGeocodeTime));
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  _lastGeocodeTime = Date.now();
 
   try {
-    // Rate limit: wait 1 second between requests
-    const now = Date.now();
-    const timeSinceLastRequest = now - lastGeocodeTime;
-    if (timeSinceLastRequest < 1100) {
-      await new Promise(r => setTimeout(r, 1100 - timeSinceLastRequest));
-    }
-    lastGeocodeTime = Date.now();
-
-    const query = deptCode
-      ? encodeURIComponent(`${cityName}, ${deptCode}, France`)
-      : encodeURIComponent(`${cityName}, France`);
-
+    const query = encodeURIComponent(deptCode ? `${cityName}, France` : `${cityName}, France`);
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=fr`,
       {
-        headers: {
-          'Accept-Language': 'fr',
-          'User-Agent': 'CoachCenterApp/1.0'
-        },
-        signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+        headers: { 'Accept-Language': 'fr', 'User-Agent': 'CoachCenterApp/1.0' },
+        signal: AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined,
       }
     );
-
-    if (!res.ok) {
-      geocodeCache[cacheKey] = null;
-      return null;
+    if (res.ok) {
+      const results = await res.json();
+      if (results.length > 0) {
+        const coords = [parseFloat(results[0].lat), parseFloat(results[0].lon)];
+        cache[key] = coords;
+        saveGeocodeCache(cache);
+        return coords;
+      }
     }
+  } catch { /* network error — fall through */ }
 
-    const results = await res.json();
-    if (results.length > 0) {
-      const coords = [parseFloat(results[0].lat), parseFloat(results[0].lon)];
-      geocodeCache[cacheKey] = coords;
-      return coords;
-    }
-  } catch (err) {
-    console.warn(`Geocoding failed for "${cityName}":`, err.message);
-  }
-
-  geocodeCache[cacheKey] = null;
+  cache[key] = null;
+  saveGeocodeCache(cache);
   return null;
 }
 
@@ -281,124 +307,104 @@ async function extractGpsFromRaceUrl(raceUrl) {
   return null;
 }
 
+function decodeHtmlEntities(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
 function parseFfcRacesFromHtml(html) {
   const races = [];
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // More robust pattern: match entire race blocks (more flexibly)
-  const raceBlockRe = /<div[^>]*class="[^"]*race[^"]*|event[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
-  const titleRe = /<a[^>]*class="[^"]*organisation-titre[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+  // Each race is an <a class="organisation-titre ..."> anchor containing nested divs
+  const orgRe = /<a\b[^>]*class="[^"]*organisation-titre[^"]*"([^>]*)>([\s\S]*?)<\/a>/gi;
+  let m;
 
-  let blockMatch;
-  const processedUrls = new Set(); // Deduplicate by URL
+  while ((m = orgRe.exec(html)) !== null) {
+    const attrs = m[1];
+    const block = m[2];
+    if (/annule/i.test(attrs + block)) continue;
 
-  // Strategy 1: Process blocks with nested structure
-  while ((blockMatch = raceBlockRe.exec(html)) !== null) {
-    const block = blockMatch[1];
+    const dateM = block.match(/organisation-titre-jours[^>]*>\s*([^<]+)\s*</i);
+    const date = parseFfcDate(dateM?.[1] || '');
+    if (!date || date < todayStr) continue;
 
-    let titleMatch;
-    while ((titleMatch = titleRe.exec(block)) !== null) {
-      const href = titleMatch[1];
-      const titleBlock = titleMatch[2];
+    const nameM = block.match(/organisation-titre-libelle[^>]*>\s*([^<]+)\s*</i);
+    const name = decodeHtmlEntities((nameM?.[1] || '').trim().replace(/\s+/g, ' '));
+    if (!name) continue;
 
-      if (processedUrls.has(href)) continue;
-      processedUrls.add(href);
+    // Location div contains a nested icon div before the text — strip inner tags
+    const locM = block.match(/organisation-titre-localisation[^>]*>([\s\S]*?)<\/div>/i);
+    const loc = locM
+      ? decodeHtmlEntities(locM[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
+      : '';
+    const city = loc.replace(/\s*\d{2,3}\s*$/, '').trim() || null;
+    const deptM = loc.match(/\b(\d{2,3}|2A|2B)\s*$/i);
+    const department = deptM ? deptM[1].toUpperCase() : null;
 
-      if (/annule|cancel/i.test(titleBlock)) continue;
+    const discM = block.match(/organisation-titre-discipline[^>]*>\s*([^<]+)\s*</i);
+    const discipline = discM ? discM[1].trim() : null;
 
-      // Extract date
-      const dateM = titleBlock.match(/organisation-titre-jours[^>]*>\s*([^<]+)\s*<|(\d{2})\/(\d{2})\/(\d{4})/);
-      let date;
-      if (dateM && dateM[1]) {
-        date = parseFfcDate(dateM[1]);
-      } else if (dateM && dateM[2]) {
-        date = `${dateM[4]}-${dateM[3]}-${dateM[2]}`;
+    const hrefM = attrs.match(/href="([^"]+)"/i);
+    const url = hrefM
+      ? (hrefM[1].startsWith('http') ? hrefM[1] : `https://competitions.ffc.fr${hrefM[1]}`)
+      : 'https://competitions.ffc.fr/calendrier/';
+
+    const competitionId = (url.match(/\/competition\/\d+\/([^/]+)\//i)?.[1] || '').toLowerCase();
+    const resolvedDept = department || (() => {
+      const digits = competitionId.replace(/[^0-9]/g, '');
+      if (digits.length >= 4) {
+        const code = digits.slice(2, 4);
+        if (/^(0[1-9]|[1-8][0-9]|9[0-5])$/.test(code)) return code;
       }
-      if (!date || date < todayStr) continue;
+      return null;
+    })();
 
-      // Extract name
-      const nameM = titleBlock.match(/organisation-titre-libelle[^>]*>\s*([^<]+)\s*<|<b[^>]*>\s*([^<]+)\s*</i);
-      const name = (nameM?.[1] || nameM?.[2] || '').trim().replace(/\s+/g, ' ');
-      if (!name) continue;
-
-      // Extract location
-      const locM = titleBlock.match(/organisation-titre-localisation[^>]*>\s*([^<]+)\s*</i);
-      const loc = (locM?.[1] || '').replace(/\s+/g, ' ').trim();
-      const deptM = loc.match(/\b(\d{2,3})\s*$/);
-      const department = deptM ? String(parseInt(deptM[1], 10)).padStart(2, '0') : null;
-      const city = loc.replace(/\s*\d{2,3}\s*$/, '').trim() || null;
-
-      // Extract discipline
-      const discM = titleBlock.match(/organisation-titre-discipline[^>]*>\s*([^<]+)\s*</i);
-      const discipline = discM ? discM[1].trim() : null;
-
-      const url = href.startsWith('http') ? href : `https://competitions.ffc.fr${href}`;
-
-      races.push({
-        id: `ffc-${date}-${name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16)}`,
-        name: name.replace(/\b\w/g, c => c.toUpperCase()),
-        date,
-        department,
-        city,
-        discipline,
-        federation: 'FFC',
-        category: null,
-        url,
-        lat: null, // Will be populated by enrichGpsData
-        lon: null,
-      });
-    }
-  }
-
-  // Fallback: if we got few races, try simpler regex
-  if (races.length < 5) {
-    const simpleRe = /href="([^"]*)"[^>]*>([^<]*(?:Cyclo|Route|VTT|Piste|Route|Gravel)[^<]*)<\/a>/gi;
-    let simpleMatch;
-    const allMatches = [];
-    while ((simpleMatch = simpleRe.exec(html)) !== null) {
-      const href = simpleMatch[1];
-      if (!processedUrls.has(href)) {
-        allMatches.push(href);
-      }
-    }
+    races.push({
+      id: competitionId ? `ffc-${competitionId}` : `ffc-${date}-${name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16)}`,
+      name,
+      date,
+      department: resolvedDept,
+      city,
+      discipline,
+      federation: 'FFC',
+      category: null,
+      url,
+      lat: null,
+      lon: null,
+    });
   }
 
   return races;
 }
 
 /**
- * Enrich races with GPS data ASYNCHRONOUSLY in parallel batches
- * Called in background after races returned to UI (non-blocking)
+ * Enrich races with precise GPS in the background, one by one (Nominatim rate limit).
+ * `onProgress(updatedRace)` is called each time a new precise coordinate is resolved,
+ * so the UI can update incrementally.
  */
-function enrichGpsDataAsync(races) {
-  // Fire and forget - enrich in background
-  Promise.resolve().then(async () => {
-    const parallel = 3;
-    for (let i = 0; i < races.length; i += parallel) {
-      const batch = races.slice(i, i + parallel);
-      await Promise.all(
-        batch.map(async (race) => {
-          if (race.lat !== null && race.lon !== null) return; // Already has GPS
+export function enrichGpsDataAsync(races, onProgress) {
+  const toResolve = races.filter(r => r.city && (r.lat === null || r._usedCentroid));
+  if (toResolve.length === 0) return;
 
-          let gps = null;
-          if (race.city) {
-            const coords = await geocodeCity(race.city, race.department);
-            if (coords) {
-              race.lat = coords[0];
-              race.lon = coords[1];
-              return;
-            }
-          }
-
-          if (!gps && race.department && DEPT_CENTROIDS[race.department]) {
-            const [lat, lon] = DEPT_CENTROIDS[race.department];
-            race.lat = lat;
-            race.lon = lon;
-          }
-        })
-      );
+  (async () => {
+    for (const race of toResolve) {
+      const coords = await geocodeCity(race.city, race.department);
+      if (coords) {
+        race.lat = coords[0];
+        race.lon = coords[1];
+        race._usedCentroid = false;
+        if (onProgress) onProgress({ ...race });
+      }
     }
-  });
+  })();
 }
 
 /**
@@ -437,45 +443,70 @@ async function fetchFfcViaProxy() {
   return [];
 }
 
-export async function fetchRaces({ date, department, fed } = {}) {
-  // 1. Try Vercel serverless function (production)
+export async function fetchRaces({ date, department, fed, forceRefresh = false } = {}) {
+  // ── 0. Return from localStorage cache if fresh (instant load) ──────────────
+  if (!forceRefresh && !date && !department && !fed) {
+    const cached = loadRacesCache();
+    if (cached) {
+      // Apply persisted geocodes to cached races
+      const gc = getGeocodeCache();
+      cached.forEach(r => {
+        if (r.city && r._usedCentroid) {
+          const key = `${r.city}|${r.department || ''}`;
+          if (gc[key]) { r.lat = gc[key][0]; r.lon = gc[key][1]; r._usedCentroid = false; }
+        }
+      });
+      return cached;
+    }
+  }
+
+  // ── 1. Try Vercel serverless function (production) ─────────────────────────
   try {
     const params = new URLSearchParams();
     if (date) params.set('date', date);
     if (department) params.set('department', department);
     if (fed) params.set('fed', fed);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
-    const res = await fetch(`/api/races?${params}`, { signal: controller.signal });
-    clearTimeout(timeout);
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 12000);
+    const res = await fetch(`/api/races?${params}`, { signal: ctrl.signal });
+    clearTimeout(tid);
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) return data;
+      if (Array.isArray(data) && data.length > 0) {
+        if (!date && !department && !fed) saveRacesCache(data);
+        return data;
+      }
     }
   } catch { /* fall through */ }
 
-  // 2. CORS proxy fallback (local dev / GitHub Pages)
+  // ── 2. CORS proxy fallback (dev / GitHub Pages) ───────────────────────────
   const feds = fed ? [fed.toUpperCase()] : ['FFC', 'FSGT', 'UFOLEP', 'FFCT'];
   const fallbackFeds = feds.filter(f => f !== 'FFC');
   const allRaces = [];
   await Promise.allSettled([
-    // cyclisme-amateur.com per federation
-    ...fallbackFeds.map(f => fetchViaProxy(f).then(r => allRaces.push(...r)).catch(() => { })),
-    // FFC official calendar (next 180 days)
-    fetchFfcViaProxy().then(r => allRaces.push(...r)).catch(() => { }),
+    ...fallbackFeds.map(f => fetchViaProxy(f).then(r => allRaces.push(...r)).catch(() => {})),
+    fetchFfcViaProxy().then(r => allRaces.push(...r)).catch(() => {}),
   ]);
 
-  // Assign default GPS (dept centroids) immediately - fast!
-  const racesWithDefaultGps = assignDefaultGps(allRaces);
+  // Apply persisted geocodes immediately, then fall back to dept centroid
+  const gc = getGeocodeCache();
+  const racesWithGps = allRaces.map(r => {
+    if (r.lat !== null && r.lon !== null) return r;
+    if (r.city) {
+      const key = `${r.city}|${r.department || ''}`;
+      if (gc[key]) return { ...r, lat: gc[key][0], lon: gc[key][1], _usedCentroid: false };
+    }
+    const c = r.department ? DEPT_CENTROIDS[r.department] : null;
+    return c ? { ...r, lat: c[0], lon: c[1], _usedCentroid: true } : r;
+  });
 
-  // Deduplicate by id
+  // Deduplicate + sort
   const seen = new Set();
-  const unique = racesWithDefaultGps.filter(r => {
+  const unique = racesWithGps.filter(r => {
     if (seen.has(r.id)) return false;
     seen.add(r.id);
     return true;
   });
-
   unique.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
   const filtered = unique.filter(r => {
@@ -484,8 +515,8 @@ export async function fetchRaces({ date, department, fed } = {}) {
     return true;
   });
 
-  // Enrich with better GPS in background (non-blocking)
-  enrichGpsDataAsync(filtered);
+  // Cache full result (no filters applied)
+  if (!date && !department && !fed) saveRacesCache(filtered);
 
   return filtered;
 }

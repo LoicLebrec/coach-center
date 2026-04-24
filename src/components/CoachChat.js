@@ -165,6 +165,7 @@ export default function CoachChat({
   athlete,
   events,
   plannedEvents,
+  powerCurve,
   claudeApiKey,
   groqApiKey,
   llmProvider,
@@ -194,8 +195,8 @@ export default function CoachChat({
   // Pre-compute coach context from training data
   const coachContext = useMemo(() => {
     if (!wellness?.length && !activities?.length) return null;
-    return analytics.buildCoachContext(wellness, activities, events, athlete);
-  }, [wellness, activities, events, athlete]);
+    return analytics.buildCoachContext(wellness, activities, events, athlete, powerCurve);
+  }, [wellness, activities, events, athlete, powerCurve]);
 
   // Latest PMC values for HUD
   const latest = wellness?.[wellness.length - 1];

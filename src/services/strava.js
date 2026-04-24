@@ -162,6 +162,10 @@ class StravaService {
     return this.request(`/activities/${id}/zones`);
   }
 
+  async getActivityLaps(id) {
+    return this.request(`/activities/${id}/laps`);
+  }
+
   async getAthleteStats(athleteId) {
     return this.request(`/athletes/${athleteId}/stats`);
   }

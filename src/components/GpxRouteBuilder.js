@@ -321,11 +321,15 @@ async function fetchOverpassPois(lat, lng, radiusM, catIds) {
     );
     out center tags;`;
 
-  const res = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    body: 'data=' + encodeURIComponent(query),
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
+  const res = await fetchWithTimeout(
+    'https://overpass-api.de/api/interpreter',
+    {
+      method: 'POST',
+      body: 'data=' + encodeURIComponent(query),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    },
+    30000
+  );
   if (!res.ok) throw new Error(`Overpass ${res.status}`);
   const data = await res.json();
 
@@ -389,9 +393,10 @@ async function reverseGeocode(lat, lng) {
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
   _lastGeoReq = Date.now();
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=14`,
-      { headers: { 'User-Agent': 'CoachCenter/1.0', 'Accept-Language': 'en' } }
+      { headers: { 'User-Agent': 'CoachCenter/1.0', 'Accept-Language': 'en' } },
+      8000
     );
     const data = await res.json();
     const a = data.address || {};
@@ -400,10 +405,12 @@ async function reverseGeocode(lat, lng) {
       || coordStr(lat, lng);
   } catch (_) { return coordStr(lat, lng); }
 }
+
 async function searchPlaces(query) {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`,
-    { headers: { 'User-Agent': 'CoachCenter/1.0', 'Accept-Language': 'en' } }
+    { headers: { 'User-Agent': 'CoachCenter/1.0', 'Accept-Language': 'en' } },
+    8000
   );
   return res.json();
 }
@@ -504,44 +511,66 @@ function circleWaypoints(lat, lng, r, rot, n = 3) {
   return Array.from({ length: n }, (_, i) => geodesicOffset(lat, lng, rot + (i / n) * 360, r));
 }
 
+// ── Network helpers ───────────────────────────────────────────
+
+// Timeout wrapper — rejects after `ms` ms
+function fetchWithTimeout(url, opts = {}, ms = 12000) {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(tid));
+}
+
+// ── Snap cache — avoid re-snapping the same point in the same session ─────
+const _snapCache = new Map();
+function _snapKey(p, profile) { return `${p.lat.toFixed(5)},${p.lng.toFixed(5)},${profile}`; }
+
 // ── OSRM ─────────────────────────────────────────────────────
-async function fetchOsrmTrip(startLat, startLng, wpts) {
+async function fetchOsrmTrip(startLat, startLng, wpts, profile = 'foot') {
   const pts = [{ lat: startLat, lng: startLng }, ...wpts, { lat: startLat, lng: startLng }];
   const co = pts.map(p => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
-  const res = await fetch(`https://router.project-osrm.org/trip/v1/foot/${co}?roundtrip=false&source=first&destination=last&overview=full&geometries=geojson`);
-  if (!res.ok) throw new Error(`OSRM ${res.status}`);
+  const res = await fetchWithTimeout(
+    `https://router.project-osrm.org/trip/v1/${profile}/${co}?roundtrip=false&source=first&destination=last&overview=full&geometries=geojson`
+  );
+  if (!res.ok) throw new Error(`OSRM trip ${res.status}`);
   const data = await res.json();
-  if (data.code !== 'Ok') throw new Error('No route');
+  if (data.code !== 'Ok') throw new Error('OSRM: no route');
   return { coords: data.trips[0].geometry.coordinates, rawCoords: null };
 }
-async function fetchOsrmRoute(from, to) {
+
+async function fetchOsrmRoute(from, to, profile = 'foot') {
   const co = `${from.lng.toFixed(5)},${from.lat.toFixed(5)};${to.lng.toFixed(5)},${to.lat.toFixed(5)}`;
-  const res = await fetch(`https://router.project-osrm.org/route/v1/foot/${co}?overview=full&geometries=geojson`);
-  if (!res.ok) throw new Error(`OSRM ${res.status}`);
+  const res = await fetchWithTimeout(
+    `https://router.project-osrm.org/route/v1/${profile}/${co}?overview=full&geometries=geojson`
+  );
+  if (!res.ok) throw new Error(`OSRM ${profile} ${res.status}`);
   const data = await res.json();
-  if (data.code !== 'Ok') throw new Error('No route');
+  if (data.code !== 'Ok') throw new Error(`OSRM: no route (${profile})`);
   return data.routes[0].geometry.coordinates;
 }
 
 async function fetchOsrmRouteByProfile(profile, from, to) {
-  const co = `${from.lng.toFixed(5)},${from.lat.toFixed(5)};${to.lng.toFixed(5)},${to.lat.toFixed(5)}`;
-  const res = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${co}?overview=full&geometries=geojson`);
-  if (!res.ok) throw new Error(`OSRM ${profile} ${res.status}`);
-  const data = await res.json();
-  if (data.code !== 'Ok') throw new Error(`No route (${profile})`);
-  return data.routes[0].geometry.coordinates;
+  return fetchOsrmRoute(from, to, profile);
 }
 
 async function snapToRoutablePoint(point, sport) {
+  // cycling: use 'driving' network (roads); running: use 'foot'
   const profiles = sport === 'Run' ? ['foot', 'driving'] : ['driving', 'foot'];
   for (const profile of profiles) {
+    const key = _snapKey(point, profile);
+    if (_snapCache.has(key)) return _snapCache.get(key);
     try {
-      const res = await fetch(`https://router.project-osrm.org/nearest/v1/${profile}/${point.lng.toFixed(5)},${point.lat.toFixed(5)}?number=1`);
+      const res = await fetchWithTimeout(
+        `https://router.project-osrm.org/nearest/v1/${profile}/${point.lng.toFixed(5)},${point.lat.toFixed(5)}?number=1`,
+        {},
+        6000
+      );
       if (!res.ok) continue;
       const data = await res.json();
       const snapped = data?.waypoints?.[0]?.location;
       if (snapped?.length === 2) {
-        return { lat: snapped[1], lng: snapped[0] };
+        const result = { lat: snapped[1], lng: snapped[0] };
+        _snapCache.set(key, result);
+        return result;
       }
     } catch (_) { }
   }
@@ -551,11 +580,15 @@ async function snapToRoutablePoint(point, sport) {
 // ── BRouter ───────────────────────────────────────────────────
 async function fetchBrouterRoute(from, to, profile) {
   const ll = `${from.lng.toFixed(5)},${from.lat.toFixed(5)}|${to.lng.toFixed(5)},${to.lat.toFixed(5)}`;
-  const res = await fetch(`https://brouter.de/brouter?lonlats=${ll}&profile=${profile}&alternativeidx=0&format=geojson`);
+  const res = await fetchWithTimeout(
+    `https://brouter.de/brouter?lonlats=${ll}&profile=${profile}&alternativeidx=0&format=geojson`,
+    {},
+    20000
+  );
   if (!res.ok) throw new Error(`BRouter ${res.status}`);
   const data = await res.json();
   const raw = data.features?.[0]?.geometry?.coordinates;
-  if (!raw?.length) throw new Error('No route from BRouter');
+  if (!raw?.length) throw new Error('BRouter: no route');
   return raw.map(c => [c[0], c[1]]);
 }
 
@@ -564,75 +597,96 @@ async function fetchBrouterRouteSafe(from, to, profile) {
     return await fetchBrouterRoute(from, to, profile);
   } catch (err) {
     const fallback = SURFACE_PROFILE_FALLBACK[profile];
-    if (fallback) return await fetchBrouterRoute(from, to, fallback);
+    if (fallback) return fetchBrouterRoute(from, to, fallback);
     throw err;
   }
 }
+
 async function fetchBrouterTrip(startLat, startLng, wpts, profile, alternativeidx = 0) {
   const pts = [{ lat: startLat, lng: startLng }, ...wpts, { lat: startLat, lng: startLng }];
   const ll = pts.map(p => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join('|');
-  const res = await fetch(`https://brouter.de/brouter?lonlats=${ll}&profile=${profile}&alternativeidx=${alternativeidx}&format=geojson`);
+  const res = await fetchWithTimeout(
+    `https://brouter.de/brouter?lonlats=${ll}&profile=${profile}&alternativeidx=${alternativeidx}&format=geojson`,
+    {},
+    30000
+  );
   if (!res.ok) throw new Error(`BRouter ${res.status}`);
   const data = await res.json();
   const raw = data.features?.[0]?.geometry?.coordinates;
-  if (!raw?.length) throw new Error('No route from BRouter');
+  if (!raw?.length) throw new Error('BRouter: no route');
   return { coords: raw.map(c => [c[0], c[1]]), rawCoords: raw };
 }
 
-// Try a BRouter profile; if the server rejects it (profile not deployed),
-// automatically retry with the fallback profile before giving up.
 async function fetchBrouterTripSafe(startLat, startLng, wpts, profile) {
   try {
     return await fetchBrouterTrip(startLat, startLng, wpts, profile, 0);
   } catch (err) {
     const fallback = SURFACE_PROFILE_FALLBACK[profile];
-    if (fallback) return await fetchBrouterTrip(startLat, startLng, wpts, fallback, 0);
+    if (fallback) return fetchBrouterTrip(startLat, startLng, wpts, fallback, 0);
     throw err;
   }
 }
 
 // ── Routing helpers ───────────────────────────────────────────
 async function routeSegment(from, to, sport, surface) {
-  const fromSnap = await snapToRoutablePoint(from, sport);
-  const toSnap = await snapToRoutablePoint(to, sport);
+  const [fromSnap, toSnap] = await Promise.all([
+    snapToRoutablePoint(from, sport),
+    snapToRoutablePoint(to, sport),
+  ]);
   if (sport === 'Run') {
-    try {
-      return await fetchOsrmRoute(fromSnap, toSnap);
-    } catch (_) {
-      return fetchOsrmRouteByProfile('driving', fromSnap, toSnap);
-    }
+    try { return await fetchOsrmRoute(fromSnap, toSnap, 'foot'); }
+    catch (_) { return fetchOsrmRoute(fromSnap, toSnap, 'driving'); }
   }
+  // Cycling: BRouter gives quality road/gravel routing; OSRM driving as fallback
   try {
     return await fetchBrouterRouteSafe(fromSnap, toSnap, SURFACE_PROFILES[surface] || 'fastbike');
   } catch (_) {
-    return fetchOsrmRouteByProfile('driving', fromSnap, toSnap);
+    return fetchOsrmRoute(fromSnap, toSnap, 'driving');
   }
 }
 
 async function routeTripWithSegments(startLat, startLng, wpts, sport, surface) {
   const pts = [{ lat: startLat, lng: startLng }, ...wpts, { lat: startLat, lng: startLng }];
-  const segs = await Promise.all(pts.slice(0, -1).map((p, i) => routeSegment(p, pts[i + 1], sport, surface)));
+  // Route segments sequentially to respect snap cache hits
+  const segs = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    segs.push(await routeSegment(pts[i], pts[i + 1], sport, surface));
+  }
   const coords = segs.flatMap((seg, i) => i === 0 ? seg : seg.slice(1));
   return { coords, rawCoords: null };
 }
 
 async function routeTrip(startLat, startLng, wpts, sport, surface) {
-  if (sport === 'Run') return fetchOsrmTrip(startLat, startLng, wpts);
+  if (sport === 'Run') {
+    try { return await fetchOsrmTrip(startLat, startLng, wpts, 'foot'); }
+    catch (_) { return routeTripWithSegments(startLat, startLng, wpts, sport, surface); }
+  }
   try {
     return await fetchBrouterTripSafe(startLat, startLng, wpts, SURFACE_PROFILES[surface] || 'fastbike');
   } catch (_) {
     return routeTripWithSegments(startLat, startLng, wpts, sport, surface);
   }
 }
+
 async function routeOutAndBack(startLat, startLng, halfKm, sport, surface, dir) {
   const mid = geodesicOffset(startLat, startLng, dir, halfKm);
   if (sport === 'Run') {
-    const outC = await fetchOsrmRoute({ lat: startLat, lng: startLng }, mid);
-    return { coords: [...outC, ...[...outC].reverse().slice(1)], rawCoords: null };
+    try {
+      const outC = await fetchOsrmRoute({ lat: startLat, lng: startLng }, mid, 'foot');
+      return { coords: [...outC, ...[...outC].reverse().slice(1)], rawCoords: null };
+    } catch (_) {
+      const outC = await fetchOsrmRoute({ lat: startLat, lng: startLng }, mid, 'driving');
+      return { coords: [...outC, ...[...outC].reverse().slice(1)], rawCoords: null };
+    }
   }
   try {
-    const { coords: outC, rawCoords: outR } = await fetchBrouterTripSafe(startLat, startLng, [mid], SURFACE_PROFILES[surface] || 'fastbike');
-    return { coords: [...outC, ...[...outC].reverse().slice(1)], rawCoords: outR ? [...outR, ...[...outR].reverse().slice(1)] : null };
+    const { coords: outC, rawCoords: outR } = await fetchBrouterTripSafe(
+      startLat, startLng, [mid], SURFACE_PROFILES[surface] || 'fastbike'
+    );
+    return {
+      coords: [...outC, ...[...outC].reverse().slice(1)],
+      rawCoords: outR ? [...outR, ...[...outR].reverse().slice(1)] : null,
+    };
   } catch (_) {
     const outC = await routeSegment({ lat: startLat, lng: startLng }, mid, sport, surface);
     return { coords: [...outC, ...[...outC].reverse().slice(1)], rawCoords: null };

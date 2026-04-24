@@ -32,9 +32,12 @@
     }
   ],
   "env": {
+    "DATABASE_URL": "@database_url",
     "FRONTEND_URL": "@frontend_url",
     "JWT_SECRET": "@jwt_secret",
-    "JWT_EXPIRE": "7d",
+    "JWT_EXPIRE": "30d",
+    "GOOGLE_CLIENT_ID": "@google_client_id",
+    "GOOGLE_CLIENT_SECRET": "@google_client_secret",
     "INTERVALS_CLIENT_ID": "@intervals_client_id",
     "INTERVALS_CLIENT_SECRET": "@intervals_client_secret",
     "STRAVA_CLIENT_ID": "@strava_client_id",

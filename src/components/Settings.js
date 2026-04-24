@@ -3,6 +3,7 @@ import persistence from '../services/persistence';
 import { stravaService } from '../services/strava';
 import { wahooService } from '../services/wahoo';
 import { garminService } from '../services/garmin';
+import { backendService } from '../services/backend-api';
 
 export default function Settings({ connections, onSave, onDisconnect, onRefresh, onRepairHistory }) {
   // Intervals.icu
@@ -100,14 +101,12 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
     showMessage('Wahoo credentials saved. Click "Connect Wahoo" to authorize.');
   };
 
-  const handleWahooAuth = () => {
-    if (!wahooClientId.trim() || !wahooClientSecret.trim()) {
-      showMessage('Save your Wahoo credentials first.', true);
-      return;
+  const handleWahooAuth = async () => {
+    try {
+      await backendService.startOAuthFlow('wahoo');
+    } catch (err) {
+      showMessage('Failed to start Wahoo OAuth: ' + err.message, true);
     }
-    wahooService.configure(wahooClientId.trim(), wahooClientSecret.trim());
-    const redirectUri = window.location.origin + window.location.pathname;
-    window.location.href = wahooService.getAuthUrl(redirectUri);
   };
 
   const handleSaveClaude = async () => {
@@ -150,16 +149,12 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
     showMessage(`AI provider set to ${provider === 'groq' ? 'Groq (free)' : 'Claude (Anthropic)'}.`);
   };
 
-  const handleStravaAuth = () => {
-    if (!stravaClientId.trim() || !stravaClientSecret.trim()) {
-      showMessage('Save your Strava Client ID and Secret first.', true);
-      return;
+  const handleStravaAuth = async () => {
+    try {
+      await backendService.startOAuthFlow('strava');
+    } catch (err) {
+      showMessage('Failed to start Strava OAuth: ' + err.message, true);
     }
-
-    stravaService.configure(stravaClientId.trim(), stravaClientSecret.trim());
-
-    const redirectUri = window.location.origin + window.location.pathname;
-    window.location.href = stravaService.getAuthUrl(redirectUri);
   };
 
   return (
@@ -245,9 +240,9 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
           <strong>Setup (one-time):</strong><br />
           1. Go to <code>strava.com/settings/api</code><br />
           2. Create an application (any name, any website)<br />
-          3. Set <strong>Authorization Callback Domain</strong> to: <code>{window.location.hostname}</code><br />
-          4. Copy <strong>Client ID</strong> and <strong>Client Secret</strong><br />
-          5. Save here, then click "Connect Strava" to authorize
+          3. Set callback domain/URL in provider console to your backend callback route<br />
+          4. Put Client ID + Secret in backend env (not in browser fields)<br />
+          5. Click "Connect Strava" to authorize
         </div>
 
         <div className="form-field">
@@ -274,7 +269,7 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn" onClick={handleSaveStrava}>Save Credentials</button>
-          {!connections.strava && stravaClientId && (
+          {!connections.strava && (
             <button className="btn btn-primary" onClick={handleStravaAuth}>Connect Strava →</button>
           )}
           {connections.strava && (
@@ -296,9 +291,9 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
         <div className="info-banner">
           <strong>Setup (one-time):</strong><br />
           1. Go to <code>developers.wahooligan.com</code> → Create Application<br />
-          2. Set <strong>Redirect URI</strong> to: <code>{window.location.origin + window.location.pathname}</code><br />
-          3. Copy <strong>Client ID</strong> and <strong>Client Secret</strong><br />
-          4. Save here, then click "Connect Wahoo" to authorize
+          2. Set Redirect URI to your backend callback route<br />
+          3. Put Client ID + Secret in backend env (not in browser fields)<br />
+          4. Click "Connect Wahoo" to authorize
         </div>
 
         <div className="form-field">
@@ -315,7 +310,7 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn" onClick={handleSaveWahoo}>Save Credentials</button>
-          {!connections.wahoo && wahooClientId && (
+          {!connections.wahoo && (
             <button className="btn btn-primary" onClick={handleWahooAuth}>Connect Wahoo →</button>
           )}
           {connections.wahoo && (

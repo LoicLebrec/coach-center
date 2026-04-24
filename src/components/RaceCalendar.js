@@ -3,12 +3,21 @@ import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, GeoJSON as LeafletGeoJSON, CircleMarker, Popup, useMap } from 'react-leaflet';
 import { format, parseISO, addDays, startOfToday, startOfWeek, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { fetchRaces } from '../services/racesService';
+import { fetchRaces, enrichGpsDataAsync } from '../services/racesService';
 import HelpPopup from './HelpPopup';
 
 // ── GeoJSON ────────────────────────────────────────────────────────────────
 const GEOJSON_URL =
   'https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson';
+
+// Module-level cache — fetched once per browser session, never re-fetched
+let _geoJsonCache = null;
+async function loadGeoJson() {
+  if (_geoJsonCache) return _geoJsonCache;
+  const res = await fetch(GEOJSON_URL);
+  _geoJsonCache = await res.json();
+  return _geoJsonCache;
+}
 
 // ── Region → departments ───────────────────────────────────────────────────
 const REGIONS = {
@@ -102,28 +111,6 @@ const DATE_PRESETS = [
   { label: 'Tout', days: 400 },
 ];
 
-// ── Nominatim geocoder (lazy, rate-limited, session-cached) ──────────────────
-const geocodeCache = {}; // city_dept → [lat, lng] | null
-
-async function geocodeCity(city, dept, countryCode = 'fr') {
-  const key = `${city}|${dept}`;
-  if (key in geocodeCache) return geocodeCache[key];
-  try {
-    const q = encodeURIComponent(`${city}, France`);
-    const url = `https://nominatim.openstreetmap.org/search?q=${q}&countrycodes=${countryCode}&limit=1&format=json`;
-    const res = await fetch(url, { headers: { 'Accept-Language': 'fr', 'User-Agent': 'CoachCenterApp/1.0' } });
-    if (!res.ok) { geocodeCache[key] = null; return null; }
-    const data = await res.json();
-    if (data.length > 0) {
-      const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-      geocodeCache[key] = coords;
-      return coords;
-    }
-  } catch { /* ignore */ }
-  geocodeCache[key] = null;
-  return null;
-}
-
 // ── MapZoomer ─────────────────────────────────────────────────────────────
 function MapZoomer({ bounds }) {
   const map = useMap();
@@ -159,63 +146,52 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
   const [cityCoords, setCityCoords] = useState({}); // "city|dept" → [lat, lng]
 
   const geoLayerRef = useRef(null);
-  const geocodeQueueRef = useRef(null);
+  const [geocodingDone, setGeocodingDone] = useState(false);
   const today = startOfToday();
 
   const rangeStart = customStart || localDateStr(today);
   const rangeEnd = customEnd || localDateStr(addDays(today, DATE_PRESETS[rangePreset]?.days ?? 31));
 
-  // ── Load GeoJSON ──────────────────────────────────────────────────────────
+  // ── Load GeoJSON (module-level cache — instant on 2nd mount) ─────────────
   useEffect(() => {
-    fetch(GEOJSON_URL)
-      .then(r => r.json())
+    loadGeoJson()
       .then(setGeoJson)
       .catch(() => setError('Carte non disponible.'));
   }, []);
 
-  // ── Load races ────────────────────────────────────────────────────────────
+  // ── Load races then kick off background geocoding ─────────────────────────
   useEffect(() => {
     setLoading(true);
     setError(null);
+    setGeocodingDone(false);
     fetchRaces()
-      .then(data => setAllRaces(data))
+      .then(data => {
+        setAllRaces(data);
+        // Build initial cityCoords from whatever is already resolved
+        const initial = {};
+        data.forEach(r => {
+          if (r.city && r.department && r.lat && !r._usedCentroid) {
+            initial[`${r.city}|${r.department}`] = [r.lat, r.lon];
+          }
+        });
+        setCityCoords(initial);
+
+        // Background geocoding — update state each time a new city is resolved
+        let resolvedCount = 0;
+        const pending = data.filter(r => r._usedCentroid && r.city);
+        enrichGpsDataAsync(data, (updatedRace) => {
+          resolvedCount++;
+          setCityCoords(prev => ({
+            ...prev,
+            [`${updatedRace.city}|${updatedRace.department}`]: [updatedRace.lat, updatedRace.lon],
+          }));
+          if (resolvedCount >= pending.length) setGeocodingDone(true);
+        });
+        if (pending.length === 0) setGeocodingDone(true);
+      })
       .catch(() => setError('Impossible de charger les courses. Vérifiez votre connexion.'))
       .finally(() => setLoading(false));
   }, []);
-
-  // ── Lazy geocoding: resolve city names → precise [lat, lng] ──────────────
-  useEffect(() => {
-    if (allRaces.length === 0) return;
-    // Cancel previous queue
-    if (geocodeQueueRef.current) clearTimeout(geocodeQueueRef.current);
-
-    // Collect unique city|dept pairs that have a city but no cached coords
-    const toGeocode = [];
-    const seen = new Set();
-    for (const r of allRaces) {
-      if (!r.city || !r.department) continue;
-      const key = `${r.city}|${r.department}`;
-      if (seen.has(key) || key in geocodeCache) continue;
-      seen.add(key);
-      toGeocode.push({ city: r.city, dept: r.department, key });
-    }
-    if (toGeocode.length === 0) return;
-
-    // Process one at a time with 300ms delay (Nominatim rate limit: 1 req/s)
-    let i = 0;
-    const processNext = async () => {
-      if (i >= toGeocode.length) return;
-      const { city, dept, key } = toGeocode[i++];
-      const coords = await geocodeCity(city, dept);
-      if (coords) {
-        setCityCoords(prev => ({ ...prev, [key]: coords }));
-      }
-      geocodeQueueRef.current = setTimeout(processNext, 350);
-    };
-    geocodeQueueRef.current = setTimeout(processNext, 500);
-
-    return () => { if (geocodeQueueRef.current) clearTimeout(geocodeQueueRef.current); };
-  }, [allRaces]);
 
   // ── Race counts by date (within range) ───────────────────────────────────
   const countByDate = useMemo(() => {
@@ -258,7 +234,7 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
     const m = {};
     filteredRaces.forEach(r => {
       const cityKey = r.city && r.department ? `${r.city}|${r.department}` : null;
-      const precise = cityKey ? (cityCoords[cityKey] || geocodeCache[cityKey] || null) : null;
+      const precise = cityKey ? (cityCoords[cityKey] || null) : null;
       const fallback = r.department ? DEPT_CENTROIDS[r.department] : null;
       const coords = precise || fallback;
       if (!coords) return;
@@ -293,6 +269,23 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
     }
     return weeks;
   }, [countByDate, rangeStart, rangeEnd]);
+
+  // ── Update GeoJSON layer styles imperatively (no remount) ────────────────
+  useEffect(() => {
+    const layer = geoLayerRef.current;
+    if (!layer) return;
+    layer.eachLayer(l => {
+      const code = l.feature?.properties?.code;
+      if (!code) return;
+      l.setStyle(styleFeature(l.feature));
+      const name = DEPT_NAMES[code] || l.feature?.properties?.nom || code;
+      const count = countByDept[code] || 0;
+      l.bindTooltip(
+        `<b>${code} — ${name}</b>${count > 0 ? `<br/>${count} course${count > 1 ? 's' : ''}` : ''}`,
+        { sticky: true }
+      );
+    });
+  }, [countByDept, selectedDept, selectedRegion, styleFeature]);
 
   // ── Map style ─────────────────────────────────────────────────────────────
   const styleFeature = useCallback((feature) => {
@@ -503,7 +496,18 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                 tips={['Utilisez les boutons de région en bas pour zoomer rapidement', 'Combinez filtre département + filtre fédération pour affiner', 'Cliquez à nouveau sur un département sélectionné pour le désélectionner']}
               />
             </span>
-            {loading && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)' }}>chargement…</span>}
+            {loading
+              ? <span style={{ fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--text-4)' }}>Chargement…</span>
+              : !geocodingDone && allRaces.length > 0
+                ? <span style={{ fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--text-4)' }}>
+                    Localisation en cours… {Object.keys(cityCoords).length}/{allRaces.filter(r => r.city).length}
+                  </span>
+                : allRaces.length > 0
+                  ? <span style={{ fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--accent-green)', fontWeight: 600 }}>
+                      {allRaces.length} courses
+                    </span>
+                  : null
+            }
           </div>
 
           {geoJson ? (
@@ -519,7 +523,7 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                 opacity={0.35}
               />
               <LeafletGeoJSON
-                key={`${selectedDept}|${selectedDate}|${fedFilter}|${allRaces.length}`}
+                key={allRaces.length}
                 data={geoJson}
                 style={styleFeature}
                 onEachFeature={onEachFeature}
@@ -871,13 +875,18 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                               {race.name}
                             </a>
 
-                            {/* Dept */}
-                            {race.department && (
-                              <span style={{
-                                flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 10,
-                                color: 'var(--text-4)', minWidth: 22, textAlign: 'right',
-                              }}>
-                                {race.department}
+                            {/* Location: city or dept name */}
+                            {(race.city || race.department) && (
+                              <span
+                                title={race.department ? `${race.department} — ${DEPT_NAMES[race.department] || ''}` : ''}
+                                style={{
+                                  flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 10,
+                                  color: 'var(--text-3)', maxWidth: 90,
+                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}>
+                                {race.city
+                                  ? `${race.city}${race.department ? ` (${race.department})` : ''}`
+                                  : `${DEPT_NAMES[race.department] || race.department}`}
                               </span>
                             )}
 

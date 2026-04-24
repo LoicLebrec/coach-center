@@ -136,24 +136,14 @@ class BackendService {
     // ─── OAuth ───────────────────────────────────────────────────────────
 
     /**
-     * Start OAuth flow for a provider
-     * Redirects to provider auth page
+     * Start OAuth flow for a provider using backend-managed state and callbacks.
      */
-    startOAuthFlow(provider) {
-        const state = this.userId;
-
-        const oauthUrls = {
-            intervals: `https://intervals.icu/api/v1/oauth/authorize?client_id=${process.env.REACT_APP_INTERVALS_CLIENT_ID}&response_type=code&state=${state}&redirect_uri=${encodeURIComponent(process.env.REACT_APP_INTERVALS_CALLBACK_URL)}`,
-            strava: `https://www.strava.com/oauth/authorize?client_id=${process.env.REACT_APP_STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(process.env.REACT_APP_STRAVA_CALLBACK_URL)}&scope=activity:read_all&state=${state}`,
-            garmin: `https://connect.garmin.com/oauthConfirm?client_id=${process.env.REACT_APP_GARMIN_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(process.env.REACT_APP_GARMIN_CALLBACK_URL)}&state=${state}`,
-            wahoo: `https://api.wahooligan.com/oauth/authorize?client_id=${process.env.REACT_APP_WAHOO_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(process.env.REACT_APP_WAHOO_CALLBACK_URL)}&state=${state}`,
-        };
-
-        if (!oauthUrls[provider]) {
-            throw new Error(`Unknown provider: ${provider}`);
+    async startOAuthFlow(provider) {
+        const data = await this.request('POST', `/providers/${provider}/start`);
+        if (!data?.authUrl) {
+            throw new Error('OAuth URL not returned by backend');
         }
-
-        window.location.href = oauthUrls[provider];
+        window.location.href = data.authUrl;
     }
 
     /**
