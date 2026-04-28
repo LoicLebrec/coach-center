@@ -61,9 +61,9 @@ export default function LoginPage({ onSuccess }) {
           <div style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             width: 48, height: 48, borderRadius: 14,
-            background: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.3)',
+            background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.3)',
             fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 18,
-            color: 'var(--accent-cyan)', marginBottom: 14,
+            color: 'var(--accent-orange)', marginBottom: 14,
           }}>CC</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-0)', marginBottom: 4 }}>
             Coach Center
@@ -146,7 +146,7 @@ export default function LoginPage({ onSuccess }) {
             disabled={loading}
             style={{
               width: '100%', padding: 11, borderRadius: 10,
-              background: 'var(--accent-cyan)', color: '#000',
+              background: 'var(--accent-orange)', color: '#fff',
               border: 'none', fontSize: 14, fontWeight: 700,
               cursor: loading ? 'default' : 'pointer',
               opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s',
@@ -163,7 +163,7 @@ export default function LoginPage({ onSuccess }) {
             type="button"
             onClick={() => { setIsLogin(!isLogin); setError(''); }}
             style={{
-              background: 'none', border: 'none', color: 'var(--accent-cyan)',
+              background: 'none', border: 'none', color: 'var(--accent-orange)',
               cursor: 'pointer', textDecoration: 'underline', padding: 0, font: 'inherit',
             }}
           >
