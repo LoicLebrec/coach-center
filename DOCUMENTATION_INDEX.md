@@ -2,7 +2,7 @@
 
 ## 📚 Guides de Déploiement & Architecture
 
-### 0. **[OAUTH_SETUP.md](OAUTH_SETUP.md)** 🔐 START HERE - CONFIGURE PROVIDERS
+### 0. **[OAUTH_SETUP.md](OAUTH_SETUP.md)** START HERE - CONFIGURE PROVIDERS
 **Destiné à:** Tous (configuration API keys)  
 **Contient:**
 - Setup Google OAuth (Cloud Console)
