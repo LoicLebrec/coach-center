@@ -169,9 +169,9 @@ export default function App() {
   const INCREMENTAL_SYNC_DAYS = 120;
   const REPAIR_SYNC_DAYS = 730;
 
-  // Auth — skip gate on localhost (dev) or when no backend URL is configured
-  const requiresAuth = !!(process.env.REACT_APP_API_URL) &&
-    !window.location.hostname.includes('localhost');
+  // Auth is required whenever backend API is enabled because provider OAuth
+  // initiation uses protected server endpoints.
+  const requiresAuth = !!(process.env.REACT_APP_API_URL);
 
   // Handle ?token= redirect coming back from Google OAuth
   const _urlParams = new URLSearchParams(window.location.search);
@@ -290,49 +290,33 @@ export default function App() {
     })();
   }, []);
 
-  // Handle OAuth callbacks (Strava + Wahoo) — differentiated by `state` param
+  // Handle backend OAuth callback status (?provider=...&success=true|error=...)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
+    const provider = params.get('provider');
+    const success = params.get('success');
     const authError = params.get('error');
-    const state = params.get('state'); // 'strava' | 'wahoo'
 
-    if (authError) {
-      setError(`OAuth was not completed: ${authError}`);
-      window.history.replaceState({}, '', window.location.pathname);
-      return;
-    }
-
-    if (!code) return;
+    if (!provider && !authError) return;
 
     (async () => {
       try {
-        const redirectUri = window.location.origin + window.location.pathname;
-
-        if (state === 'wahoo') {
-          const data = await wahooService.exchangeCode(code, redirectUri);
-          await persistence.saveCredentials('wahoo', {
-            ...(await persistence.getCredentials('wahoo')),
-            accessToken: data.access_token,
-            refreshToken: data.refresh_token,
-            expiresAt: wahooService.expiresAt,
-          });
-          setConnections(c => ({ ...c, wahoo: true }));
-        } else {
-          // Default: Strava (legacy callbacks without state also go here)
-          const data = await stravaService.exchangeCode(code, redirectUri);
-          await persistence.saveCredentials('strava', {
-            ...(await persistence.getCredentials('strava')),
-            accessToken: data.access_token,
-            refreshToken: data.refresh_token,
-            expiresAt: data.expires_at,
-            athleteId: data.athlete?.id,
-          });
-          setConnections(c => ({ ...c, strava: true }));
+        if (authError) {
+          setError(`OAuth failed: ${authError}`);
+        } else if (provider && success === 'true') {
+          if (backendService.isAuthenticated()) {
+            try {
+              const remote = await backendService.getConnections();
+              setConnections(c => ({ ...c, ...remote }));
+            } catch (_) {
+              setConnections(c => ({ ...c, [provider]: true }));
+            }
+          } else {
+            setConnections(c => ({ ...c, [provider]: true }));
+          }
         }
+      } finally {
         window.history.replaceState({}, '', window.location.pathname);
-      } catch (err) {
-        setError('OAuth failed: ' + err.message);
       }
     })();
   }, []);

@@ -139,6 +139,9 @@ class BackendService {
      * Start OAuth flow for a provider using backend-managed state and callbacks.
      */
     async startOAuthFlow(provider) {
+        if (!this.isAuthenticated()) {
+            throw new Error('Please sign in before connecting a provider.');
+        }
         const data = await this.request('POST', `/providers/${provider}/start`);
         if (!data?.authUrl) {
             throw new Error('OAuth URL not returned by backend');

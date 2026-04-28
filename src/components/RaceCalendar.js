@@ -285,7 +285,7 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
         { sticky: true }
       );
     });
-  }, [countByDept, selectedDept, selectedRegion, styleFeature]);
+  }, [countByDept, selectedDept, selectedRegion]);
 
   // ── Map style ─────────────────────────────────────────────────────────────
   const styleFeature = useCallback((feature) => {
