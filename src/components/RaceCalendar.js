@@ -64,7 +64,7 @@ const DEPT_NAMES = {
 };
 
 const FED_COLORS = {
-  FFC: '#4d7fe8', FSGT: '#22c55e', UFOLEP: '#f97316', FFCT: '#a855f7',
+  FFC: '#60a5fa', FSGT: '#22c55e', UFOLEP: '#f97316', FFCT: '#c084fc',
 };
 
 // ── Department centroid coordinates [lat, lng] ──────────────────────────────
@@ -137,8 +137,8 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
   const [fedFilter, setFedFilter] = useState('');
   const [mapBounds, setMapBounds] = useState(null);
 
-  const [saveModal, setSaveModal] = useState(null);
   const [taperEnabled, setTaperEnabled] = useState(true);
+  const [addedToast, setAddedToast] = useState(null);
   const [savedIds, setSavedIds] = useState(new Set());
   const [rangePreset, setRangePreset] = useState(1); // index into DATE_PRESETS, default 1 mois
   const [customStart, setCustomStart] = useState('');
@@ -297,14 +297,14 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
       : true;
 
     let fill = '#1e293b';
-    if (count >= 5) fill = '#1d4ed8';
-    else if (count >= 3) fill = '#2563eb';
-    else if (count >= 1) fill = '#3b82f6';
+    if (count >= 5) fill = '#c2410c';
+    else if (count >= 3) fill = '#ea580c';
+    else if (count >= 1) fill = '#f97316';
 
     return {
-      fillColor: isSelected ? '#22d3ee' : fill,
-      fillOpacity: isSelected ? 0.9 : inRegion ? (count > 0 ? 0.75 : 0.25) : 0.1,
-      color: isSelected ? '#22d3ee' : '#334155',
+      fillColor: isSelected ? '#f97316' : fill,
+      fillOpacity: isSelected ? 0.95 : inRegion ? (count > 0 ? 0.75 : 0.22) : 0.08,
+      color: isSelected ? '#fff' : '#334155',
       weight: isSelected ? 2.5 : 0.8,
     };
   }, [countByDept, selectedDept, selectedRegion]);
@@ -337,10 +337,9 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
     });
   }, [countByDept, styleFeature]);
 
-  // ── Save race ─────────────────────────────────────────────────────────────
-  const handleSaveRace = useCallback(() => {
-    if (!saveModal || !onAddToCalendar) return;
-    const race = saveModal;
+  // ── Add race directly (no modal) ─────────────────────────────────────────
+  const handleAddRace = useCallback((race) => {
+    if (!race || !onAddToCalendar) return;
 
     onAddToCalendar({
       title: race.name,
@@ -351,11 +350,10 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
         `Fédération: ${race.federation}`,
         race.category ? `Catégorie: ${race.category}` : null,
         race.department ? `Département: ${race.department} — ${DEPT_NAMES[race.department] || ''}` : null,
-        `Source: ${race.url}`,
+        race.url ? `Source: ${race.url}` : null,
       ].filter(Boolean).join('\n'),
       source: 'cyclisme-amateur',
       isTargetRace: true,
-      preparationEnabled: taperEnabled,
     });
 
     if (taperEnabled) {
@@ -363,7 +361,7 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
       const taperDate = addDays(raceDate, -10);
       if (differenceInDays(taperDate, today) >= 0) {
         onAddToCalendar({
-          title: `⚡ Affûtage — ${race.name}`,
+          title: `Affûtage — ${race.name}`,
           date: taperDate,
           type: 'Note',
           kind: 'training',
@@ -372,7 +370,7 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
         });
       }
       onAddToCalendar({
-        title: `💤 Récupération — ${race.name}`,
+        title: `Récupération — ${race.name}`,
         date: addDays(raceDate, 1),
         type: 'Note',
         kind: 'training',
@@ -382,8 +380,25 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
     }
 
     setSavedIds(prev => new Set([...prev, race.id]));
-    setSaveModal(null);
-  }, [saveModal, taperEnabled, onAddToCalendar, today]);
+    setAddedToast(race.name);
+    setTimeout(() => setAddedToast(null), 2500);
+  }, [taperEnabled, onAddToCalendar, today]);
+
+  // ── Add all races of a week ───────────────────────────────────────────────
+  const handleAddWeek = useCallback((days) => {
+    if (!onAddToCalendar) return;
+    let count = 0;
+    days.forEach(({ key }) => {
+      filteredRaces.filter(r => r.date === key && !alreadySaved(r)).forEach(race => {
+        handleAddRace(race);
+        count++;
+      });
+    });
+    if (count > 0) {
+      setAddedToast(`${count} course${count > 1 ? 's' : ''} ajoutée${count > 1 ? 's' : ''}`);
+      setTimeout(() => setAddedToast(null), 2500);
+    }
+  }, [filteredRaces, alreadySaved, handleAddRace, onAddToCalendar]);
 
   const alreadySaved = useCallback((race) => {
     if (savedIds.has(race.id)) return true;
@@ -410,9 +425,9 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
           <button key={f} onClick={() => setFedFilter(f)} style={{
             padding: '4px 11px', borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-mono)',
             fontWeight: 700, cursor: 'pointer', border: '1px solid',
-            borderColor: fedFilter === f ? (FED_COLORS[f] || 'var(--accent-cyan)') : 'var(--border)',
-            background: fedFilter === f ? `${FED_COLORS[f] || 'var(--accent-cyan)'}25` : 'var(--bg-2)',
-            color: fedFilter === f ? (FED_COLORS[f] || 'var(--accent-cyan)') : 'var(--text-3)',
+            borderColor: fedFilter === f ? (FED_COLORS[f] || 'var(--accent-orange)') : 'var(--border)',
+            background: fedFilter === f ? `${FED_COLORS[f] || 'var(--accent-orange)'}25` : 'var(--bg-2)',
+            color: fedFilter === f ? (FED_COLORS[f] || 'var(--accent-orange)') : 'var(--text-3)',
             transition: 'all 0.15s',
           }}>
             {f || 'Toutes'}
@@ -428,9 +443,9 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
           <button key={p.label} onClick={() => { setRangePreset(i); setCustomStart(''); setCustomEnd(''); setSelectedDate(null); }} style={{
             padding: '4px 10px', borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-mono)',
             fontWeight: 600, cursor: 'pointer', border: '1px solid',
-            borderColor: rangePreset === i && !customStart ? 'var(--accent-cyan)' : 'var(--border)',
-            background: rangePreset === i && !customStart ? 'rgba(34,211,238,0.12)' : 'var(--bg-2)',
-            color: rangePreset === i && !customStart ? 'var(--accent-cyan)' : 'var(--text-3)',
+            borderColor: rangePreset === i && !customStart ? 'var(--accent-orange)' : 'var(--border)',
+            background: rangePreset === i && !customStart ? 'rgba(249,115,22,0.12)' : 'var(--bg-2)',
+            color: rangePreset === i && !customStart ? 'var(--accent-orange)' : 'var(--text-3)',
             transition: 'all 0.15s',
           }}>
             {p.label}
@@ -456,8 +471,8 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
           {selectedDept && (
             <span style={{
               padding: '4px 10px', borderRadius: 20, fontSize: 11,
-              background: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.3)',
-              color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)',
+              background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.3)',
+              color: 'var(--accent-orange)', fontFamily: 'var(--font-mono)',
               display: 'flex', alignItems: 'center', gap: 6,
             }}>
               {selectedDept} — {DEPT_NAMES[selectedDept]}
@@ -468,8 +483,8 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
           {selectedDate && (
             <span style={{
               padding: '4px 10px', borderRadius: 20, fontSize: 11,
-              background: 'rgba(77,127,232,0.12)', border: '1px solid rgba(77,127,232,0.3)',
-              color: '#4d7fe8', fontFamily: 'var(--font-mono)',
+              background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.3)',
+              color: 'var(--accent-orange)', fontFamily: 'var(--font-mono)',
               display: 'flex', alignItems: 'center', gap: 6,
             }}>
               {format(parseISO(selectedDate), 'd MMM', { locale: fr })}
@@ -477,6 +492,17 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                 style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, lineHeight: 1 }}>✕</button>
             </span>
           )}
+          {/* Taper toggle */}
+          <button onClick={() => setTaperEnabled(p => !p)} style={{
+            padding: '4px 10px', borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-mono)',
+            fontWeight: 600, cursor: 'pointer', border: '1px solid',
+            borderColor: taperEnabled ? 'var(--accent-orange)' : 'var(--border)',
+            background: taperEnabled ? 'rgba(249,115,22,0.12)' : 'var(--bg-2)',
+            color: taperEnabled ? 'var(--accent-orange)' : 'var(--text-4)',
+            transition: 'all 0.15s',
+          }}>
+            {taperEnabled ? '⚡ Affûtage auto ON' : '⚡ Affûtage auto OFF'}
+          </button>
         </div>
       </div>
 
@@ -594,10 +620,10 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
           <div style={{ padding: '8px 14px', display: 'flex', gap: 14, flexWrap: 'wrap', borderTop: '1px solid var(--border)', alignItems: 'center' }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-4)', letterSpacing: '0.06em' }}>DÉPARTEMENTS</span>
             {[
-              { color: '#3b82f6', label: '1–2' },
-              { color: '#2563eb', label: '3–4' },
-              { color: '#1d4ed8', label: '5+' },
-              { color: '#22d3ee', label: 'Sélectionné' },
+              { color: '#f97316', label: '1–2' },
+              { color: '#ea580c', label: '3–4' },
+              { color: '#c2410c', label: '5+' },
+              { color: '#fff', label: 'Sélectionné' },
             ].map(({ color, label }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <div style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0 }} />
@@ -624,9 +650,9 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
               }} style={{
                 padding: '3px 9px', borderRadius: 5, fontSize: 10,
                 fontFamily: 'var(--font-mono)', cursor: 'pointer', border: '1px solid',
-                borderColor: selectedRegion === region ? 'var(--accent-cyan)' : 'var(--border)',
-                background: selectedRegion === region ? 'rgba(34,211,238,0.1)' : 'var(--bg-3)',
-                color: selectedRegion === region ? 'var(--accent-cyan)' : 'var(--text-4)',
+                borderColor: selectedRegion === region ? 'var(--accent-orange)' : 'var(--border)',
+                background: selectedRegion === region ? 'rgba(249,115,22,0.1)' : 'var(--bg-3)',
+                color: selectedRegion === region ? 'var(--accent-orange)' : 'var(--text-4)',
                 transition: 'all 0.12s',
               }}>
                 {region}
@@ -670,17 +696,26 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
               return (
                 <React.Fragment key={wi}>
                   {showMonth && (
-                    <div style={{ gridColumn: '1 / -1', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: 'var(--accent-blue)', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '6px 2px 3px', marginTop: wi > 0 ? 4 : 0 }}>
+                    <div style={{ gridColumn: '1 / -1', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: 'var(--accent-orange)', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '6px 2px 3px', marginTop: wi > 0 ? 4 : 0}}>
                       {format(firstDay.date, 'MMMM yyyy', { locale: fr })}
                     </div>
                   )}
                   <div style={{ display: 'grid', gridTemplateColumns: '28px repeat(7, 1fr)', gap: 3, marginBottom: 3 }}>
-                    {/* Week total */}
+                    {/* Week total + add all */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {weekTotal > 0 && (
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--accent-blue)', fontWeight: 700, background: 'rgba(77,127,232,0.15)', borderRadius: 4, padding: '1px 4px' }}>
+                        <button
+                          onClick={() => handleAddWeek(days)}
+                          title={`Ajouter les ${weekTotal} courses de cette semaine`}
+                          style={{
+                            fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--accent-orange)',
+                            fontWeight: 700, background: 'rgba(249,115,22,0.15)', borderRadius: 4,
+                            padding: '2px 4px', border: '1px solid rgba(249,115,22,0.3)',
+                            cursor: 'pointer', lineHeight: 1,
+                          }}
+                        >
                           {weekTotal}
-                        </span>
+                        </button>
                       )}
                     </div>
                     {days.map(({ date, key, count, inRange }) => {
@@ -697,24 +732,24 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                           style={{
                             padding: '5px 2px', borderRadius: 7, textAlign: 'center',
                             cursor: hasRaces && inRange ? 'pointer' : 'default',
-                            background: isSelected ? 'var(--accent-cyan)'
-                              : hasRaces ? 'rgba(77,127,232,0.18)'
+                            background: isSelected ? 'var(--accent-orange)'
+                              : hasRaces ? 'rgba(249,115,22,0.15)'
                               : 'var(--bg-2)',
-                            border: `1px solid ${isSelected ? 'var(--accent-cyan)' : isTodayCell ? 'rgba(255,255,255,0.3)' : 'transparent'}`,
+                            border: `1px solid ${isSelected ? 'var(--accent-orange)' : isTodayCell ? 'rgba(249,115,22,0.5)' : 'transparent'}`,
                             opacity: outOfRange ? 0.2 : isPast && !isSelected ? 0.45 : 1,
                             transition: 'all 0.12s',
                           }}
                         >
                           <div style={{
                             fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 700, lineHeight: 1.2,
-                            color: isSelected ? '#000' : isTodayCell ? 'var(--accent-cyan)' : 'var(--text-0)',
+                            color: isSelected ? '#fff' : isTodayCell ? 'var(--accent-orange)' : 'var(--text-0)',
                           }}>
                             {format(date, 'd')}
                           </div>
                           {hasRaces ? (
                             <div style={{
                               fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, marginTop: 1,
-                              color: isSelected ? '#000' : 'var(--accent-cyan)',
+                              color: isSelected ? '#fff' : 'var(--accent-orange)',
                             }}>
                               {count > 9 ? '9+' : count}
                             </div>
@@ -748,7 +783,7 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                 />
               </span>
               {filteredRaces.length > 0 && (
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent-cyan)', fontWeight: 700 }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent-orange)', fontWeight: 700 }}>
                   {filteredRaces.length} course{filteredRaces.length > 1 ? 's' : ''}
                 </span>
               )}
@@ -815,7 +850,7 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                       }}>
                         <span style={{
                           fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700,
-                          color: isWeekend ? 'var(--accent-cyan)' : 'var(--text-1)',
+                          color: isWeekend ? 'var(--accent-orange)' : 'var(--text-1)',
                           textTransform: 'uppercase', letterSpacing: '0.06em',
                         }}>
                           {dateObj ? format(dateObj, 'EEEE d MMMM', { locale: fr }) : '—'}
@@ -904,20 +939,20 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
                             {/* Add button */}
                             <button
                               disabled={saved}
-                              onClick={() => { setSaveModal(race); setTaperEnabled(true); }}
+                              onClick={() => handleAddRace(race)}
                               title={saved ? 'Déjà ajoutée' : 'Ajouter au calendrier'}
                               style={{
-                                flexShrink: 0, width: 24, height: 24,
+                                flexShrink: 0, width: 26, height: 26,
                                 borderRadius: 6, fontSize: 13, lineHeight: 1,
                                 fontWeight: 700, cursor: saved ? 'default' : 'pointer',
-                                border: `1px solid ${saved ? 'rgba(34,197,94,0.4)' : 'rgba(34,211,238,0.35)'}`,
-                                background: saved ? 'rgba(34,197,94,0.1)' : 'rgba(34,211,238,0.08)',
-                                color: saved ? '#22c55e' : 'var(--accent-cyan)',
+                                border: `1px solid ${saved ? 'rgba(34,197,94,0.4)' : 'rgba(249,115,22,0.4)'}`,
+                                background: saved ? 'rgba(34,197,94,0.1)' : 'rgba(249,115,22,0.1)',
+                                color: saved ? '#22c55e' : 'var(--accent-orange)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 transition: 'all 0.12s',
                               }}
-                              onMouseEnter={e => { if (!saved) { e.currentTarget.style.background = 'rgba(34,211,238,0.2)'; } }}
-                              onMouseLeave={e => { if (!saved) { e.currentTarget.style.background = 'rgba(34,211,238,0.08)'; } }}
+                              onMouseEnter={e => { if (!saved) e.currentTarget.style.background = 'rgba(249,115,22,0.25)'; }}
+                              onMouseLeave={e => { if (!saved) e.currentTarget.style.background = 'rgba(249,115,22,0.1)'; }}
                             >
                               {saved ? '✓' : '+'}
                             </button>
@@ -934,76 +969,18 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
         </div>
       </div>
 
-      {/* ── Save modal ── */}
-      {saveModal && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20 }}
-          onClick={() => setSaveModal(null)}
-        >
-          <div
-            style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, maxWidth: 400, width: '100%' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-0)', marginBottom: 4 }}>Ajouter cette course</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginBottom: 14 }}>
-              Informations sauvegardées dans votre calendrier
-            </div>
-
-            <div style={{ background: 'var(--bg-2)', borderRadius: 10, padding: '12px 14px', marginBottom: 14, borderLeft: '3px solid var(--accent-cyan)' }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-0)', marginBottom: 6 }}>{saveModal.name}</div>
-              {saveModal.date && (
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-2)', marginBottom: 3 }}>
-                  📅 {format(parseISO(saveModal.date), 'EEEE d MMMM yyyy', { locale: fr })}
-                  <span style={{ marginLeft: 8, color: 'var(--accent-cyan)' }}>{daysUntil(saveModal.date)}</span>
-                </div>
-              )}
-              {saveModal.department && (
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', marginBottom: 3 }}>
-                  📍 {saveModal.department} — {DEPT_NAMES[saveModal.department] || ''}
-                </div>
-              )}
-              {saveModal.federation && (
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: FED_COLORS[saveModal.federation] || 'var(--text-3)' }}>
-                  🏅 {saveModal.federation}{saveModal.category ? ` · ${saveModal.category}` : ''}
-                </div>
-              )}
-            </div>
-
-            {/* Taper toggle */}
-            <div
-              onClick={() => setTaperEnabled(p => !p)}
-              style={{
-                display: 'flex', alignItems: 'flex-start', gap: 12,
-                padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
-                background: taperEnabled ? 'rgba(34,211,238,0.07)' : 'var(--bg-2)',
-                border: `1px solid ${taperEnabled ? 'rgba(34,211,238,0.3)' : 'var(--border)'}`,
-                marginBottom: 16, transition: 'all 0.2s',
-              }}
-            >
-              <div style={{
-                width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 1,
-                border: `2px solid ${taperEnabled ? 'var(--accent-cyan)' : 'var(--border)'}`,
-                background: taperEnabled ? 'var(--accent-cyan)' : 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {taperEnabled && <span style={{ color: '#000', fontSize: 12, fontWeight: 900, lineHeight: 1 }}>✓</span>}
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-0)' }}>Activer la préparation course</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginTop: 3, lineHeight: 1.5 }}>
-                  Ajoute un rappel affûtage J-10 + récupération J+1.<br />
-                  Le plan IA s'adaptera automatiquement.
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn" style={{ flex: 1 }} onClick={() => setSaveModal(null)}>Annuler</button>
-              <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSaveRace}>
-                Sauvegarder
-              </button>
-            </div>
-          </div>
+      {/* ── Toast confirmation ── */}
+      {addedToast && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--bg-1)', border: '1px solid rgba(249,115,22,0.4)',
+          borderRadius: 10, padding: '10px 18px', zIndex: 9999,
+          display: 'flex', alignItems: 'center', gap: 8,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          fontFamily: 'var(--font-sans)', fontSize: 13, color: 'var(--text-0)',
+        }}>
+          <span style={{ color: 'var(--accent-green)', fontWeight: 700 }}>✓</span>
+          <span><strong style={{ color: 'var(--accent-orange)' }}>{addedToast}</strong> ajoutée au calendrier</span>
         </div>
       )}
     </div>
