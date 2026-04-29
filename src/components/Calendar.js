@@ -1415,35 +1415,9 @@ export default function Calendar({
                                                     );
                                                 })}
                                                 {totalPills > 3 && <div className="calendar-more">+{totalPills - 3} more</div>}
-                                                {totalPills === 0 && isSameMonth(day, cursor) && (() => {
-                                                    const suggestion = getDailySuggestion(dayKey, day.getDay());
-                                                    if (suggestion) {
-                                                        return (
-                                                            <div style={{
-                                                                fontSize: 10, padding: '3px 6px', borderRadius: 4,
-                                                                border: '1px dashed rgba(249,115,22,0.4)',
-                                                                background: 'rgba(249,115,22,0.06)',
-                                                                color: 'var(--accent-orange)',
-                                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                                gap: 4, cursor: 'pointer',
-                                                            }}>
-                                                                <span
-                                                                    onClick={(e) => { e.stopPropagation(); addLibraryWorkout(suggestion.workout, dayKey); }}
-                                                                    style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                                                    title={`Suggéré : ${suggestion.workout.title} — cliquer pour accepter`}
-                                                                >
-                                                                    ✦ {suggestion.workout.title}
-                                                                </span>
-                                                                <span
-                                                                    onClick={(e) => { e.stopPropagation(); dismissSuggestion(dayKey); }}
-                                                                    style={{ flexShrink: 0, opacity: 0.5, fontSize: 9 }}
-                                                                    title="Ignorer"
-                                                                >✕</span>
-                                                            </div>
-                                                        );
-                                                    }
-                                                    return <div className="calendar-drop-hint">+ add</div>;
-                                                })()}
+                                                {totalPills === 0 && isSameMonth(day, cursor) && (
+                                                    <div className="calendar-drop-hint">+ add</div>
+                                                )}
                                             </div>
                                         </div>
                                     );
@@ -1868,9 +1842,9 @@ export default function Calendar({
                         >
                             <div style={{ fontSize: 20 }}>✦</div>
                             <div style={{ flex: 1 }}>
-                                <div>Séances suggérées</div>
+                                <div>Préférences d'entraînement</div>
                                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-orange)', marginTop: 2 }}>
-                                    Configurez vos jours et intensités
+                                    Jours, durée et intensité par défaut
                                 </div>
                             </div>
                             <span style={{ fontSize: 14, color: 'var(--text-3)' }}>{showPrefsPanel ? '▲' : '▼'}</span>
@@ -1940,7 +1914,7 @@ export default function Calendar({
                                     );
                                 })}
                                 <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)' }}>
-                                    Les suggestions apparaissent sur le calendrier (✦). Cliquez pour accepter, ✕ pour ignorer.
+                                    Ces préférences alimentent le bouton "✦ Suggérer la semaine" dans la barre de navigation.
                                 </div>
                             </div>
                         )}
