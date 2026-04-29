@@ -494,7 +494,7 @@ function MatchList({ matches }) {
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.07em', marginBottom: 6 }}>
-        TOP ALLUMETTES
+        TOP ATTAQUES
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {top3.map((m, i) => (
@@ -508,7 +508,7 @@ function MatchList({ matches }) {
             borderLeft: '3px solid var(--accent-purple)',
           }}>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-2)' }}>
-              {formatDuration(m.startSec)} — {formatDuration(m.durationSec)} allumette
+              {formatDuration(m.startSec)} — {formatDuration(m.durationSec)} attaque
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: 'var(--accent-orange)' }}>
@@ -612,14 +612,14 @@ function RaceSection({ raceAnalysis, ftp }) {
       <SectionHeader
         title="Analyse de course"
         help={{ title: 'Analyse de course', content: [
-          { heading: 'Allumettes brûlées', text: 'Efforts dépassant 150% du FTP pendant ≥ 2 secondes consécutives. Chaque allumette brûlée consomme vos réserves anaérobies. Budget limité — dépensez-les stratégiquement.' },
+          { heading: 'Allumettes brûlées', text: 'Efforts dépassant 150% du FTP pendant ≥ 2 secondes consécutives. Chaque attaque brûlée consomme vos réserves anaérobies. Budget limité — dépensez-les stratégiquement.' },
           { heading: 'MMP — Max Mean Power', text: 'Meilleure puissance moyenne soutenue pour des durées clés (5s, 1min, 5min, 20min). Reflète votre profil de coureur.' },
           { heading: 'Distribution des zones', text: 'Temps passé dans chaque zone. Une course typique = beaucoup de Z2 avec des pics Z5/Z6 dans les moments clés.' },
-        ], tips: ['Peu d\'allumettes brûlées + bon résultat = gestion des efforts réussie', 'MMP 5min bas = manque de capacité VO2 — travaillez les intervalles 3–6min', '20min MMP ÷ 0.95 ≈ votre FTP estimé'] }}
+        ], tips: ['Peu d\'attaques brûlées + bon résultat = gestion des efforts réussie', 'MMP 5min bas = manque de capacité VO2 — travaillez les intervalles 3–6min', '20min MMP ÷ 0.95 ≈ votre FTP estimé'] }}
         badges={
           <>
             <Badge
-              label={`${matchCount} allumette${matchCount !== 1 ? 's' : ''}`}
+              label={`${matchCount} attaque${matchCount !== 1 ? 's' : ''}`}
               color="var(--accent-purple)"
               bg="rgba(155,121,245,0.12)"
             />
@@ -639,12 +639,12 @@ function RaceSection({ raceAnalysis, ftp }) {
           color: wAboveFTP > 30 ? '#f06060' : wAboveFTP > 15 ? '#f77f3a' : 'var(--text-2)',
         },
         {
-          label: 'ALLUMETTES BRÛLÉES',
+          label: 'ATTAQUES BRÛLÉES',
           value: matchCount,
           color: matchCount > 20 ? '#f06060' : matchCount > 10 ? '#f77f3a' : 'var(--accent-green)',
         },
         {
-          label: 'DURÉE TOTALE ALLUMETTES',
+          label: 'DURÉE TOTALE ATTAQUES',
           value: totalMatchDuration > 0 ? formatDuration(totalMatchDuration) : '0s',
           color: 'var(--accent-orange)',
         },

@@ -387,10 +387,13 @@ export function calcDailyNeeds(athlete, recentActivities = []) {
   // Base metabolic rate (simplified Mifflin)
   const bmr = weight * 24;
 
-  // Find today's or yesterday's training session
+  // Find today's or yesterday's training session (local dates, not UTC)
   const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-  const ystStr   = new Date(today - 86400000).toISOString().slice(0,10);
+  const pad = n => String(n).padStart(2, '0');
+  const localDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const todayStr = localDate(today);
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+  const ystStr = localDate(yesterday);
 
   const todayActs = recentActivities.filter(a =>
     (a.start_date_local || '').slice(0,10) === todayStr ||
