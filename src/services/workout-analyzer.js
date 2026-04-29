@@ -123,6 +123,17 @@ const workoutAnalyzer = {
       return { watts: [], heartrate: [], cadence: [], velocity: [] };
     }
 
+    // Intervals.icu returns [{type: "watts", data: [...]}, ...] — normalise to object
+    if (Array.isArray(rawStreams)) {
+      const normalized = {};
+      for (const stream of rawStreams) {
+        if (stream.type && Array.isArray(stream.data)) {
+          normalized[stream.type] = stream.data;
+        }
+      }
+      rawStreams = normalized;
+    }
+
     const extract = (key, aliases = []) => {
       for (const k of [key, ...aliases]) {
         const val = rawStreams[k];
