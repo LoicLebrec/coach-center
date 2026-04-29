@@ -26,6 +26,8 @@ import { intervalsService, buildIcuEventPayload } from '../services/intervals';
 import { buildRuleBasedWorkout, inferTrainingType } from '../services/workout-rules';
 import { LIBRARY_WORKOUTS as DEFAULT_LIBRARY_WORKOUTS } from '../data/workoutLibrary';
 import { fr as dateFnsFr } from 'date-fns/locale';
+import { loadProfile, isProfileComplete, buildWeekPlan, SESSION_DEFINITIONS } from '../services/athlete-profile';
+import AthleteProfileSetup from './AthleteProfileSetup';
 
 // ── Modern glassmorphic design system ───────────────────────────────
 const GLASS = {
@@ -446,127 +448,65 @@ export default function Calendar({
     };
 
     // ── Smart weekly suggestion ────────────────────────────────
-    const [weekSuggesting, setWeekSuggesting] = useState(false);
-    const [weekProposal, setWeekProposal] = useState(null); // { analysis, sessions: [{dateKey, workout, sessionType, reason, accepted}] }
+    const [weekSuggesting, setWeekSuggesting]   = useState(false);
+    const [weekProposal, setWeekProposal]         = useState(null);
+    const [showProfileSetup, setShowProfileSetup] = useState(false);
+    const [athleteProfile, setAthleteProfile]     = useState(() => loadProfile());
 
     const suggestWeek = () => {
+        // Show profile setup if not complete
+        if (!isProfileComplete(athleteProfile)) {
+            setShowProfileSetup(true);
+            return;
+        }
         setWeekSuggesting(true);
         try {
             const todayKey = format(new Date(), 'yyyy-MM-dd');
-
-            // ── 1. Athlete state ──
-            const sortedWellness = (wellness || [])
-                .filter(w => (w.id || w.date || '').slice(0, 10) <= todayKey)
-                .sort((a, b) => (b.id || b.date || '').localeCompare(a.id || a.date || ''));
-            const latestW = sortedWellness[0] || {};
-            const ctl  = Math.round(latestW.icu_ctl  || latestW.ctl  || 0);
-            const atl  = Math.round(latestW.icu_atl  || latestW.atl  || 0);
-            const tsb  = ctl - atl;
-            const ftp  = athlete?.icu_ftp || athlete?.ftp || 200;
-            const weight = athlete?.icu_weight || athlete?.weight || 70;
-
-            // ── 2. Weekly load history ──
-            const weekAgo      = format(addDays(new Date(), -7),  'yyyy-MM-dd');
-            const twoWeeksAgo  = format(addDays(new Date(), -14), 'yyyy-MM-dd');
-            const fourWeeksAgo = format(addDays(new Date(), -28), 'yyyy-MM-dd');
-
-            const tssInRange = (from, to) => (activities || [])
-                .filter(a => { const d = (a.start_date_local || a.date || '').slice(0,10); return d >= from && d < to; })
-                .reduce((s, a) => s + (a.icu_training_load || 0), 0);
-
-            const tssLastWeek    = Math.round(tssInRange(weekAgo, todayKey));
-            const tssWeekBefore  = Math.round(tssInRange(twoWeeksAgo, weekAgo));
-            const avgWeeklyTss   = Math.round(tssInRange(fourWeeksAgo, todayKey) / 4);
-            const weekLoadRatio  = tssWeekBefore > 0 ? tssLastWeek / tssWeekBefore : 1;
-
-            // ── 3. Detect hard week pattern (3rd week of block) ──
-            const tssWeek3 = Math.round(tssInRange(format(addDays(new Date(),-21), 'yyyy-MM-dd'), twoWeeksAgo));
-            const consecutiveHardWeeks = [tssWeek3, tssWeekBefore, tssLastWeek].filter(t => t > avgWeeklyTss * 0.9).length;
-
-            // ── 4. Upcoming races ──
-            const threeWeeksAhead = format(addDays(new Date(), 21), 'yyyy-MM-dd');
-            const twoWeeksAhead   = format(addDays(new Date(), 14), 'yyyy-MM-dd');
-            const upcomingRace = (plannedEvents || [])
-                .filter(e => e.kind === 'race' || (e.title || '').toLowerCase().includes('course') || (e.title || '').toLowerCase().includes('race'))
-                .find(e => {
-                    const d = (e.start_date_local || '').slice(0, 10);
-                    return d >= todayKey && d <= threeWeeksAhead;
-                });
-            const daysToRace = upcomingRace
-                ? Math.round((new Date(upcomingRace.start_date_local?.slice(0,10)) - new Date(todayKey)) / 86400000)
-                : null;
-
-            // ── 5. Determine week type with reasoning ──
-            let weekType = 'build';
-            const reasons = [];
-
-            if (upcomingRace && daysToRace <= 14) {
-                weekType = 'taper';
-                reasons.push(`🏁 Course "${upcomingRace.title}" dans ${daysToRace} jours → semaine d'affûtage`);
-            } else if (tsb < -25) {
-                weekType = 'recovery';
-                reasons.push(`😓 TSB = ${tsb} (très fatigué, CTL ${ctl} − ATL ${atl}) → récupération obligatoire`);
-            } else if (tsb < -12) {
-                weekType = 'maintain';
-                reasons.push(`😮‍💨 TSB = ${tsb} (fatigué) → charge maintenue, pas d'augmentation`);
-            } else if (consecutiveHardWeeks >= 3) {
-                weekType = 'recovery';
-                reasons.push(`📉 3 semaines de charge élevée consécutives → semaine de récupération planifiée`);
-            } else if (weekLoadRatio > 1.15) {
-                weekType = 'maintain';
-                reasons.push(`⚠️ Semaine dernière +${Math.round((weekLoadRatio-1)*100)}% vs la précédente → on consolide avant d'augmenter`);
-            } else if (tsb > 8) {
-                weekType = 'build';
-                reasons.push(`💪 TSB = +${tsb} (frais) → bon moment pour une semaine de charge`);
-            } else {
-                weekType = 'build';
-                reasons.push(`📈 TSB = ${tsb}, forme stable → progression de charge (+8% vs moyenne)`);
-            }
-
-            if (avgWeeklyTss > 0) reasons.push(`📊 Charge moyenne 4 sem : ${avgWeeklyTss} TSS/sem → cible ${Math.round(avgWeeklyTss * ({recovery:0.6,maintain:1,build:1.08,taper:0.5}[weekType]))} TSS cette semaine`);
-            if (ctl > 0) reasons.push(`🎯 Fitness (CTL) = ${ctl}, Fatigue (ATL) = ${atl}`);
-
-            // ── 6. Session type per day ──
-            const planByType = {
-                recovery: { 1:'recovery', 2:null,         3:'endurance', 4:null,        5:'recovery',  6:null,   0:null },
-                maintain: { 1:'endurance',2:null,         3:'intervals', 4:null,        5:'endurance', 6:'long', 0:null },
-                build:    { 1:'endurance',2:'intervals',  3:null,        4:'intervals', 5:'endurance', 6:null,   0:'long' },
-                taper:    { 1:'endurance',2:null,         3:'intervals', 4:null,        5:'recovery',  6:null,   0:null },
-            };
-
-            const sessionReasonByType = {
-                endurance: `Endurance Z2 — développe la base aérobie sans accumuler de fatigue`,
-                intervals:  `Intervalles — stimule VO2max et FTP, à faire frais`,
-                long:       `Longue sortie — volume aérobie, développe l'économie et les graisses comme carburant`,
-                recovery:   `Récupération active — maintient le flux sanguin sans ajouter de fatigue`,
-            };
-
-            // ── 7. Build proposal ──
             const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-            const sessions = [];
-            for (let i = 0; i < 7; i++) {
-                const d = addDays(weekStart, i);
-                const dk = format(d, 'yyyy-MM-dd');
-                const dow = d.getDay(); // 0=Sun, 1=Mon...
-                const sessionType = planByType[weekType][dow];
-                if (!sessionType) continue;
-                const existing = byDayAll.get(dk) || [];
-                if (existing.some(e => e.planned)) continue;
-                const workout = getSuggestedWorkout(sessionType);
-                if (!workout) continue;
-                const dayTsb = getTSB(dk);
-                const tsbNote = dayTsb < -15 ? ` (TSB ${dayTsb} → intensité modérée)` : dayTsb > 5 ? ` (TSB +${dayTsb} → tu seras frais)` : '';
-                sessions.push({
-                    dateKey: dk,
-                    dateLabel: format(d, 'EEEE d MMM', { locale: dateFnsFr }),
-                    workout,
-                    sessionType,
-                    reason: sessionReasonByType[sessionType] + tsbNote,
-                    accepted: true,
-                });
-            }
+            const weekDates = Array.from({ length: 7 }, (_, i) => format(addDays(weekStart, i), 'yyyy-MM-dd'));
 
-            setWeekProposal({ weekType, reasons, sessions, ctl, atl, tsb, avgWeeklyTss, upcomingRace });
+            // Wellness — get latest entry
+            const latestW = (wellness || [])
+                .filter(w => (w.id || w.date || '').slice(0, 10) <= todayKey)
+                .sort((a, b) => (b.id || b.date || '').localeCompare(a.id || a.date || ''))[0] || {};
+            const ctl = Math.round(latestW.icu_ctl || latestW.ctl || 0);
+            const atl = Math.round(latestW.icu_atl || latestW.atl || 0);
+            const tsb = ctl - atl;
+
+            const fourWeeksAgo = format(addDays(new Date(), -28), 'yyyy-MM-dd');
+            const avgWeeklyTss = Math.round(
+                (activities || []).filter(a => (a.start_date_local || a.date || '').slice(0, 10) >= fourWeeksAgo)
+                    .reduce((s, a) => s + (a.icu_training_load || 0), 0) / 4
+            );
+
+            // Use profile data (already loaded — no re-ask)
+            const result = buildWeekPlan({
+                profile: athleteProfile,
+                ctl, atl, tsb, avgWeeklyTss,
+                activities, plannedEvents, wellness, weekDates,
+            });
+
+            // Map each session to a library workout
+            const sessions = (result.sessions || []).map(s => {
+                const def = SESSION_DEFINITIONS[s.sessionType] || {};
+                const libraryType =
+                    s.sessionType === 'intervals_short' ? 'intervals' :
+                    s.sessionType === 'activation'      ? 'endurance' :
+                    s.sessionType === 'endurance_easy'  ? 'recovery'  :
+                    s.sessionType === 'race'            ? null : s.sessionType;
+                const workout = libraryType ? getSuggestedWorkout(libraryType) || libraryWorkouts[0] : null;
+                return {
+                    ...s,
+                    dateLabel: format(new Date(s.dateKey + 'T12:00:00'), 'EEEE d MMM', { locale: dateFnsFr }),
+                    workout,
+                    sessionLabel: def.label || s.sessionType,
+                    sessionColor: def.color || '#f97316',
+                    sessionDuration: def.duration || '',
+                    accepted: true,
+                };
+            });
+
+            setWeekProposal({ ...result, sessions, ctl, atl, tsb, avgWeeklyTss });
         } catch (err) {
             setPlannerError('Erreur : ' + err.message);
         } finally {
@@ -2688,6 +2628,18 @@ export default function Calendar({
                 </div>
             )}
 
+            {/* ── Athlete profile setup ── */}
+            {showProfileSetup && (
+                <AthleteProfileSetup
+                    initialProfile={athleteProfile}
+                    onComplete={(profile) => {
+                        setAthleteProfile(profile);
+                        setShowProfileSetup(false);
+                        setTimeout(() => suggestWeek(), 50);
+                    }}
+                />
+            )}
+
             {/* ── Week proposal modal ── */}
             {weekProposal && (
                 <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:20 }}
@@ -2728,7 +2680,7 @@ export default function Calendar({
                         <div style={{ fontFamily:'var(--font-mono)', fontSize:10, color:'var(--text-4)', letterSpacing:'0.07em', marginBottom:8 }}>SÉANCES PROPOSÉES</div>
                         <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
                             {weekProposal.sessions.map((s, i) => {
-                                const typeColor = { endurance:'#22c55e', intervals:'#f97316', long:'#f59e0b', recovery:'#94a3b8' }[s.sessionType] || '#f97316';
+                                const typeColor = s.sessionColor || { endurance:'#22c55e', intervals:'#f97316', long:'#f59e0b', recovery:'#94a3b8' }[s.sessionType] || '#f97316';
                                 return (
                                     <div key={i} style={{
                                         borderRadius:10, padding:'12px 14px',
@@ -2754,8 +2706,9 @@ export default function Calendar({
                                             <div style={{ flex:1 }}>
                                                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
                                                     <span style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'var(--text-3)' }}>{s.dateLabel}</span>
-                                                    <span style={{ fontFamily:'var(--font-mono)', fontSize:9, padding:'1px 6px', borderRadius:10, background:`${typeColor}22`, color:typeColor, border:`1px solid ${typeColor}44` }}>
-                                                        {{ endurance:'ENDURANCE', intervals:'INTERVALLES', long:'LONGUE', recovery:'RÉCUPÉRATION' }[s.sessionType]}
+                                                    <span style={{ fontFamily:'var(--font-mono)', fontSize:9, padding:'1px 6px', borderRadius:10, background:`${typeColor}22`, color:typeColor, border:`1px solid ${typeColor}44`, whiteSpace:'nowrap' }}>
+                                                        {s.sessionLabel || s.sessionType}
+                                                        {s.sessionDuration && ` · ${s.sessionDuration}`}
                                                     </span>
                                                 </div>
                                                 <div style={{ fontSize:13, fontWeight:700, color:'var(--text-0)', marginBottom:4 }}>{s.workout.title}</div>
@@ -2776,6 +2729,9 @@ export default function Calendar({
 
                         {/* Actions */}
                         <div style={{ display:'flex', gap:10 }}>
+                            <button className="btn" onClick={() => { setWeekProposal(null); setShowProfileSetup(true); }} title="Modifier ton profil coureur">
+                                ✎ Profil
+                            </button>
                             <button className="btn" style={{ flex:1 }} onClick={() => setWeekProposal(null)}>Annuler</button>
                             <button className="btn btn-primary" style={{ flex:2 }} onClick={confirmWeekProposal}
                                 disabled={!weekProposal.sessions.some(s => s.accepted)}>
