@@ -385,6 +385,13 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
   }, [taperEnabled, onAddToCalendar, today]);
 
   // ── Add all races of a week ───────────────────────────────────────────────
+  const alreadySaved = useCallback((race) => {
+    if (savedIds.has(race.id)) return true;
+    return plannedEvents.some(e =>
+      e.source === 'cyclisme-amateur' && (e.notes || '').includes(race.url)
+    );
+  }, [savedIds, plannedEvents]);
+
   const handleAddWeek = useCallback((days) => {
     if (!onAddToCalendar) return;
     let count = 0;
@@ -399,13 +406,6 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
       setTimeout(() => setAddedToast(null), 2500);
     }
   }, [filteredRaces, alreadySaved, handleAddRace, onAddToCalendar]);
-
-  const alreadySaved = useCallback((race) => {
-    if (savedIds.has(race.id)) return true;
-    return plannedEvents.some(e =>
-      e.source === 'cyclisme-amateur' && (e.notes || '').includes(race.url)
-    );
-  }, [savedIds, plannedEvents]);
 
   const daysUntil = (dateStr) => {
     const d = differenceInDays(parseISO(dateStr), today);
