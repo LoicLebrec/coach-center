@@ -909,17 +909,18 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
       }
 
       const stravaConnected = stravaService.isConfigured();
+      const stravaId = activity?.strava_id || activity?.external_id || null;
       let rawStreams = null;
       let rawIntervals = [];
       let source = 'none';
 
       // ── Try Strava first — richer second-by-second data ──────────────
-      if (stravaConnected) {
+      if (stravaConnected && stravaId) {
         try {
           const [stravaStreams, stravaLaps, stravaDetail] = await Promise.allSettled([
-            stravaService.getActivityStreams(id, ['watts', 'heartrate', 'cadence', 'velocity_smooth']),
-            stravaService.getActivityLaps(id),
-            stravaService.getActivity(id),
+            stravaService.getActivityStreams(stravaId, ['watts', 'heartrate', 'cadence', 'velocity_smooth']),
+            stravaService.getActivityLaps(stravaId),
+            stravaService.getActivity(stravaId),
           ]);
 
           if (stravaStreams.status === 'fulfilled' && stravaStreams.value) {
