@@ -176,7 +176,7 @@ export default function App() {
   // Handle ?token= redirect coming back from Google OAuth
   const _urlParams = new URLSearchParams(window.location.search);
   if (_urlParams.get('token') && _urlParams.get('userId')) {
-    backendService.token  = _urlParams.get('token');
+    backendService.token = _urlParams.get('token');
     backendService.userId = _urlParams.get('userId');
     backendService.saveToStorage();
     window.history.replaceState({}, '', window.location.pathname);
@@ -192,7 +192,7 @@ export default function App() {
     if (!authed || !backendService.isAuthenticated()) return;
     backendService.getCurrentUser()
       .then(u => { if (u) setCurrentUser(u); })
-      .catch(() => {});
+      .catch(() => { });
   }, [authed]);
 
   const [view, setView] = useState(VIEWS.DASHBOARD);
@@ -1087,14 +1087,14 @@ export default function App() {
             <svg className="sidebar-logo-mark" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="lg1" x1="0" y1="0" x2="38" y2="38" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#ff9a5c"/>
-                  <stop offset="100%" stopColor="#d94c00"/>
+                  <stop offset="0%" stopColor="#ff9a5c" />
+                  <stop offset="100%" stopColor="#d94c00" />
                 </linearGradient>
               </defs>
-              <rect width="38" height="38" rx="10" fill="url(#lg1)"/>
+              <rect width="38" height="38" rx="10" fill="url(#lg1)" />
               {/* Bold speed-chevron mark */}
-              <path d="M10 12 L20 19 L10 26" stroke="rgba(255,255,255,0.35)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M18 12 L28 19 L18 26" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M10 12 L20 19 L10 26" stroke="rgba(255,255,255,0.35)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M18 12 L28 19 L18 26" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span className="sidebar-logo-wordmark">
               <span className="sidebar-logo-title">Coach Center</span>
@@ -1107,73 +1107,73 @@ export default function App() {
         <nav className="sidebar-nav">
           <div className="nav-section-label">Training</div>
 
-          <button className={`nav-item${view === VIEWS.COACH ? ' active coach-nav-active' : ''}`} onClick={() => setView(VIEWS.COACH)}>
-            <ZapIcon className="nav-icon" size={16}/>
-            <span>APEX Coach</span>
-          </button>
           <button className={`nav-item ${view === VIEWS.ATHLETE_PROFILE ? 'active' : ''}`} onClick={() => setView(VIEWS.ATHLETE_PROFILE)}>
-            <UserIcon className="nav-icon" size={15}/>
+            <UserIcon className="nav-icon" size={15} />
             <span>Athlete Profile</span>
           </button>
+          <button className={`nav-item${view === VIEWS.COACH ? ' active coach-nav-active' : ''}`} onClick={() => setView(VIEWS.COACH)}>
+            <ZapIcon className="nav-icon" size={16} />
+            <span>APEX Coach</span>
+          </button>
           <button className={`nav-item ${view === VIEWS.WORKOUT_BUILDER ? 'active' : ''}`} onClick={() => setView(VIEWS.WORKOUT_BUILDER)}>
-            <DumbbellIcon className="nav-icon" size={15}/>
+            <DumbbellIcon className="nav-icon" size={15} />
             <span>Workout Builder</span>
           </button>
           <button className={`nav-item ${view === VIEWS.GPX_BUILDER ? 'active' : ''}`} onClick={() => setView(VIEWS.GPX_BUILDER)}>
-            <MapIcon className="nav-icon" size={15}/>
+            <MapIcon className="nav-icon" size={15} />
             <span>Route Builder</span>
           </button>
           <button className={`nav-item ${view === VIEWS.RACE_CALENDAR ? 'active' : ''}`} onClick={() => setView(VIEWS.RACE_CALENDAR)}>
-            <TrophyIcon className="nav-icon" size={15}/>
+            <TrophyIcon className="nav-icon" size={15} />
             <span>Calendrier courses</span>
           </button>
           <button className={`nav-item ${view === VIEWS.NUTRITION ? 'active' : ''}`} onClick={() => setView(VIEWS.NUTRITION)}>
-            <SaladIcon className="nav-icon" size={15}/>
+            <SaladIcon className="nav-icon" size={15} />
             <span>Nutrition</span>
           </button>
 
           <div className="nav-section-label">Analytics</div>
 
-          <button className={`nav-item ${view === VIEWS.WORKOUT_ANALYSIS ? 'active' : ''}`} onClick={() => setView(VIEWS.WORKOUT_ANALYSIS)}>
-            <BarChartIcon className="nav-icon" size={15}/>
-            <span>Workout Analysis</span>
-          </button>
           <button className={`nav-item ${view === VIEWS.DASHBOARD ? 'active' : ''}`} onClick={() => setView(VIEWS.DASHBOARD)}>
-            <DashboardIcon className="nav-icon" size={15}/>
+            <DashboardIcon className="nav-icon" size={15} />
             <span>Dashboard</span>
           </button>
-          <button className={`nav-item ${view === VIEWS.PMC ? 'active' : ''}`} onClick={() => setView(VIEWS.PMC)}>
-            <TrendingUpIcon className="nav-icon" size={15}/>
-            <span>PMC / Form</span>
+          <button className={`nav-item ${view === VIEWS.CALENDAR ? 'active' : ''}`} onClick={() => setView(VIEWS.CALENDAR)}>
+            <CalendarIcon className="nav-icon" size={15} />
+            <span>Calendar</span>
           </button>
           <button className={`nav-item ${view === VIEWS.ACTIVITIES ? 'active' : ''}`} onClick={() => setView(VIEWS.ACTIVITIES)}>
-            <BikeIcon className="nav-icon" size={15}/>
+            <BikeIcon className="nav-icon" size={15} />
             <span>Activities</span>
           </button>
+          <button className={`nav-item ${view === VIEWS.WORKOUT_ANALYSIS ? 'active' : ''}`} onClick={() => setView(VIEWS.WORKOUT_ANALYSIS)}>
+            <BarChartIcon className="nav-icon" size={15} />
+            <span>Workout Analysis</span>
+          </button>
           <button className={`nav-item ${view === VIEWS.WEEKLY ? 'active' : ''}`} onClick={() => setView(VIEWS.WEEKLY)}>
-            <ActivityIcon className="nav-icon" size={15}/>
+            <ActivityIcon className="nav-icon" size={15} />
             <span>Weekly Load</span>
           </button>
-          <button className={`nav-item ${view === VIEWS.CALENDAR ? 'active' : ''}`} onClick={() => setView(VIEWS.CALENDAR)}>
-            <CalendarIcon className="nav-icon" size={15}/>
-            <span>Calendar</span>
+          <button className={`nav-item ${view === VIEWS.PMC ? 'active' : ''}`} onClick={() => setView(VIEWS.PMC)}>
+            <TrendingUpIcon className="nav-icon" size={15} />
+            <span>PMC / Form</span>
           </button>
         </nav>
 
         {/* ── Footer ── */}
         <div className="sidebar-footer">
           <div className="sidebar-conn-row">
-            <span className={`sidebar-conn-dot ${connections.intervals ? 'on' : ''}`} title="Intervals.icu"/>
-            <span className={`sidebar-conn-dot ${connections.strava ? 'on' : ''}`} title="Strava"/>
-            <span className={`sidebar-conn-dot ${connections.wahoo ? 'on' : ''}`} title="Wahoo"/>
-            <span className={`sidebar-conn-dot ${connections.garmin ? 'on-yellow' : ''}`} title="Garmin"/>
+            <span className={`sidebar-conn-dot ${connections.intervals ? 'on' : ''}`} title="Intervals.icu" />
+            <span className={`sidebar-conn-dot ${connections.strava ? 'on' : ''}`} title="Strava" />
+            <span className={`sidebar-conn-dot ${connections.wahoo ? 'on' : ''}`} title="Wahoo" />
+            <span className={`sidebar-conn-dot ${connections.garmin ? 'on-yellow' : ''}`} title="Garmin" />
             <span className="sidebar-conn-label">Sources</span>
           </div>
 
           {requiresAuth && currentUser && (
             <div className="sidebar-user">
               {currentUser.avatar_url
-                ? <img src={currentUser.avatar_url} alt="" className="sidebar-user-avatar"/>
+                ? <img src={currentUser.avatar_url} alt="" className="sidebar-user-avatar" />
                 : <div className="sidebar-user-initials">{(currentUser.name || currentUser.email || '?')[0].toUpperCase()}</div>
               }
               <span className="sidebar-user-name">{currentUser.name || currentUser.email}</span>
@@ -1181,13 +1181,13 @@ export default function App() {
           )}
 
           <button className={`nav-item sidebar-settings-btn ${view === VIEWS.SETTINGS ? 'active' : ''}`} onClick={() => setView(VIEWS.SETTINGS)}>
-            <SettingsIcon className="nav-icon" size={14}/>
+            <SettingsIcon className="nav-icon" size={14} />
             <span>Settings</span>
           </button>
 
           {requiresAuth && (
             <button className="nav-item sidebar-logout-btn" onClick={() => { backendService.logout(); setAuthed(false); setCurrentUser(null); }}>
-              <LogOutIcon className="nav-icon" size={14}/>
+              <LogOutIcon className="nav-icon" size={14} />
               <span>Se déconnecter</span>
             </button>
           )}
