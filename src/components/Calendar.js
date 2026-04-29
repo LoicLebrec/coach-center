@@ -25,6 +25,7 @@ import { exportWorkoutFit, exportWorkoutFitFromBlocks, hasWorkoutContent, export
 import { intervalsService, buildIcuEventPayload } from '../services/intervals';
 import { buildRuleBasedWorkout, inferTrainingType } from '../services/workout-rules';
 import { LIBRARY_WORKOUTS as DEFAULT_LIBRARY_WORKOUTS } from '../data/workoutLibrary';
+import { fr as dateFnsFr } from 'date-fns/locale';
 
 // ── Modern glassmorphic design system ───────────────────────────────
 const GLASS = {
@@ -446,85 +447,138 @@ export default function Calendar({
 
     // ── Smart weekly suggestion ────────────────────────────────
     const [weekSuggesting, setWeekSuggesting] = useState(false);
+    const [weekProposal, setWeekProposal] = useState(null); // { analysis, sessions: [{dateKey, workout, sessionType, reason, accepted}] }
 
-    const suggestWeek = async () => {
+    const suggestWeek = () => {
         setWeekSuggesting(true);
         try {
-            // 1. Get current athlete state from latest wellness
             const todayKey = format(new Date(), 'yyyy-MM-dd');
-            const recentWellness = (wellness || [])
+
+            // ── 1. Athlete state ──
+            const sortedWellness = (wellness || [])
                 .filter(w => (w.id || w.date || '').slice(0, 10) <= todayKey)
                 .sort((a, b) => (b.id || b.date || '').localeCompare(a.id || a.date || ''));
-            const latestW = recentWellness[0] || {};
-            const ctl = latestW.icu_ctl || latestW.ctl || 0;
-            const atl = latestW.icu_atl || latestW.atl || 0;
-            const tsb = Math.round(ctl - atl);
-            const ftp = athlete?.icu_ftp || athlete?.ftp || 200;
+            const latestW = sortedWellness[0] || {};
+            const ctl  = Math.round(latestW.icu_ctl  || latestW.ctl  || 0);
+            const atl  = Math.round(latestW.icu_atl  || latestW.atl  || 0);
+            const tsb  = ctl - atl;
+            const ftp  = athlete?.icu_ftp || athlete?.ftp || 200;
+            const weight = athlete?.icu_weight || athlete?.weight || 70;
 
-            // 2. Compute avg weekly TSS from last 4 weeks
+            // ── 2. Weekly load history ──
+            const weekAgo      = format(addDays(new Date(), -7),  'yyyy-MM-dd');
+            const twoWeeksAgo  = format(addDays(new Date(), -14), 'yyyy-MM-dd');
             const fourWeeksAgo = format(addDays(new Date(), -28), 'yyyy-MM-dd');
-            const recentActs = (activities || []).filter(a => {
-                const d = (a.start_date_local || a.date || '').slice(0, 10);
-                return d >= fourWeeksAgo && d <= todayKey;
-            });
-            const totalRecentTss = recentActs.reduce((s, a) => s + (a.icu_training_load || 0), 0);
-            const avgWeeklyTss = Math.round(totalRecentTss / 4);
 
-            // 3. Determine week type
-            let weekType = 'build';
-            if (tsb < -20) weekType = 'recovery';
-            else if (tsb < -10) weekType = 'maintain';
-            else if (tsb > 10) weekType = 'build';
+            const tssInRange = (from, to) => (activities || [])
+                .filter(a => { const d = (a.start_date_local || a.date || '').slice(0,10); return d >= from && d < to; })
+                .reduce((s, a) => s + (a.icu_training_load || 0), 0);
 
-            // 4. Check for upcoming races in next 3 weeks
+            const tssLastWeek    = Math.round(tssInRange(weekAgo, todayKey));
+            const tssWeekBefore  = Math.round(tssInRange(twoWeeksAgo, weekAgo));
+            const avgWeeklyTss   = Math.round(tssInRange(fourWeeksAgo, todayKey) / 4);
+            const weekLoadRatio  = tssWeekBefore > 0 ? tssLastWeek / tssWeekBefore : 1;
+
+            // ── 3. Detect hard week pattern (3rd week of block) ──
+            const tssWeek3 = Math.round(tssInRange(format(addDays(new Date(),-21), 'yyyy-MM-dd'), twoWeeksAgo));
+            const consecutiveHardWeeks = [tssWeek3, tssWeekBefore, tssLastWeek].filter(t => t > avgWeeklyTss * 0.9).length;
+
+            // ── 4. Upcoming races ──
             const threeWeeksAhead = format(addDays(new Date(), 21), 'yyyy-MM-dd');
-            const upcomingRace = (plannedEvents || []).find(e =>
-                e.kind === 'race' && e.start_date_local?.slice(0, 10) >= todayKey
-                && e.start_date_local?.slice(0, 10) <= threeWeeksAhead
-            );
-            if (upcomingRace) weekType = 'taper';
+            const twoWeeksAhead   = format(addDays(new Date(), 14), 'yyyy-MM-dd');
+            const upcomingRace = (plannedEvents || [])
+                .filter(e => e.kind === 'race' || (e.title || '').toLowerCase().includes('course') || (e.title || '').toLowerCase().includes('race'))
+                .find(e => {
+                    const d = (e.start_date_local || '').slice(0, 10);
+                    return d >= todayKey && d <= threeWeeksAhead;
+                });
+            const daysToRace = upcomingRace
+                ? Math.round((new Date(upcomingRace.start_date_local?.slice(0,10)) - new Date(todayKey)) / 86400000)
+                : null;
 
-            // 5. Target TSS for the week
-            const targetTssMap = { recovery: Math.round(avgWeeklyTss * 0.6), maintain: avgWeeklyTss, build: Math.round(avgWeeklyTss * 1.08), taper: Math.round(avgWeeklyTss * 0.5) };
-            const targetTss = targetTssMap[weekType] || avgWeeklyTss;
+            // ── 5. Determine week type with reasoning ──
+            let weekType = 'build';
+            const reasons = [];
 
-            // 6. Build week plan per training day
-            const weekDayKeys = Array.from({ length: 7 }, (_, i) => {
-                const d = startOfWeek(new Date(), { weekStartsOn: 1 });
-                return format(addDays(d, i), 'yyyy-MM-dd');
-            });
+            if (upcomingRace && daysToRace <= 14) {
+                weekType = 'taper';
+                reasons.push(`🏁 Course "${upcomingRace.title}" dans ${daysToRace} jours → semaine d'affûtage`);
+            } else if (tsb < -25) {
+                weekType = 'recovery';
+                reasons.push(`😓 TSB = ${tsb} (très fatigué, CTL ${ctl} − ATL ${atl}) → récupération obligatoire`);
+            } else if (tsb < -12) {
+                weekType = 'maintain';
+                reasons.push(`😮‍💨 TSB = ${tsb} (fatigué) → charge maintenue, pas d'augmentation`);
+            } else if (consecutiveHardWeeks >= 3) {
+                weekType = 'recovery';
+                reasons.push(`📉 3 semaines de charge élevée consécutives → semaine de récupération planifiée`);
+            } else if (weekLoadRatio > 1.15) {
+                weekType = 'maintain';
+                reasons.push(`⚠️ Semaine dernière +${Math.round((weekLoadRatio-1)*100)}% vs la précédente → on consolide avant d'augmenter`);
+            } else if (tsb > 8) {
+                weekType = 'build';
+                reasons.push(`💪 TSB = +${tsb} (frais) → bon moment pour une semaine de charge`);
+            } else {
+                weekType = 'build';
+                reasons.push(`📈 TSB = ${tsb}, forme stable → progression de charge (+8% vs moyenne)`);
+            }
 
-            const sessionTypeByWeekType = {
-                recovery: ['recovery', null, 'endurance', null, 'recovery', null, null],
-                maintain: ['endurance', null, 'intervals', null, 'endurance', null, 'long'],
-                build:    ['endurance', 'intervals', null, 'intervals', 'endurance', null, 'long'],
-                taper:    ['endurance', null, 'intervals', null, 'recovery', null, null],
+            if (avgWeeklyTss > 0) reasons.push(`📊 Charge moyenne 4 sem : ${avgWeeklyTss} TSS/sem → cible ${Math.round(avgWeeklyTss * ({recovery:0.6,maintain:1,build:1.08,taper:0.5}[weekType]))} TSS cette semaine`);
+            if (ctl > 0) reasons.push(`🎯 Fitness (CTL) = ${ctl}, Fatigue (ATL) = ${atl}`);
+
+            // ── 6. Session type per day ──
+            const planByType = {
+                recovery: { 1:'recovery', 2:null,         3:'endurance', 4:null,        5:'recovery',  6:null,   0:null },
+                maintain: { 1:'endurance',2:null,         3:'intervals', 4:null,        5:'endurance', 6:'long', 0:null },
+                build:    { 1:'endurance',2:'intervals',  3:null,        4:'intervals', 5:'endurance', 6:null,   0:'long' },
+                taper:    { 1:'endurance',2:null,         3:'intervals', 4:null,        5:'recovery',  6:null,   0:null },
             };
-            const plan = sessionTypeByWeekType[weekType];
 
-            let added = 0;
+            const sessionReasonByType = {
+                endurance: `Endurance Z2 — développe la base aérobie sans accumuler de fatigue`,
+                intervals:  `Intervalles — stimule VO2max et FTP, à faire frais`,
+                long:       `Longue sortie — volume aérobie, développe l'économie et les graisses comme carburant`,
+                recovery:   `Récupération active — maintient le flux sanguin sans ajouter de fatigue`,
+            };
+
+            // ── 7. Build proposal ──
+            const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+            const sessions = [];
             for (let i = 0; i < 7; i++) {
-                const dk = weekDayKeys[i];
-                const dow = new Date(dk).getDay();
-                const sessionType = plan[new Date(dk + 'T12:00:00').getDay() === 0 ? 6 : new Date(dk + 'T12:00:00').getDay() - 1];
+                const d = addDays(weekStart, i);
+                const dk = format(d, 'yyyy-MM-dd');
+                const dow = d.getDay(); // 0=Sun, 1=Mon...
+                const sessionType = planByType[weekType][dow];
                 if (!sessionType) continue;
-                // Skip if already has planned event
                 const existing = byDayAll.get(dk) || [];
                 if (existing.some(e => e.planned)) continue;
                 const workout = getSuggestedWorkout(sessionType);
                 if (!workout) continue;
-                await addLibraryWorkout(workout, dk);
-                added++;
+                const dayTsb = getTSB(dk);
+                const tsbNote = dayTsb < -15 ? ` (TSB ${dayTsb} → intensité modérée)` : dayTsb > 5 ? ` (TSB +${dayTsb} → tu seras frais)` : '';
+                sessions.push({
+                    dateKey: dk,
+                    dateLabel: format(d, 'EEEE d MMM', { locale: dateFnsFr }),
+                    workout,
+                    sessionType,
+                    reason: sessionReasonByType[sessionType] + tsbNote,
+                    accepted: true,
+                });
             }
 
-            if (added === 0) {
-                setPlannerError('Tous les jours ont déjà des séances planifiées.');
-            }
+            setWeekProposal({ weekType, reasons, sessions, ctl, atl, tsb, avgWeeklyTss, upcomingRace });
         } catch (err) {
-            setPlannerError('Erreur lors de la suggestion : ' + err.message);
+            setPlannerError('Erreur : ' + err.message);
         } finally {
             setWeekSuggesting(false);
         }
+    };
+
+    const confirmWeekProposal = async () => {
+        if (!weekProposal) return;
+        const toAdd = weekProposal.sessions.filter(s => s.accepted);
+        for (const s of toAdd) await addLibraryWorkout(s.workout, s.dateKey);
+        setWeekProposal(null);
     };
 
     // Daily suggestion for a given date
@@ -2628,6 +2682,104 @@ export default function Calendar({
                                 }}
                             >
                                 Open Route Builder
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Week proposal modal ── */}
+            {weekProposal && (
+                <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:20 }}
+                    onClick={() => setWeekProposal(null)}>
+                    <div style={{ background:'var(--bg-1)', border:'1px solid var(--border)', borderRadius:16, padding:24, maxWidth:560, width:'100%', maxHeight:'90vh', overflowY:'auto' }}
+                        onClick={e => e.stopPropagation()}>
+
+                        {/* Header */}
+                        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+                            <div style={{ fontSize:22 }}>✦</div>
+                            <div>
+                                <div style={{ fontSize:17, fontWeight:800, color:'var(--text-0)' }}>
+                                    Proposition de semaine
+                                    <span style={{ marginLeft:10, fontSize:12, fontFamily:'var(--font-mono)', padding:'2px 8px', borderRadius:20,
+                                        background: weekProposal.weekType === 'recovery' ? 'rgba(148,163,184,0.15)' : weekProposal.weekType === 'taper' ? 'rgba(239,68,68,0.12)' : 'rgba(249,115,22,0.12)',
+                                        color: weekProposal.weekType === 'recovery' ? '#94a3b8' : weekProposal.weekType === 'taper' ? '#ef4444' : 'var(--accent-orange)',
+                                        border: '1px solid',
+                                        borderColor: weekProposal.weekType === 'recovery' ? 'rgba(148,163,184,0.3)' : weekProposal.weekType === 'taper' ? 'rgba(239,68,68,0.3)' : 'rgba(249,115,22,0.3)',
+                                    }}>
+                                        {{ recovery:'RÉCUPÉRATION', maintain:'MAINTIEN', build:'PROGRESSION', taper:'AFFÛTAGE' }[weekProposal.weekType]}
+                                    </span>
+                                </div>
+                                <div style={{ fontSize:12, color:'var(--text-3)', fontFamily:'var(--font-mono)', marginTop:3 }}>
+                                    CTL {weekProposal.ctl} · ATL {weekProposal.atl} · TSB {weekProposal.tsb > 0 ? '+' : ''}{weekProposal.tsb} · Moy. {weekProposal.avgWeeklyTss} TSS/sem
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Analysis reasons */}
+                        <div style={{ background:'var(--bg-2)', borderRadius:10, padding:'12px 14px', marginBottom:16, borderLeft:'3px solid var(--accent-orange)' }}>
+                            <div style={{ fontFamily:'var(--font-mono)', fontSize:10, color:'var(--accent-orange)', letterSpacing:'0.07em', marginBottom:8 }}>ANALYSE</div>
+                            {weekProposal.reasons.map((r, i) => (
+                                <div key={i} style={{ fontSize:12, color:'var(--text-2)', lineHeight:1.6, marginBottom:4 }}>{r}</div>
+                            ))}
+                        </div>
+
+                        {/* Sessions */}
+                        <div style={{ fontFamily:'var(--font-mono)', fontSize:10, color:'var(--text-4)', letterSpacing:'0.07em', marginBottom:8 }}>SÉANCES PROPOSÉES</div>
+                        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
+                            {weekProposal.sessions.map((s, i) => {
+                                const typeColor = { endurance:'#22c55e', intervals:'#f97316', long:'#f59e0b', recovery:'#94a3b8' }[s.sessionType] || '#f97316';
+                                return (
+                                    <div key={i} style={{
+                                        borderRadius:10, padding:'12px 14px',
+                                        background: s.accepted ? 'var(--bg-2)' : 'var(--bg-0)',
+                                        border: `1px solid ${s.accepted ? typeColor + '44' : 'var(--border)'}`,
+                                        opacity: s.accepted ? 1 : 0.4,
+                                        transition:'all 0.15s',
+                                    }}>
+                                        <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
+                                            {/* Accept toggle */}
+                                            <button onClick={() => {
+                                                const next = [...weekProposal.sessions];
+                                                next[i] = { ...next[i], accepted: !next[i].accepted };
+                                                setWeekProposal({ ...weekProposal, sessions: next });
+                                            }} style={{
+                                                width:20, height:20, borderRadius:4, flexShrink:0, marginTop:2, cursor:'pointer',
+                                                border:`2px solid ${s.accepted ? typeColor : 'var(--border)'}`,
+                                                background: s.accepted ? typeColor : 'transparent',
+                                                display:'flex', alignItems:'center', justifyContent:'center',
+                                            }}>
+                                                {s.accepted && <span style={{ color:'#000', fontSize:11, fontWeight:900 }}>✓</span>}
+                                            </button>
+                                            <div style={{ flex:1 }}>
+                                                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                                                    <span style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'var(--text-3)' }}>{s.dateLabel}</span>
+                                                    <span style={{ fontFamily:'var(--font-mono)', fontSize:9, padding:'1px 6px', borderRadius:10, background:`${typeColor}22`, color:typeColor, border:`1px solid ${typeColor}44` }}>
+                                                        {{ endurance:'ENDURANCE', intervals:'INTERVALLES', long:'LONGUE', recovery:'RÉCUPÉRATION' }[s.sessionType]}
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontSize:13, fontWeight:700, color:'var(--text-0)', marginBottom:4 }}>{s.workout.title}</div>
+                                                <div style={{ fontSize:11, color:'var(--text-3)', fontFamily:'var(--font-mono)', lineHeight:1.5 }}>
+                                                    💡 {s.reason}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {weekProposal.sessions.length === 0 && (
+                                <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text-4)', fontSize:13 }}>
+                                    Tous les jours ont déjà des séances planifiées.
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ display:'flex', gap:10 }}>
+                            <button className="btn" style={{ flex:1 }} onClick={() => setWeekProposal(null)}>Annuler</button>
+                            <button className="btn btn-primary" style={{ flex:2 }} onClick={confirmWeekProposal}
+                                disabled={!weekProposal.sessions.some(s => s.accepted)}>
+                                Ajouter {weekProposal.sessions.filter(s => s.accepted).length} séance{weekProposal.sessions.filter(s => s.accepted).length > 1 ? 's' : ''} au calendrier
                             </button>
                         </div>
                     </div>
