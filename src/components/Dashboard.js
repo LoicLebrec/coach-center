@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Cell } from 'recharts';
 import IntervalsService from '../services/intervals';
 import analytics from '../services/analytics';
-import ActivityHeatmap from './ActivityHeatmap';
 import InfoTip from './InfoTip';
 import HelpPopup from './HelpPopup';
 import { METRICS } from '../data/metricDefs';
@@ -774,13 +773,6 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
           <p style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.6 }}>
             {efTrend.assessment}
           </p>
-        </div>
-      )}
-
-      {/* ─── Card 5b: Activity Heatmap ─── */}
-      {activities && activities.length > 0 && (
-        <div className="card">
-          <ActivityHeatmap activities={activities} weeks={12} />
         </div>
       )}
 
