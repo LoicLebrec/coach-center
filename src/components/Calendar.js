@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import {
+    addDays,
     addWeeks,
     addYears,
     addMonths,
@@ -441,6 +442,89 @@ export default function Calendar({
             keywords.some(k => (w.title + (w.objective || '')).toLowerCase().includes(k.toLowerCase()))
         );
         return match || libraryWorkouts[0];
+    };
+
+    // ── Smart weekly suggestion ────────────────────────────────
+    const [weekSuggesting, setWeekSuggesting] = useState(false);
+
+    const suggestWeek = async () => {
+        setWeekSuggesting(true);
+        try {
+            // 1. Get current athlete state from latest wellness
+            const todayKey = format(new Date(), 'yyyy-MM-dd');
+            const recentWellness = (wellness || [])
+                .filter(w => (w.id || w.date || '').slice(0, 10) <= todayKey)
+                .sort((a, b) => (b.id || b.date || '').localeCompare(a.id || a.date || ''));
+            const latestW = recentWellness[0] || {};
+            const ctl = latestW.icu_ctl || latestW.ctl || 0;
+            const atl = latestW.icu_atl || latestW.atl || 0;
+            const tsb = Math.round(ctl - atl);
+            const ftp = athlete?.icu_ftp || athlete?.ftp || 200;
+
+            // 2. Compute avg weekly TSS from last 4 weeks
+            const fourWeeksAgo = format(addDays(new Date(), -28), 'yyyy-MM-dd');
+            const recentActs = (activities || []).filter(a => {
+                const d = (a.start_date_local || a.date || '').slice(0, 10);
+                return d >= fourWeeksAgo && d <= todayKey;
+            });
+            const totalRecentTss = recentActs.reduce((s, a) => s + (a.icu_training_load || 0), 0);
+            const avgWeeklyTss = Math.round(totalRecentTss / 4);
+
+            // 3. Determine week type
+            let weekType = 'build';
+            if (tsb < -20) weekType = 'recovery';
+            else if (tsb < -10) weekType = 'maintain';
+            else if (tsb > 10) weekType = 'build';
+
+            // 4. Check for upcoming races in next 3 weeks
+            const threeWeeksAhead = format(addDays(new Date(), 21), 'yyyy-MM-dd');
+            const upcomingRace = (plannedEvents || []).find(e =>
+                e.kind === 'race' && e.start_date_local?.slice(0, 10) >= todayKey
+                && e.start_date_local?.slice(0, 10) <= threeWeeksAhead
+            );
+            if (upcomingRace) weekType = 'taper';
+
+            // 5. Target TSS for the week
+            const targetTssMap = { recovery: Math.round(avgWeeklyTss * 0.6), maintain: avgWeeklyTss, build: Math.round(avgWeeklyTss * 1.08), taper: Math.round(avgWeeklyTss * 0.5) };
+            const targetTss = targetTssMap[weekType] || avgWeeklyTss;
+
+            // 6. Build week plan per training day
+            const weekDayKeys = Array.from({ length: 7 }, (_, i) => {
+                const d = startOfWeek(new Date(), { weekStartsOn: 1 });
+                return format(addDays(d, i), 'yyyy-MM-dd');
+            });
+
+            const sessionTypeByWeekType = {
+                recovery: ['recovery', null, 'endurance', null, 'recovery', null, null],
+                maintain: ['endurance', null, 'intervals', null, 'endurance', null, 'long'],
+                build:    ['endurance', 'intervals', null, 'intervals', 'endurance', null, 'long'],
+                taper:    ['endurance', null, 'intervals', null, 'recovery', null, null],
+            };
+            const plan = sessionTypeByWeekType[weekType];
+
+            let added = 0;
+            for (let i = 0; i < 7; i++) {
+                const dk = weekDayKeys[i];
+                const dow = new Date(dk).getDay();
+                const sessionType = plan[new Date(dk + 'T12:00:00').getDay() === 0 ? 6 : new Date(dk + 'T12:00:00').getDay() - 1];
+                if (!sessionType) continue;
+                // Skip if already has planned event
+                const existing = byDayAll.get(dk) || [];
+                if (existing.some(e => e.planned)) continue;
+                const workout = getSuggestedWorkout(sessionType);
+                if (!workout) continue;
+                await addLibraryWorkout(workout, dk);
+                added++;
+            }
+
+            if (added === 0) {
+                setPlannerError('Tous les jours ont déjà des séances planifiées.');
+            }
+        } catch (err) {
+            setPlannerError('Erreur lors de la suggestion : ' + err.message);
+        } finally {
+            setWeekSuggesting(false);
+        }
     };
 
     // Daily suggestion for a given date
@@ -1159,12 +1243,29 @@ export default function Calendar({
                     <div className="page-title">Calendar</div>
                     <div className="page-subtitle">Future training, race objectives, and planned events from Intervals.icu</div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <div className="calendar-view-switch">
-                        <button className={`btn ${viewMode === 'week' ? 'btn-primary' : ''}`} onClick={() => { setViewMode('week'); setCursor(new Date()); }}>Week</button>
-                        <button className={`btn ${viewMode === 'month' ? 'btn-primary' : ''}`} onClick={() => { setViewMode('month'); setCursor(new Date()); }}>Month</button>
-                        <button className={`btn ${viewMode === 'year' ? 'btn-primary' : ''}`} onClick={() => { setViewMode('year'); setCursor(new Date()); }}>Year</button>
+                        <button className={`btn ${viewMode === 'week' ? 'btn-primary' : ''}`} onClick={() => { setViewMode('week'); setCursor(new Date()); }}>Semaine</button>
+                        <button className={`btn ${viewMode === 'month' ? 'btn-primary' : ''}`} onClick={() => { setViewMode('month'); setCursor(new Date()); }}>Mois</button>
+                        <button className={`btn ${viewMode === 'year' ? 'btn-primary' : ''}`} onClick={() => { setViewMode('year'); setCursor(new Date()); }}>Année</button>
                     </div>
+                    {viewMode === 'week' && (
+                        <button
+                            onClick={suggestWeek}
+                            disabled={weekSuggesting}
+                            style={{
+                                padding: '5px 12px', borderRadius: 7, fontSize: 12,
+                                fontWeight: 700, cursor: weekSuggesting ? 'default' : 'pointer',
+                                border: '1px solid rgba(249,115,22,0.5)',
+                                background: weekSuggesting ? 'var(--bg-2)' : 'rgba(249,115,22,0.12)',
+                                color: weekSuggesting ? 'var(--text-4)' : 'var(--accent-orange)',
+                                transition: 'all 0.15s',
+                                display: 'flex', alignItems: 'center', gap: 5,
+                            }}
+                        >
+                            {weekSuggesting ? 'Analyse…' : '✦ Suggérer la semaine'}
+                        </button>
+                    )}
                     <button className="btn btn-sm" onClick={() => { if (viewMode === 'week') setCursor(subWeeks(cursor, 4)); else if (viewMode === 'year') setCursor(subYears(cursor, 1)); else setCursor(subMonths(cursor, 3)); }}>← 3M</button>
                     <button className="btn btn-sm" onClick={movePrev}>‹</button>
                     <button className="btn btn-sm" onClick={moveToday}>Today</button>
@@ -1387,24 +1488,43 @@ export default function Calendar({
                                                                 background: 'var(--bg-2)',
                                                                 padding: '10px',
                                                                 transition: 'all 0.15s',
+                                                                position: 'relative',
                                                             }}
-                                                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.borderColor = toneColor; }}
-                                                            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-2)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                                                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.querySelector('.week-delete-btn').style.opacity = '1'; }}
+                                                            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-2)'; e.currentTarget.querySelector('.week-delete-btn').style.opacity = '0'; }}
                                                         >
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
-                                                                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-0)', flex: 1 }}>{entry.title}</div>
-                                                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, letterSpacing: '0.01em', borderRadius: '999px', padding: '2px 7px', border: `1px solid ${toneColor}33`, background: `${toneColor}1a`, color: toneColor, whiteSpace: 'nowrap' }}>
+                                                            {/* Delete button */}
+                                                            {entry.planned && (
+                                                                <button
+                                                                    className="week-delete-btn"
+                                                                    onClick={(e) => { e.stopPropagation(); onRemovePlannedEvent && onRemovePlannedEvent(entry.id); }}
+                                                                    style={{
+                                                                        position: 'absolute', top: 6, right: 6,
+                                                                        width: 20, height: 20, borderRadius: 4,
+                                                                        border: '1px solid rgba(239,68,68,0.4)',
+                                                                        background: 'rgba(239,68,68,0.1)',
+                                                                        color: '#ef4444', fontSize: 11, fontWeight: 700,
+                                                                        cursor: 'pointer', display: 'flex',
+                                                                        alignItems: 'center', justifyContent: 'center',
+                                                                        opacity: 0, transition: 'opacity 0.15s',
+                                                                        lineHeight: 1,
+                                                                    }}
+                                                                    title="Supprimer cette séance"
+                                                                >✕</button>
+                                                            )}
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 4, paddingRight: entry.planned ? 20 : 0 }}>
+                                                                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-0)', flex: 1 }}>{entry.title}</div>
+                                                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600, borderRadius: '999px', padding: '2px 7px', border: `1px solid ${toneColor}33`, background: `${toneColor}1a`, color: toneColor, whiteSpace: 'nowrap' }}>
                                                                     {toneLabel(tone)}
                                                                 </span>
                                                             </div>
-                                                            <div style={{ display: 'flex', gap: 10, fontSize: 12, color: 'var(--text-2)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
-                                                                <span>{entry.type || kindLabel(entry.kind)}</span>
+                                                            <div style={{ display: 'flex', gap: 8, fontSize: 11, color: 'var(--text-3)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
+                                                                {entry.type && <span style={{ color: toneColor }}>{entry.type}</span>}
                                                                 {blocksDuration > 0 && <span>{blocksDuration} min</span>}
-                                                                <span>{kindLabel(entry.kind)}</span>
                                                             </div>
                                                             <WorkoutBlocksGraph blocks={entry.workoutBlocks} />
                                                             {!!notesPreview && (
-                                                                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6, fontFamily: 'var(--font-mono)' }}>{notesPreview}</div>
+                                                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6, fontFamily: 'var(--font-mono)', lineHeight: 1.5 }}>{notesPreview}</div>
                                                             )}
                                                         </div>
                                                     );
@@ -1435,7 +1555,7 @@ export default function Calendar({
                                                         >
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                                                                 <div style={{ fontSize: 12, fontWeight: 600, color: zoneColor, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>✓ {name}</div>
-                                                                {tss != null && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--accent-cyan)' }}>{Math.round(tss)} TSS</span>}
+                                                                {tss != null && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--accent-orange)' }}>{Math.round(tss)} TSS</span>}
                                                             </div>
                                                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                                                 {zone && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: zoneColor }}>{zone}</span>}
