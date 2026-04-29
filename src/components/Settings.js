@@ -1,35 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import persistence from '../services/persistence';
-import { stravaService } from '../services/strava';
-import { wahooService } from '../services/wahoo';
 import { garminService } from '../services/garmin';
 import { backendService } from '../services/backend-api';
 
 export default function Settings({ connections, onSave, onDisconnect, onRefresh, onRepairHistory }) {
-  // Intervals.icu
   const [intAthleteId, setIntAthleteId] = useState('');
-  const [intApiKey, setIntApiKey] = useState('');
-
-  // Strava
-  const [stravaClientId, setStravaClientId] = useState('');
-  const [stravaClientSecret, setStravaClientSecret] = useState('');
-
-  // Wahoo
-  const [wahooClientId, setWahooClientId] = useState('');
-  const [wahooClientSecret, setWahooClientSecret] = useState('');
-
-  // AI Coach
+  const [intApiKey, setIntApiKey]       = useState('');
   const [claudeApiKey, setClaudeApiKey] = useState('');
-  const [groqApiKey, setGroqApiKey] = useState('');
-  const [llmProvider, setLlmProvider] = useState('claude');
+  const [groqApiKey, setGroqApiKey]     = useState('');
+  const [llmProvider, setLlmProvider]   = useState('claude');
+  const [mapTilerKey, setMapTilerKey]   = useState('');
+  const [saving, setSaving]             = useState(false);
+  const [message, setMessage]           = useState(null);
 
-  // Map tiles
-  const [mapTilerKey, setMapTilerKey] = useState('');
-
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState(null);
-
-  // Load saved credentials
   useEffect(() => {
     (async () => {
       const intCreds = await persistence.getCredentials('intervals');
@@ -39,16 +22,6 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
       } else {
         setIntAthleteId(process.env.REACT_APP_ICU_ATHLETE_ID || '');
         setIntApiKey(process.env.REACT_APP_ICU_API_KEY || '');
-      }
-      const stravaCreds = await persistence.getCredentials('strava');
-      if (stravaCreds) {
-        setStravaClientId(stravaCreds.clientId || '');
-        setStravaClientSecret(stravaCreds.clientSecret || '');
-      }
-      const wahooCreds = await persistence.getCredentials('wahoo');
-      if (wahooCreds) {
-        setWahooClientId(wahooCreds.clientId || '');
-        setWahooClientSecret(wahooCreds.clientSecret || '');
       }
       const claudeKey = await persistence.getClaudeApiKey();
       if (claudeKey) setClaudeApiKey(claudeKey);
@@ -68,100 +41,68 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
 
   const handleSaveIntervals = async () => {
     if (!intAthleteId.trim() || !intApiKey.trim()) {
-      showMessage('Please enter both Athlete ID and API Key.', true);
+      showMessage('Athlete ID et clé API requis.', true);
       return;
     }
     setSaving(true);
     try {
       await onSave('intervals', { athleteId: intAthleteId.trim(), apiKey: intApiKey.trim() });
-      showMessage('Intervals.icu connected. Fetching data...');
+      showMessage('Intervals.icu connecté. Récupération des données…');
       setTimeout(() => onRefresh({ mode: 'incremental' }), 500);
     } catch (err) {
-      showMessage('Failed to save: ' + err.message, true);
+      showMessage('Erreur : ' + err.message, true);
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleSaveStrava = async () => {
-    if (!stravaClientId.trim() || !stravaClientSecret.trim()) {
-      showMessage('Please enter both Client ID and Client Secret.', true);
-      return;
-    }
-    await onSave('strava', { clientId: stravaClientId.trim(), clientSecret: stravaClientSecret.trim() });
-    showMessage('Strava credentials saved. Click "Connect Strava" to authorize.');
-  };
-
-  const handleSaveWahoo = async () => {
-    if (!wahooClientId.trim() || !wahooClientSecret.trim()) {
-      showMessage('Please enter both Wahoo Client ID and Client Secret.', true);
-      return;
-    }
-    await onSave('wahoo', { clientId: wahooClientId.trim(), clientSecret: wahooClientSecret.trim() });
-    showMessage('Wahoo credentials saved. Click "Connect Wahoo" to authorize.');
-  };
-
-  const handleWahooAuth = async () => {
-    try {
-      await backendService.startOAuthFlow('wahoo');
-    } catch (err) {
-      showMessage('Failed to start Wahoo OAuth: ' + err.message, true);
-    }
-  };
-
-  const handleSaveClaude = async () => {
-    if (!claudeApiKey.trim()) {
-      showMessage('Enter a valid Anthropic API key.', true);
-      return;
-    }
-    await persistence.saveClaudeApiKey(claudeApiKey.trim());
-    onSave('claude', { apiKey: claudeApiKey.trim() });
-    showMessage('Claude API key saved. APEX is ready.');
-  };
-
-  const handleRemoveClaude = async () => {
-    await persistence.saveClaudeApiKey('');
-    setClaudeApiKey('');
-    onSave('claude', { apiKey: null });
-    showMessage('Claude API key removed.');
-  };
-
-  const handleSaveGroq = async () => {
-    if (!groqApiKey.trim()) {
-      showMessage('Enter a valid Groq API key.', true);
-      return;
-    }
-    await persistence.saveGroqApiKey(groqApiKey.trim());
-    onSave('groq', { apiKey: groqApiKey.trim() });
-    showMessage('Groq API key saved. APEX ready on free tier.');
-  };
-
-  const handleRemoveGroq = async () => {
-    await persistence.saveGroqApiKey('');
-    setGroqApiKey('');
-    onSave('groq', { apiKey: null });
-    showMessage('Groq API key removed.');
-  };
-
-  const handleSetProvider = async (provider) => {
-    setLlmProvider(provider);
-    onSave('llm-provider', { provider });
-    showMessage(`AI provider set to ${provider === 'groq' ? 'Groq (free)' : 'Claude (Anthropic)'}.`);
   };
 
   const handleStravaAuth = async () => {
     try {
       await backendService.startOAuthFlow('strava');
     } catch (err) {
-      showMessage('Failed to start Strava OAuth: ' + err.message, true);
+      showMessage('Impossible de démarrer Strava OAuth : ' + err.message, true);
     }
+  };
+
+  const handleSaveClaude = async () => {
+    if (!claudeApiKey.trim()) { showMessage('Clé API invalide.', true); return; }
+    await persistence.saveClaudeApiKey(claudeApiKey.trim());
+    onSave('claude', { apiKey: claudeApiKey.trim() });
+    showMessage('Clé Claude sauvegardée. APEX est prêt.');
+  };
+
+  const handleRemoveClaude = async () => {
+    await persistence.saveClaudeApiKey('');
+    setClaudeApiKey('');
+    onSave('claude', { apiKey: null });
+    showMessage('Clé Claude supprimée.');
+  };
+
+  const handleSaveGroq = async () => {
+    if (!groqApiKey.trim()) { showMessage('Clé API invalide.', true); return; }
+    await persistence.saveGroqApiKey(groqApiKey.trim());
+    onSave('groq', { apiKey: groqApiKey.trim() });
+    showMessage('Clé Groq sauvegardée. APEX prêt (gratuit).');
+  };
+
+  const handleRemoveGroq = async () => {
+    await persistence.saveGroqApiKey('');
+    setGroqApiKey('');
+    onSave('groq', { apiKey: null });
+    showMessage('Clé Groq supprimée.');
+  };
+
+  const handleSetProvider = async (provider) => {
+    setLlmProvider(provider);
+    onSave('llm-provider', { provider });
+    showMessage(`Fournisseur IA : ${provider === 'groq' ? 'Groq (gratuit)' : 'Claude (Anthropic)'}`);
   };
 
   return (
     <div>
       <div className="page-header">
-        <div className="page-title">Settings</div>
-        <div className="page-subtitle">Manage data connections and preferences</div>
+        <div className="page-title">Paramètres</div>
+        <div className="page-subtitle">Connectez vos sources de données et gérez vos préférences</div>
       </div>
 
       {message && (
@@ -172,22 +113,24 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
 
       {/* ═══ Intervals.icu ═══ */}
       <div className="settings-section">
-        <div className="settings-section-title">
+        <div className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           Intervals.icu
-          {connections.intervals && <span style={{ color: 'var(--accent-green)', fontSize: 12, marginLeft: 8 }}>● Connected</span>}
+          {connections.intervals
+            ? <span style={{ color: 'var(--accent-green)', fontSize: 12, fontWeight: 500 }}>● Connecté</span>
+            : <span style={{ color: 'var(--text-3)', fontSize: 12 }}>● Non connecté</span>}
         </div>
         <div className="settings-section-desc">
-          Primary data source. Provides PMC metrics (CTL/ATL/TSB), activities with power/HR data,
-          and wellness metrics. Also receives Garmin Connect data when linked.
+          Source principale de données : PMC (CTL/ATL/TSB), activités, puissance, FC et métriques wellness.
         </div>
 
-        <div className="info-banner">
-          <strong>How to get your credentials:</strong><br />
-          1. Go to <code>intervals.icu/settings</code><br />
-          2. Scroll to "Developer Settings" near the bottom<br />
-          3. Copy your <strong>Athlete ID</strong> from your profile URL (e.g., <code>i12345</code>)<br />
-          &nbsp;&nbsp;&nbsp;Entering <code>12345</code> or <code>i12345</code> both work<br />
-          4. Generate an <strong>API Key</strong> and copy it
+        <div style={{
+          background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)',
+          borderRadius: 10, padding: '14px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text-1)', lineHeight: 1.7,
+        }}>
+          <strong style={{ color: 'var(--accent-orange)' }}>Comment obtenir vos identifiants :</strong><br />
+          1. Allez sur <code style={{ background: 'var(--bg-3)', padding: '1px 5px', borderRadius: 4 }}>intervals.icu/settings/api</code><br />
+          2. Copiez votre <strong>Athlete ID</strong> (format <code style={{ background: 'var(--bg-3)', padding: '1px 5px', borderRadius: 4 }}>i12345</code>)<br />
+          3. Cliquez sur <strong>"(view)"</strong> à côté de "Clé API" et copiez-la
         </div>
 
         <div className="form-field">
@@ -195,31 +138,32 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
           <input
             className="form-input"
             type="text"
-            placeholder="e.g., i12345"
+            placeholder="ex : i448057"
             value={intAthleteId}
             onChange={e => setIntAthleteId(e.target.value)}
           />
         </div>
 
         <div className="form-field">
-          <label className="form-label">API Key</label>
+          <label className="form-label">Clé API</label>
           <input
             className="form-input"
             type="password"
-            placeholder="Your Intervals.icu API key"
+            placeholder="Votre clé API Intervals.icu"
             value={intApiKey}
             onChange={e => setIntApiKey(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSaveIntervals()}
           />
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn btn-primary" onClick={handleSaveIntervals} disabled={saving}>
-            {saving ? 'Saving...' : connections.intervals ? 'Update Connection' : 'Connect'}
+            {saving ? 'Connexion…' : connections.intervals ? 'Mettre à jour' : 'Connecter'}
           </button>
           {connections.intervals && (
             <>
-              <button className="btn" onClick={() => onRefresh({ mode: 'incremental' })}>Refresh Data</button>
-              <button className="btn btn-danger" onClick={() => onDisconnect('intervals')}>Disconnect</button>
+              <button className="btn" onClick={() => onRefresh({ mode: 'incremental' })}>Actualiser</button>
+              <button className="btn btn-danger" onClick={() => onDisconnect('intervals')}>Déconnecter</button>
             </>
           )}
         </div>
@@ -227,363 +171,178 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
 
       {/* ═══ Strava ═══ */}
       <div className="settings-section">
-        <div className="settings-section-title">
+        <div className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           Strava
-          {connections.strava && <span style={{ color: 'var(--accent-green)', fontSize: 12, marginLeft: 8 }}>● Connected</span>}
+          {connections.strava
+            ? <span style={{ color: 'var(--accent-green)', fontSize: 12, fontWeight: 500 }}>● Connecté</span>
+            : <span style={{ color: 'var(--text-3)', fontSize: 12 }}>● Non connecté</span>}
         </div>
         <div className="settings-section-desc">
-          Optional. Provides activity data including segment efforts and social features.
-          Strava uses OAuth — you need to create an API application first.
+          Optionnel. Activités, segments et efforts. Connexion via OAuth — cliquez le bouton ci-dessous.
         </div>
 
-        <div className="info-banner">
-          <strong>Setup (one-time):</strong><br />
-          1. Go to <code>strava.com/settings/api</code><br />
-          2. Create an application (any name, any website)<br />
-          3. Set callback domain/URL in provider console to your backend callback route<br />
-          4. Put Client ID + Secret in backend env (not in browser fields)<br />
-          5. Click "Connect Strava" to authorize
-        </div>
-
-        <div className="form-field">
-          <label className="form-label">Client ID</label>
-          <input
-            className="form-input"
-            type="text"
-            placeholder="Your Strava API Client ID"
-            value={stravaClientId}
-            onChange={e => setStravaClientId(e.target.value)}
-          />
-        </div>
-
-        <div className="form-field">
-          <label className="form-label">Client Secret</label>
-          <input
-            className="form-input"
-            type="password"
-            placeholder="Your Strava API Client Secret"
-            value={stravaClientSecret}
-            onChange={e => setStravaClientSecret(e.target.value)}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn" onClick={handleSaveStrava}>Save Credentials</button>
-          {!connections.strava && (
-            <button className="btn btn-primary" onClick={handleStravaAuth}>Connect Strava →</button>
-          )}
-          {connections.strava && (
-            <button className="btn btn-danger" onClick={() => onDisconnect('strava')}>Disconnect</button>
-          )}
-        </div>
+        {!connections.strava ? (
+          <button
+            className="btn btn-primary"
+            onClick={handleStravaAuth}
+            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/>
+            </svg>
+            Se connecter avec Strava
+          </button>
+        ) : (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+              background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)',
+              borderRadius: 8, fontSize: 13, color: 'var(--accent-green)',
+            }}>
+              ✓ Compte Strava connecté
+            </div>
+            <button className="btn btn-danger" onClick={() => onDisconnect('strava')}>Déconnecter</button>
+          </div>
+        )}
       </div>
 
-      {/* ═══ Wahoo ═══ */}
+      {/* ═══ Garmin ═══ */}
       <div className="settings-section">
-        <div className="settings-section-title">
-          Wahoo Fitness
-          {connections.wahoo && <span style={{ color: 'var(--accent-green)', fontSize: 12, marginLeft: 8 }}>● Connected</span>}
-        </div>
-        <div className="settings-section-desc">
-          Push structured workouts directly to your Wahoo ELEMNT or KICKR. Uses OAuth — register a free app at developers.wahooligan.com.
-        </div>
-
-        <div className="info-banner">
-          <strong>Setup (one-time):</strong><br />
-          1. Go to <code>developers.wahooligan.com</code> → Create Application<br />
-          2. Set Redirect URI to your backend callback route<br />
-          3. Put Client ID + Secret in backend env (not in browser fields)<br />
-          4. Click "Connect Wahoo" to authorize
-        </div>
-
-        <div className="form-field">
-          <label className="form-label">Client ID</label>
-          <input className="form-input" type="text" placeholder="Wahoo App Client ID"
-            value={wahooClientId} onChange={e => setWahooClientId(e.target.value)} />
-        </div>
-
-        <div className="form-field">
-          <label className="form-label">Client Secret</label>
-          <input className="form-input" type="password" placeholder="Wahoo App Client Secret"
-            value={wahooClientSecret} onChange={e => setWahooClientSecret(e.target.value)} />
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn" onClick={handleSaveWahoo}>Save Credentials</button>
-          {!connections.wahoo && (
-            <button className="btn btn-primary" onClick={handleWahooAuth}>Connect Wahoo →</button>
-          )}
-          {connections.wahoo && (
-            <button className="btn btn-danger" onClick={() => onDisconnect('wahoo')}>Disconnect</button>
-          )}
-        </div>
-      </div>
-
-      {/* ═══ Garmin Connect ═══ */}
-      <div className="settings-section">
-        <div className="settings-section-title">
+        <div className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           Garmin Connect
-          {connections.garmin && <span style={{ color: 'var(--accent-yellow)', fontSize: 12, marginLeft: 8 }}>● Via Intervals.icu</span>}
+          {connections.garmin && <span style={{ color: 'var(--accent-yellow)', fontSize: 12 }}>● Via Intervals.icu</span>}
         </div>
         <div className="settings-section-desc">
           {garminService.getStatusMessage()}
         </div>
-
-        <div className="info-banner">
-          <strong>How Garmin integration works:</strong><br />
-          Garmin's official API requires server-side OAuth and business approval — it's not compatible
-          with a static GitHub Pages app. Instead, Coach Center receives your Garmin data through Intervals.icu:<br /><br />
-          1. In <strong>Intervals.icu Settings</strong>, link your Garmin Connect account<br />
-          2. Activities, HR, sleep, steps, and wellness data sync automatically<br />
-          3. Coach Center reads this data via the Intervals.icu API<br /><br />
-          This is the most reliable path. All Garmin-sourced metrics (RHR, sleep, body weight, HRV)
-          appear in the Wellness and Dashboard views.
-        </div>
-
-        <div className="conn-status">
-          <span className="conn-dot" style={{ background: connections.garmin ? 'var(--accent-yellow)' : 'var(--text-3)' }}></span>
-          <span className="conn-label">
-            {connections.garmin
-              ? <><strong>Bridged</strong> — Garmin data flows through Intervals.icu</>
-              : <><strong>Not available</strong> — Connect Intervals.icu first</>
-            }
-          </span>
+        <div style={{
+          background: 'var(--bg-2)', border: '1px solid var(--border)',
+          borderRadius: 10, padding: '14px 16px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7,
+        }}>
+          <strong style={{ color: 'var(--text-1)' }}>Intégration via Intervals.icu :</strong><br />
+          1. Dans <strong>Intervals.icu → Paramètres</strong>, liez votre compte Garmin Connect<br />
+          2. Les activités, FC, sommeil et HRV se synchronisent automatiquement<br />
+          3. Coach Center lit ces données via l'API Intervals.icu
         </div>
       </div>
 
-      {/* ═══ More Integrations ═══ */}
+      {/* ═══ AI Coach ═══ */}
       <div className="settings-section">
-        <div className="settings-section-title">More Integrations</div>
+        <div className="settings-section-title">Coach IA — APEX</div>
         <div className="settings-section-desc">
-          Additional platform connections coming soon. Vote or request via GitHub Issues.
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', opacity: 0.7 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-0)' }}>TrainingPeaks</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', background: 'var(--bg-3)', padding: '2px 8px', borderRadius: 10, letterSpacing: '0.08em' }}>COMING SOON</span>
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>Structured training plans and TSS calendar sync</div>
-          </div>
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', opacity: 0.7 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-0)' }}>Wahoo / SYSTM</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', background: 'var(--bg-3)', padding: '2px 8px', borderRadius: 10, letterSpacing: '0.08em' }}>COMING SOON</span>
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>Indoor training workouts and power data</div>
-          </div>
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', opacity: 0.7 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-0)' }}>Polar Flow</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', background: 'var(--bg-3)', padding: '2px 8px', borderRadius: 10, letterSpacing: '0.08em' }}>COMING SOON</span>
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>HR monitor data and running metrics</div>
-          </div>
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px', opacity: 0.7 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-0)' }}>Zwift</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', background: 'var(--bg-3)', padding: '2px 8px', borderRadius: 10, letterSpacing: '0.08em' }}>COMING SOON</span>
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>Virtual ride activities and event data</div>
-          </div>
-        </div>
-      </div>
-
-      {/* ═══ AI Coach (LLM) ═══ */}
-      <div className="settings-section">
-        <div className="settings-section-title">AI Coach — APEX</div>
-        <div className="settings-section-desc">
-          Choose your AI provider. Groq is free and recommended for testing.
-          Claude gives better coaching quality for serious use.
+          Choisissez votre fournisseur IA. Groq est gratuit. Claude offre une meilleure qualité de coaching.
         </div>
 
-        {/* Provider toggle */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          <button
-            className={`btn ${llmProvider === 'groq' ? 'btn-primary' : ''}`}
-            onClick={() => handleSetProvider('groq')}
-          >
-            Groq — Free
+          <button className={`btn ${llmProvider === 'groq' ? 'btn-primary' : ''}`} onClick={() => handleSetProvider('groq')}>
+            Groq — Gratuit
           </button>
-          <button
-            className={`btn ${llmProvider === 'claude' ? 'btn-primary' : ''}`}
-            onClick={() => handleSetProvider('claude')}
-          >
-            Claude — Paid
+          <button className={`btn ${llmProvider === 'claude' ? 'btn-primary' : ''}`} onClick={() => handleSetProvider('claude')}>
+            Claude — Payant
           </button>
         </div>
 
-        {/* Groq section */}
         {llmProvider === 'groq' && (
           <>
             <div className="info-banner">
-              <strong>Groq free tier</strong> — llama-3.3-70b model, 14,400 requests/day, very fast.<br />
-              1. Sign up at <code>console.groq.com</code><br />
-              2. Create an API key<br />
-              3. Paste below (starts with <code>gsk_</code>)<br />
-              <br />
-              <strong>Note:</strong> Groq processes data on their servers. Don't use on shared devices.
+              <strong>Groq (gratuit)</strong> — modèle llama-3.3-70b, 14 400 requêtes/jour.<br />
+              1. Inscrivez-vous sur <code>console.groq.com</code> → API Keys<br />
+              2. Copiez votre clé (commence par <code>gsk_</code>)
             </div>
             <div className="form-field">
               <label className="form-label">
-                Groq API Key
-                {groqApiKey && <span style={{ color: 'var(--accent-green)', marginLeft: 8 }}>● Configured</span>}
+                Clé API Groq
+                {groqApiKey && <span style={{ color: 'var(--accent-green)', marginLeft: 8 }}>● Configurée</span>}
               </label>
-              <input
-                className="form-input"
-                type="password"
-                placeholder="gsk_..."
-                value={groqApiKey}
-                onChange={e => setGroqApiKey(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSaveGroq()}
-              />
+              <input className="form-input" type="password" placeholder="gsk_..."
+                value={groqApiKey} onChange={e => setGroqApiKey(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSaveGroq()} />
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-primary" onClick={handleSaveGroq}>
-                {groqApiKey ? 'Update Key' : 'Save Key'}
-              </button>
-              {groqApiKey && (
-                <button className="btn btn-danger" onClick={handleRemoveGroq}>Remove Key</button>
-              )}
+              <button className="btn btn-primary" onClick={handleSaveGroq}>{groqApiKey ? 'Mettre à jour' : 'Sauvegarder'}</button>
+              {groqApiKey && <button className="btn btn-danger" onClick={handleRemoveGroq}>Supprimer</button>}
             </div>
           </>
         )}
 
-        {/* Claude section */}
         {llmProvider === 'claude' && (
           <>
             <div className="info-banner">
-              <strong>Anthropic Claude</strong> — claude-sonnet-4, highest coaching quality.<br />
-              1. Go to <code>console.anthropic.com</code> → API Keys → Create Key<br />
-              2. Paste below (starts with <code>sk-ant-</code>)<br />
-              3. Billed at standard Anthropic rates (~$3/M tokens)<br />
-              <br />
-              <strong>Privacy note:</strong> key visible in browser DevTools. Don't use on shared devices.
+              <strong>Anthropic Claude</strong> — claude-sonnet-4, meilleure qualité de coaching.<br />
+              1. Allez sur <code>console.anthropic.com</code> → API Keys<br />
+              2. Copiez votre clé (commence par <code>sk-ant-</code>)
             </div>
             <div className="form-field">
               <label className="form-label">
-                Anthropic API Key
-                {claudeApiKey && <span style={{ color: 'var(--accent-green)', marginLeft: 8 }}>● Configured</span>}
+                Clé API Anthropic
+                {claudeApiKey && <span style={{ color: 'var(--accent-green)', marginLeft: 8 }}>● Configurée</span>}
               </label>
-              <input
-                className="form-input"
-                type="password"
-                placeholder="sk-ant-..."
-                value={claudeApiKey}
-                onChange={e => setClaudeApiKey(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSaveClaude()}
-              />
+              <input className="form-input" type="password" placeholder="sk-ant-..."
+                value={claudeApiKey} onChange={e => setClaudeApiKey(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSaveClaude()} />
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-primary" onClick={handleSaveClaude}>
-                {claudeApiKey ? 'Update Key' : 'Save Key'}
-              </button>
-              {claudeApiKey && (
-                <button className="btn btn-danger" onClick={handleRemoveClaude}>Remove Key</button>
-              )}
+              <button className="btn btn-primary" onClick={handleSaveClaude}>{claudeApiKey ? 'Mettre à jour' : 'Sauvegarder'}</button>
+              {claudeApiKey && <button className="btn btn-danger" onClick={handleRemoveClaude}>Supprimer</button>}
             </div>
           </>
         )}
-      </div>
-
-      {/* ═══ Data Management ═══ */}
-      <div className="settings-section">
-        <div className="settings-section-title">Data Management</div>
-        <div className="settings-section-desc">
-          All data is stored locally in your browser (IndexedDB). Nothing is sent to any server beyond the
-          API calls to Intervals.icu, Strava, and (future) Claude.
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {connections.intervals && (
-            <button className="btn btn-primary" onClick={onRepairHistory}>
-              Repair History (Deep Sync)
-            </button>
-          )}
-          <button className="btn" onClick={async () => {
-            await persistence.clearCache();
-            showMessage('Cache cleared. Data will be re-fetched on next load.');
-          }}>
-            Clear Cache
-          </button>
-          <button className="btn btn-danger" onClick={async () => {
-            if (window.confirm('This will remove all saved credentials and data. Continue?')) {
-              await persistence.clearCredentials('intervals');
-              await persistence.clearCredentials('strava');
-              await persistence.clearCache();
-              window.location.reload();
-            }
-          }}>
-            Reset Everything
-          </button>
-        </div>
       </div>
 
       {/* ═══ Map Tiles ═══ */}
       <div className="settings-section">
-        <div className="settings-section-title">Map Tiles — Route Builder</div>
+        <div className="settings-section-title">Tuiles cartographiques</div>
         <div className="settings-section-desc">
-          Without a key, routes use Esri World Topo (free, decent quality). Add a MapTiler key
-          to get the Komoot/Strava outdoor look — free tier is 100,000 tiles/month.
-          Sign up at <code>cloud.maptiler.com</code> → API Keys → copy your default key.
+          Sans clé, les routes utilisent Esri World Topo (gratuit). Ajoutez une clé MapTiler pour le style Komoot/Strava.
+          Gratuit jusqu'à 100 000 tuiles/mois sur <code>cloud.maptiler.com</code>.
         </div>
         <div className="form-field">
           <label className="form-label">
-            MapTiler API Key
-            {mapTilerKey && <span style={{ color: 'var(--accent-green)', marginLeft: 8, fontWeight: 400 }}>● Configured</span>}
+            Clé API MapTiler
+            {mapTilerKey && <span style={{ color: 'var(--accent-green)', marginLeft: 8 }}>● Configurée</span>}
           </label>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              className="form-input"
-              type="password"
-              placeholder="Paste your MapTiler API key..."
-              value={mapTilerKey}
-              onChange={e => setMapTilerKey(e.target.value)}
-              style={{ flex: 1 }}
-            />
+            <input className="form-input" type="password" placeholder="Collez votre clé MapTiler…"
+              value={mapTilerKey} onChange={e => setMapTilerKey(e.target.value)} style={{ flex: 1 }} />
             <button className="btn btn-primary" onClick={async () => {
               await persistence.savePref('maptiler-key', mapTilerKey.trim());
               onSave('maptiler', { key: mapTilerKey.trim() });
-              showMessage('Map tile key saved. Reload the Route Builder to apply.');
-            }}>
-              {mapTilerKey ? 'Update' : 'Save'}
-            </button>
+              showMessage('Clé sauvegardée. Rechargez le constructeur de routes.');
+            }}>{mapTilerKey ? 'Mettre à jour' : 'Sauvegarder'}</button>
             {mapTilerKey && (
               <button className="btn" onClick={async () => {
                 await persistence.savePref('maptiler-key', '');
                 setMapTilerKey('');
                 onSave('maptiler', { key: '' });
-                showMessage('Map key cleared. Reverted to free tiles.');
-              }}>
-                Clear
-              </button>
+                showMessage('Clé supprimée.');
+              }}>Effacer</button>
             )}
           </div>
         </div>
       </div>
 
-      {/* ═══ Architecture Note ═══ */}
+      {/* ═══ Gestion des données ═══ */}
       <div className="settings-section">
-        <div className="settings-section-title">Module Architecture</div>
+        <div className="settings-section-title">Gestion des données</div>
         <div className="settings-section-desc">
-          Coach Center is built with a modular service layer. Each integration is a separate module
-          in <code>src/services/</code>. To add new features:
+          Toutes les données sont stockées localement dans votre navigateur (IndexedDB).
         </div>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-2)', lineHeight: 2, background: 'var(--bg-2)', padding: 16, borderRadius: 8 }}>
-          <span style={{ color: 'var(--accent-cyan)' }}>src/services/</span><br />
-          &nbsp;&nbsp;├── intervals.js &nbsp;&nbsp;&nbsp;{'//'} Intervals.icu API connector<br />
-          &nbsp;&nbsp;├── strava.js &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{'//'} Strava OAuth + API<br />
-          &nbsp;&nbsp;├── garmin.js &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{'//'} Garmin bridge + FIT parser (future)<br />
-          &nbsp;&nbsp;├── analytics.js &nbsp;&nbsp;{'//'} Pre-computed metrics engine<br />
-          &nbsp;&nbsp;├── persistence.js {'//'} Local storage / IndexedDB<br />
-          &nbsp;&nbsp;└── ai-coach.js &nbsp;&nbsp;&nbsp;&nbsp;{'//'} APEX Claude AI coach<br />
-          <br />
-          <span style={{ color: 'var(--accent-cyan)' }}>src/components/</span><br />
-          &nbsp;&nbsp;├── Dashboard.js &nbsp;&nbsp;{'//'} Main overview<br />
-          &nbsp;&nbsp;├── PMCChart.js &nbsp;&nbsp;&nbsp;{'//'} Performance Management Chart<br />
-          &nbsp;&nbsp;├── Activities.js &nbsp;{'//'} Activity list + sort/filter<br />
-          &nbsp;&nbsp;├── WeeklyLoad.js &nbsp;{'//'} Weekly volume chart<br />
-          &nbsp;&nbsp;├── Settings.js &nbsp;&nbsp;&nbsp;{'//'} Connection management<br />
-          &nbsp;&nbsp;└── CoachChat.js &nbsp;&nbsp;{'//'} APEX AI coach interface
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {connections.intervals && (
+            <button className="btn btn-primary" onClick={onRepairHistory}>Réparer l'historique</button>
+          )}
+          <button className="btn" onClick={async () => {
+            await persistence.clearCache();
+            showMessage('Cache vidé. Les données seront rechargées.');
+          }}>Vider le cache</button>
+          <button className="btn btn-danger" onClick={async () => {
+            if (window.confirm('Supprimer tous les identifiants et données ? Cette action est irréversible.')) {
+              await persistence.clearCredentials('intervals');
+              await persistence.clearCredentials('strava');
+              await persistence.clearCache();
+              window.location.reload();
+            }
+          }}>Réinitialiser</button>
         </div>
       </div>
     </div>
