@@ -395,6 +395,70 @@ export default function Calendar({
     const [dayQuickNotes, setDayQuickNotes] = useState('');
     const [dayModalTab, setDayModalTab] = useState('quick'); // 'quick' | 'builder'
 
+    // ── Training preferences & suggestions ─────────────────────
+    const DEFAULT_PREFS = {
+        trainingDays: [1, 2, 4, 6], // Mon Tue Thu Sat (0=Sun)
+        intensity: { 1: 'endurance', 2: 'intervals', 4: 'endurance', 6: 'long' },
+        dismissedSuggestions: {}, // dateKey → true
+    };
+    const [trainingPrefs, setTrainingPrefs] = useState(() => {
+        try { return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem('apex-training-prefs') || '{}') }; }
+        catch { return DEFAULT_PREFS; }
+    });
+    const [showPrefsPanel, setShowPrefsPanel] = useState(false);
+
+    const saveTrainingPrefs = (patch) => {
+        const next = { ...trainingPrefs, ...patch };
+        setTrainingPrefs(next);
+        localStorage.setItem('apex-training-prefs', JSON.stringify(next));
+    };
+
+    const dismissSuggestion = (dateKey) => {
+        const dismissed = { ...trainingPrefs.dismissedSuggestions, [dateKey]: true };
+        saveTrainingPrefs({ dismissedSuggestions: dismissed });
+    };
+
+    // Compute TSB for a given date from wellness array
+    const getTSB = (dateKey) => {
+        if (!wellness || wellness.length === 0) return 0;
+        const entry = wellness.find(w => (w.id || w.date || '').slice(0, 10) === dateKey);
+        if (!entry) return 0;
+        const ctl = entry.icu_ctl || entry.ctl || 0;
+        const atl = entry.icu_atl || entry.atl || 0;
+        return Math.round(ctl - atl);
+    };
+
+    // Pick a library workout matching the intensity type
+    const getSuggestedWorkout = (intensityType) => {
+        const typeMap = {
+            endurance: ['Endurance', 'Base', 'Z2', 'Aerobic'],
+            intervals:  ['Interval', 'VO2', 'Threshold', 'FTP', 'Sweetspot'],
+            long:       ['Long', 'Endurance', 'Base'],
+            recovery:   ['Recovery', 'Easy', 'Active'],
+        };
+        const keywords = typeMap[intensityType] || typeMap.endurance;
+        const match = libraryWorkouts.find(w =>
+            keywords.some(k => (w.title + (w.objective || '')).toLowerCase().includes(k.toLowerCase()))
+        );
+        return match || libraryWorkouts[0];
+    };
+
+    // Daily suggestion for a given date
+    const getDailySuggestion = (dateKey, dayOfWeek) => {
+        if (trainingPrefs.dismissedSuggestions?.[dateKey]) return null;
+        if (!trainingPrefs.trainingDays.includes(dayOfWeek)) return null;
+        // Don't suggest if already has a planned workout
+        const existing = byDayAll.get(dateKey) || [];
+        if (existing.some(e => e.planned)) return null;
+        const tsb = getTSB(dateKey);
+        let intensityType = trainingPrefs.intensity?.[dayOfWeek] || 'endurance';
+        // Override intensity based on fatigue
+        if (tsb < -20) intensityType = 'recovery';
+        else if (tsb < -10 && intensityType === 'intervals') intensityType = 'endurance';
+        const workout = getSuggestedWorkout(intensityType);
+        return workout ? { workout, intensityType, tsb } : null;
+    };
+
     // ── Persist preferences to localStorage ───────────────────
     useEffect(() => {
         const saved = localStorage.getItem('apex-calendar-prefs');
@@ -754,23 +818,20 @@ export default function Calendar({
         setSelectedActivityDay(null);
     };
 
-    const addLibraryWorkout = async (workout, offset) => {
-        const date = new Date();
-        date.setDate(date.getDate() + offset);
-
+    const addLibraryWorkout = async (workout, targetDateKey = null) => {
+        const date = targetDateKey || format(new Date(), 'yyyy-MM-dd');
         const notes = [
-            `Objective: ${workout.objective}`,
+            `Objectif : ${workout.objective}`,
             workout.notes,
             '',
             buildBlocksNotes(workout.blocks),
         ].join('\n');
-
         await addEvent({
             title: workout.title,
             type: workout.type,
             kind: workout.kind,
             notes,
-            date: format(date, 'yyyy-MM-dd'),
+            date,
             workoutBlocks: workout.blocks,
         });
     };
@@ -1245,7 +1306,35 @@ export default function Calendar({
                                                     );
                                                 })}
                                                 {totalPills > 3 && <div className="calendar-more">+{totalPills - 3} more</div>}
-                                                {totalPills === 0 && isSameMonth(day, cursor) && <div className="calendar-drop-hint">+ add</div>}
+                                                {totalPills === 0 && isSameMonth(day, cursor) && (() => {
+                                                    const suggestion = getDailySuggestion(dayKey, day.getDay());
+                                                    if (suggestion) {
+                                                        return (
+                                                            <div style={{
+                                                                fontSize: 10, padding: '3px 6px', borderRadius: 4,
+                                                                border: '1px dashed rgba(249,115,22,0.4)',
+                                                                background: 'rgba(249,115,22,0.06)',
+                                                                color: 'var(--accent-orange)',
+                                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                                gap: 4, cursor: 'pointer',
+                                                            }}>
+                                                                <span
+                                                                    onClick={(e) => { e.stopPropagation(); addLibraryWorkout(suggestion.workout, dayKey); }}
+                                                                    style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                                                    title={`Suggéré : ${suggestion.workout.title} — cliquer pour accepter`}
+                                                                >
+                                                                    ✦ {suggestion.workout.title}
+                                                                </span>
+                                                                <span
+                                                                    onClick={(e) => { e.stopPropagation(); dismissSuggestion(dayKey); }}
+                                                                    style={{ flexShrink: 0, opacity: 0.5, fontSize: 9 }}
+                                                                    title="Ignorer"
+                                                                >✕</span>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return <div className="calendar-drop-hint">+ add</div>;
+                                                })()}
                                             </div>
                                         </div>
                                     );
@@ -1640,6 +1729,83 @@ export default function Calendar({
                         </button>
                     </div>
 
+                    {/* ── Suggested workouts preferences ── */}
+                    <div className="planner-section">
+                        <button
+                            onClick={() => setShowPrefsPanel(p => !p)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 12,
+                                width: '100%', padding: '14px 16px', borderRadius: 0, cursor: 'pointer',
+                                background: showPrefsPanel
+                                    ? 'linear-gradient(135deg, rgba(249,115,22,0.14) 0%, rgba(249,115,22,0.06) 100%)'
+                                    : 'linear-gradient(135deg, rgba(249,115,22,0.08) 0%, rgba(249,115,22,0.03) 100%)',
+                                border: 'none', transition: 'all 0.2s',
+                                fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 700, color: 'var(--text-0)',
+                            }}
+                        >
+                            <div style={{ fontSize: 20 }}>✦</div>
+                            <div style={{ flex: 1 }}>
+                                <div>Séances suggérées</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-orange)', marginTop: 2 }}>
+                                    Configurez vos jours et intensités
+                                </div>
+                            </div>
+                            <span style={{ fontSize: 14, color: 'var(--text-3)' }}>{showPrefsPanel ? '▲' : '▼'}</span>
+                        </button>
+                        {showPrefsPanel && (
+                            <div style={{ padding: 16, background: 'rgba(249,115,22,0.04)', borderTop: '1px solid rgba(249,115,22,0.15)' }}>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', letterSpacing: '0.07em', marginBottom: 10 }}>JOURS D'ENTRAÎNEMENT</div>
+                                <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+                                    {['D','L','M','M','J','V','S'].map((label, idx) => {
+                                        const active = trainingPrefs.trainingDays.includes(idx);
+                                        return (
+                                            <button key={idx} onClick={() => {
+                                                const days = active
+                                                    ? trainingPrefs.trainingDays.filter(d => d !== idx)
+                                                    : [...trainingPrefs.trainingDays, idx].sort();
+                                                saveTrainingPrefs({ trainingDays: days });
+                                            }} style={{
+                                                width: 30, height: 30, borderRadius: '50%', fontSize: 11,
+                                                fontFamily: 'var(--font-mono)', fontWeight: 700, cursor: 'pointer',
+                                                border: `1px solid ${active ? 'var(--accent-orange)' : 'var(--border)'}`,
+                                                background: active ? 'rgba(249,115,22,0.18)' : 'var(--bg-2)',
+                                                color: active ? 'var(--accent-orange)' : 'var(--text-4)',
+                                                transition: 'all 0.15s',
+                                            }}>{label}</button>
+                                        );
+                                    })}
+                                </div>
+
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', letterSpacing: '0.07em', marginBottom: 8 }}>INTENSITÉ PAR JOUR</div>
+                                {trainingPrefs.trainingDays.map(idx => {
+                                    const dayNames = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+                                    const current = trainingPrefs.intensity?.[idx] || 'endurance';
+                                    return (
+                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', width: 72 }}>{dayNames[idx]}</span>
+                                            {['endurance','intervals','long','recovery'].map(type => (
+                                                <button key={type} onClick={() => {
+                                                    saveTrainingPrefs({ intensity: { ...trainingPrefs.intensity, [idx]: type } });
+                                                }} style={{
+                                                    padding: '2px 7px', borderRadius: 4, fontSize: 10, cursor: 'pointer',
+                                                    fontFamily: 'var(--font-mono)', border: '1px solid',
+                                                    borderColor: current === type ? 'var(--accent-orange)' : 'var(--border)',
+                                                    background: current === type ? 'rgba(249,115,22,0.15)' : 'var(--bg-3)',
+                                                    color: current === type ? 'var(--accent-orange)' : 'var(--text-4)',
+                                                }}>
+                                                    {type === 'endurance' ? 'Endurance' : type === 'intervals' ? 'Intervalles' : type === 'long' ? 'Longue' : 'Récup'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    );
+                                })}
+                                <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)' }}>
+                                    Les suggestions apparaissent sur le calendrier (✦). Cliquez pour accepter, ✕ pour ignorer.
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="planner-section">
                         <button
                             onClick={() => toggleSection('manual')}
@@ -1723,7 +1889,7 @@ export default function Calendar({
                                     >
                                         <div className="library-workout-head">
                                             <div className="library-workout-title">{workout.title}</div>
-                                            <button className="btn" onClick={() => addLibraryWorkout(workout, idx + 1)}>+ Quick Add</button>
+                                            <button className="btn" onClick={() => addLibraryWorkout(workout, format(new Date(), 'yyyy-MM-dd'))}>+ Ajouter aujourd'hui</button>
                                         </div>
                                         <div className="library-workout-meta">
                                             <span>{workout.type}</span>

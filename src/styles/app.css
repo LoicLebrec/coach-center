@@ -819,9 +819,11 @@ body,
 }
 
 .calendar-day-drop {
-  border-color: var(--accent-green) !important;
-  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.2) inset;
-  background: rgba(34, 197, 94, 0.04);
+  border-color: var(--accent-orange) !important;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.35) inset;
+  background: rgba(249, 115, 22, 0.08) !important;
+  transform: scale(1.02);
+  transition: all 0.1s ease;
 }
 
 .calendar-day-num {
