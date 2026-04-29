@@ -354,7 +354,7 @@ export default function Calendar({
 }) {
     const csvInputRef = useRef(null);
     const [cursor, setCursor] = useState(startOfMonth(new Date()));
-    const [viewMode, setViewMode] = useState('month');
+    const [viewMode, setViewMode] = useState('week');
     const [collapsed, setCollapsed] = useState({
         builder: false,
         manual: true,
@@ -1241,7 +1241,7 @@ export default function Calendar({
                                             <div className="calendar-day-events">
                                                 {entries.slice(0, 3).map(entry => {
                                                     const tone = trainingTone(entry);
-                                                    const toneColor = { recovery: '#94a3b8', endurance: '#22c55e', intensive: '#f97316', race: '#f06060' }[tone] || '#4d7fe8';
+                                                    const toneColor = { recovery: '#94a3b8', endurance: '#22c55e', intensive: '#f97316', race: '#f06060' }[tone] || '#f97316';
                                                     const bgColor = { training: 'var(--bg-2)', objective: 'var(--bg-2)', race: 'var(--bg-2)' }[entry.kind] || 'var(--bg-2)';
                                                     return (
                                                         <div
@@ -1268,7 +1268,13 @@ export default function Calendar({
                                                             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-3)'; }}
                                                             onMouseLeave={(e) => { e.currentTarget.style.background = bgColor; }}
                                                         >
-                                                            <div style={{ fontSize: 12, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', marginBottom: 2 }}>{entry.title}</div>
+                                                            <div style={{ fontSize: 12, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', fontWeight: 600 }}>{entry.title}</div>
+                                                            {(entry.type || entry.kind) && (
+                                                                <div style={{ fontSize: 10, color: toneColor, fontFamily: 'var(--font-mono)', marginTop: 1, opacity: 0.8 }}>
+                                                                    {entry.type || entry.kind}
+                                                                    {entry.workoutBlocks?.length > 0 && ` · ${entry.workoutBlocks.reduce((s, b) => s + (b.duration || 0), 0)} min`}
+                                                                </div>
+                                                            )}
                                                             {entry.workoutBlocks?.length > 0 && <WorkoutBlocksGraph blocks={entry.workoutBlocks} />}
                                                         </div>
                                                     );
@@ -1278,7 +1284,7 @@ export default function Calendar({
                                                     const nwatts = act.icu_normalized_watts || act.weighted_average_watts || watts;
                                                     const intensity = act.icu_intensity || (nwatts && ftp ? nwatts / ftp : null);
                                                     const zone = zoneFromIF(intensity);
-                                                    const zoneColor = zone && zone !== 'Z2' ? ZONE_COLORS_DETAIL[zone] : 'var(--accent-cyan)';
+                                                    const zoneColor = zone && zone !== 'Z2' ? ZONE_COLORS_DETAIL[zone] : 'var(--accent-orange)';
                                                     const name = act.name || act.type || 'Activity';
                                                     return (
                                                         <div
@@ -1366,7 +1372,7 @@ export default function Calendar({
                                             <div className="calendar-week-events">
                                                 {entries.map(entry => {
                                                     const tone = trainingTone(entry);
-                                                    const toneColor = { recovery: '#94a3b8', endurance: '#22c55e', intensive: '#f97316', race: '#f06060' }[tone] || '#4d7fe8';
+                                                    const toneColor = { recovery: '#94a3b8', endurance: '#22c55e', intensive: '#f97316', race: '#f06060' }[tone] || '#f97316';
                                                     const notesPreview = String(entry.notes || '').replace(/\s+/g, ' ').slice(0, 170);
                                                     const blocksDuration = totalDuration(entry.workoutBlocks || []);
                                                     return (
@@ -1826,7 +1832,7 @@ export default function Calendar({
                             <div style={{ fontSize: 22, lineHeight: 1 }}>⚡</div>
                             <div style={{ flex: 1 }}>
                                 <div>Quick Manual Entry</div>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-blue)', marginTop: 2 }}>Add single sessions directly</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-orange)', marginTop: 2 }}>Add single sessions directly</div>
                             </div>
                             <span style={{ fontSize: 14, color: 'var(--text-3)' }}>{collapsed.manual ? '▼' : '▲'}</span>
                         </button>
@@ -2289,7 +2295,7 @@ export default function Calendar({
                                             {avgWatts && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginBottom: 4, letterSpacing: '0.06em' }}>AVG POWER</div>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--accent-blue)' }}>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: 'var(--accent-orange)' }}>
                                                         {Math.round(avgWatts)} W
                                                     </div>
                                                 </div>
@@ -2387,7 +2393,7 @@ export default function Calendar({
                                 {toneLabel(trainingTone(selectedEvent))}
                             </span>
                             {totalDuration(selectedEvent.workoutBlocks || []) > 0 && (
-                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, padding: '3px 10px', borderRadius: 20, background: 'rgba(59,130,246,0.12)', color: 'var(--accent-blue)', letterSpacing: '0.06em' }}>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, padding: '3px 10px', borderRadius: 20, background: 'rgba(249,115,22,0.12)', color: 'var(--accent-orange)', letterSpacing: '0.06em' }}>
                                     {totalDuration(selectedEvent.workoutBlocks)} min
                                 </span>
                             )}
