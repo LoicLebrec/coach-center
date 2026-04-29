@@ -45,7 +45,7 @@ export function isProfileComplete(profile) {
 
 // ── Core suggestion engine ────────────────────────────────────────────────────
 
-export function buildWeekPlan({ profile, ctl, atl, tsb, avgWeeklyTss, activities, plannedEvents, wellness, weekDates }) {
+export function buildWeekPlan({ profile, ctl, atl, tsb, avgWeeklyTss, activities, plannedEvents, wellness, weekDates, hoursAvailable }) {
   const raceType   = profile.raceType || 'road_race';
   const weaknesses = profile.weaknesses || [];
   const phase      = profile.phase || 'build';
@@ -121,7 +121,7 @@ export function buildWeekPlan({ profile, ctl, atl, tsb, avgWeeklyTss, activities
   if (phase) reasons.push(`📅 Phase actuelle : ${SEASON_PHASES[phase]?.label}`);
 
   // ── Build the 7-day session plan ──
-  const sessionsByType = buildSessionPlan(weekType, raceType, weaknesses, phase, hasRaceThisWeek, daysToRace, weekDates, plannedEvents);
+  const sessionsByType = buildSessionPlan(weekType, raceType, weaknesses, phase, hasRaceThisWeek, daysToRace, weekDates, plannedEvents, hoursAvailable);
 
   return { weekType, reasons, warnings, sessions: sessionsByType };
 }
@@ -138,7 +138,7 @@ function getWeekTss(activities, daysFrom, daysTo) {
 }
 
 // Session plans by week type and race type
-function buildSessionPlan(weekType, raceType, weaknesses, phase, hasRaceThisWeek, daysToRace, weekDates, plannedEvents) {
+function buildSessionPlan(weekType, raceType, weaknesses, phase, hasRaceThisWeek, daysToRace, weekDates, plannedEvents, hoursAvailable) {
   const isCrit    = raceType === 'criterium' || raceType === 'track';
   const isCyclo   = raceType === 'cyclosportive' || raceType === 'gravel';
   const weakPrimary = weaknesses[0];
@@ -195,15 +195,29 @@ function buildSessionPlan(weekType, raceType, weaknesses, phase, hasRaceThisWeek
     const session = SESSION_DEFINITIONS[sessionType];
     if (!session) return null;
 
+    // Hours available for this day (0=Sun,1=Mon... but plan index i is Mon=0)
+    const dowMap = [1,2,3,4,5,6,0]; // plan index → day of week
+    const dow = dowMap[i];
+    const h = hoursAvailable?.[dow];
+    const hoursNote = h ? ` · ${h < 1 ? '30min' : `${h}h`} dispo` : '';
+
     // Weakness-specific justification
-    let reason = session.reason;
+    let reason = session.reason + hoursNote;
     if (sessionType === 'intervals' && weakPrimary && WEAKNESSES[weakPrimary]?.training === 'intervals') {
-      reason = `🎯 Ciblé faiblesse "${WEAKNESSES[weakPrimary]?.label}" — ${WEAKNESSES[weakPrimary]?.focus}`;
+      reason = `🎯 Ciblé faiblesse "${WEAKNESSES[weakPrimary]?.label}" — ${WEAKNESSES[weakPrimary]?.focus}${hoursNote}`;
     } else if (sessionType === 'threshold' && weakPrimary === 'threshold') {
-      reason = `🎯 Ciblé faiblesse "Seuil" — efforts 20-40min à 90-95% FTP`;
+      reason = `🎯 Ciblé faiblesse "Seuil" — efforts 20-40min à 90-95% FTP${hoursNote}`;
     }
 
-    return { dateKey, dayLabel: dayNames[i], sessionType, reason, accepted: true, session };
+    // Adjust session type if not enough time (e.g. long needs 3h+, intervals needs 1h min)
+    let finalSessionType = sessionType;
+    if (h && h < 1 && sessionType !== 'recovery') finalSessionType = 'recovery';
+    else if (h && h < 1.5 && sessionType === 'long') finalSessionType = 'endurance';
+    else if (h && h < 1 && sessionType === 'intervals') finalSessionType = 'endurance_easy';
+
+    const finalSession = SESSION_DEFINITIONS[finalSessionType] || session;
+
+    return { dateKey, dayLabel: dayNames[i], sessionType: finalSessionType, reason, accepted: true, session: finalSession };
   }).filter(Boolean);
 }
 

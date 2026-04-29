@@ -416,6 +416,7 @@ export default function Calendar({
     const DEFAULT_PREFS = {
         trainingDays: [1, 2, 4, 6], // Mon Tue Thu Sat (0=Sun)
         intensity: { 1: 'endurance', 2: 'intervals', 4: 'endurance', 6: 'long' },
+        hoursAvailable: { 1: 1.5, 2: 1.0, 4: 1.5, 6: 3.0 }, // hours per day
         dismissedSuggestions: {}, // dateKey → true
     };
     const [trainingPrefs, setTrainingPrefs] = useState(() => {
@@ -501,6 +502,7 @@ export default function Calendar({
                 profile: athleteProfile,
                 ctl, atl, tsb, avgWeeklyTss,
                 activities, plannedEvents, wellness, weekDates,
+                hoursAvailable: trainingPrefs.hoursAvailable,
             });
 
             // Map each session to a library workout
@@ -1897,30 +1899,47 @@ export default function Calendar({
                                     })}
                                 </div>
 
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', letterSpacing: '0.07em', marginBottom: 8 }}>INTENSITÉ PAR JOUR</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', letterSpacing: '0.07em', marginBottom: 8 }}>INTENSITÉ & DURÉE PAR JOUR</div>
                                 {trainingPrefs.trainingDays.map(idx => {
-                                    const dayNames = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+                                    const dayNames = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
                                     const current = trainingPrefs.intensity?.[idx] || 'endurance';
+                                    const hours = trainingPrefs.hoursAvailable?.[idx] || 1.5;
                                     return (
-                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', width: 72 }}>{dayNames[idx]}</span>
-                                            {['endurance','intervals','long','recovery'].map(type => (
-                                                <button key={type} onClick={() => {
-                                                    saveTrainingPrefs({ intensity: { ...trainingPrefs.intensity, [idx]: type } });
-                                                }} style={{
-                                                    padding: '2px 7px', borderRadius: 4, fontSize: 10, cursor: 'pointer',
-                                                    fontFamily: 'var(--font-mono)', border: '1px solid',
-                                                    borderColor: current === type ? 'var(--accent-orange)' : 'var(--border)',
-                                                    background: current === type ? 'rgba(249,115,22,0.15)' : 'var(--bg-3)',
-                                                    color: current === type ? 'var(--accent-orange)' : 'var(--text-4)',
-                                                }}>
-                                                    {type === 'endurance' ? 'Endurance' : type === 'intervals' ? 'Intervalles' : type === 'long' ? 'Longue' : 'Récup'}
-                                                </button>
-                                            ))}
+                                        <div key={idx} style={{ marginBottom: 10, padding: '8px 10px', background: 'var(--bg-3)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: 'var(--text-1)', marginBottom: 6 }}>{dayNames[idx]}</div>
+                                            {/* Intensity */}
+                                            <div style={{ display: 'flex', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
+                                                {['endurance','intervals','long','recovery'].map(type => (
+                                                    <button key={type} onClick={() => saveTrainingPrefs({ intensity: { ...trainingPrefs.intensity, [idx]: type } })} style={{
+                                                        padding: '2px 7px', borderRadius: 4, fontSize: 9, cursor: 'pointer',
+                                                        fontFamily: 'var(--font-mono)', border: '1px solid',
+                                                        borderColor: current === type ? 'var(--accent-orange)' : 'var(--border)',
+                                                        background: current === type ? 'rgba(249,115,22,0.15)' : 'var(--bg-2)',
+                                                        color: current === type ? 'var(--accent-orange)' : 'var(--text-4)',
+                                                    }}>
+                                                        {type === 'endurance' ? 'Endurance' : type === 'intervals' ? 'Intervalles' : type === 'long' ? 'Longue' : 'Récup'}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {/* Hours available */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-4)' }}>Dispo :</span>
+                                                {[0.5, 1, 1.5, 2, 2.5, 3, 4].map(h => (
+                                                    <button key={h} onClick={() => saveTrainingPrefs({ hoursAvailable: { ...trainingPrefs.hoursAvailable, [idx]: h } })} style={{
+                                                        padding: '2px 6px', borderRadius: 4, fontSize: 9, cursor: 'pointer',
+                                                        fontFamily: 'var(--font-mono)', border: '1px solid',
+                                                        borderColor: hours === h ? 'var(--accent-orange)' : 'var(--border)',
+                                                        background: hours === h ? 'rgba(249,115,22,0.15)' : 'var(--bg-2)',
+                                                        color: hours === h ? 'var(--accent-orange)' : 'var(--text-4)',
+                                                    }}>
+                                                        {h < 1 ? '30m' : `${h}h`}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     );
                                 })}
-                                <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)' }}>
+                                <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)' }}>
                                     Les suggestions apparaissent sur le calendrier (✦). Cliquez pour accepter, ✕ pour ignorer.
                                 </div>
                             </div>
