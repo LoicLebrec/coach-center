@@ -488,7 +488,7 @@ const workoutAnalyzer = {
 
     return {
       zoneDistribution,
-      matches:             matches.slice(0, 20),  // cap at 20
+      matches:             matches.slice(0, 20),
       matchCount:          matches.length,
       totalMatchDuration,
       mmp,
@@ -500,6 +500,82 @@ const workoutAnalyzer = {
       wAboveFTP: Math.round((wAboveFTP / n) * 1000) / 10,
       criticalMoments: critical,
     };
+  },
+
+  // ── General activity analysis (runs for ALL activities with power) ──────────
+  analyzeActivity(rawStreams, ftp, activity) {
+    const { watts, heartrate } = this.parseStreams(rawStreams);
+    if (!watts || watts.length < 30) return null;
+
+    const n = watts.length;
+    const nonZero = watts.filter(w => (w || 0) > 0);
+    const avgWatts = nonZero.length > 0
+      ? Math.round(nonZero.reduce((s, v) => s + v, 0) / nonZero.length)
+      : 0;
+    const maxWatts = Math.round(Math.max(...watts.map(w => w || 0)));
+
+    // Normalized Power
+    const npArr = rollingNP(watts, 30);
+    const npWatts = Math.round(
+      Math.pow(npArr.reduce((s, v) => s + Math.pow(v, 4), 0) / n, 0.25)
+    );
+
+    const intensityFactor = ftp && ftp > 0 ? Math.round((npWatts / ftp) * 100) / 100 : null;
+    const tss = activity?.icu_training_load || (
+      ftp && intensityFactor
+        ? Math.round((n * npWatts * intensityFactor) / (ftp * 3600) * 100)
+        : null
+    );
+    const weight = activity?.icu_weight || activity?.weight || null;
+    const wkg = weight && avgWatts ? Math.round((avgWatts / weight) * 10) / 10 : null;
+    const npWkg = weight && npWatts ? Math.round((npWatts / weight) * 10) / 10 : null;
+
+    // Zone distribution (same as analyzeRace)
+    const ZONE_THRESHOLDS = [
+      { key: 'Z1', lo: 0,    hi: 0.55 },
+      { key: 'Z2', lo: 0.55, hi: 0.75 },
+      { key: 'Z3', lo: 0.75, hi: 0.90 },
+      { key: 'Z4', lo: 0.90, hi: 1.05 },
+      { key: 'Z5', lo: 1.05, hi: 1.20 },
+      { key: 'Z6', lo: 1.20, hi: 1.50 },
+      { key: 'Z7', lo: 1.50, hi: Infinity },
+    ];
+    const zoneSecs = { Z1: 0, Z2: 0, Z3: 0, Z4: 0, Z5: 0, Z6: 0, Z7: 0 };
+    for (let i = 0; i < n; i++) {
+      const pct = ftp ? (watts[i] || 0) / ftp : 0;
+      for (const z of ZONE_THRESHOLDS) {
+        if (pct >= z.lo && pct < z.hi) { zoneSecs[z.key]++; break; }
+      }
+    }
+    const zoneDistribution = {};
+    for (const z of ZONE_THRESHOLDS) {
+      zoneDistribution[z.key] = { pct: Math.round((zoneSecs[z.key] / n) * 1000) / 10, secs: zoneSecs[z.key] };
+    }
+
+    // MMP for key durations
+    const MMP_DURATIONS = [5, 30, 60, 300, 600, 1200];
+    const mmp = {};
+    for (const dur of MMP_DURATIONS) {
+      if (watts.length >= dur) {
+        const val = computeMMP(watts, dur);
+        const label = dur < 60 ? `${dur}s` : `${Math.round(dur/60)}min`;
+        mmp[label] = {
+          watts: val != null ? Math.round(val) : null,
+          pctFTP: val != null && ftp ? Math.round((val / ftp) * 10) / 10 : null,
+          wkg: val != null && weight ? Math.round((val / weight) * 10) / 10 : null,
+        };
+      }
+    }
+
+    // Avg HR
+    const hrNonZero = heartrate.filter(h => (h || 0) > 0);
+    const avgHR = hrNonZero.length > 0
+      ? Math.round(hrNonZero.reduce((s, v) => s + v, 0) / hrNonZero.length)
+      : null;
+    const maxHR = hrNonZero.length > 0 ? Math.round(Math.max(...hrNonZero)) : null;
+    const ef = avgHR && npWatts ? Math.round((npWatts / avgHR) * 100) / 100 : null;
+
+    return { avgWatts, npWatts, maxWatts, intensityFactor, tss, wkg, npWkg, zoneDistribution, mmp, avgHR, maxHR, ef, durationSec: n };
   },
 };
 

@@ -37,7 +37,7 @@ function stravaLapsToIntervals(laps) {
 
 const ZONE_COLORS = {
   Z1: '#475569', Z2: '#22c55e', Z3: '#eab308',
-  Z4: '#f97316', Z5: '#ef4444', Z6: '#a855f7', Z7: '#8b5cf6',
+  Z4: '#f97316', Z5: '#ef4444', Z6: '#f43f5e', Z7: '#e11d48',
 };
 const ZONE_LABELS = {
   Z1: 'Z1 Récup', Z2: 'Z2 Endurance', Z3: 'Z3 Tempo',
@@ -868,6 +868,99 @@ function PlannedVsActualSection({ plannedEvent, activity, ftp }) {
   );
 }
 
+// ─── Power Summary Section (always visible when power data available) ─────────
+
+function StatBox({ label, value, sub, color }) {
+  return (
+    <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', flex: 1, minWidth: 90 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-4)', letterSpacing: '0.07em', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: color || 'var(--text-0)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{value ?? '—'}</div>
+      {sub && <div style={{ fontSize: 10, color: 'var(--text-4)', marginTop: 3 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function PowerSummarySection({ analysis, ftp, activity }) {
+  if (!analysis) return null;
+  const { avgWatts, npWatts, maxWatts, intensityFactor, tss, wkg, npWkg, zoneDistribution, mmp, avgHR, maxHR, ef, durationSec } = analysis;
+
+  const zoneData = Object.entries(zoneDistribution || {}).map(([z, v]) => ({
+    zone: z, label: ZONE_LABELS[z] || z, pct: v.pct, secs: v.secs, color: ZONE_COLORS[z],
+  })).filter(d => d.pct > 0);
+
+  const mmpEntries = Object.entries(mmp || {}).filter(([, v]) => v.watts);
+
+  const ifColor = intensityFactor
+    ? intensityFactor > 1.05 ? '#ef4444' : intensityFactor > 0.90 ? '#f97316' : intensityFactor > 0.75 ? '#eab308' : '#22c55e'
+    : 'var(--text-0)';
+
+  return (
+    <SectionCard>
+      <SectionHeader title="Résumé de puissance" help={{ title: 'Métriques de puissance', content: [
+        { heading: 'Puissance Normalisée (NP)', text: 'Équivalent physiologique de l\'effort. Plus élevée que la moyenne si le rythme est variable.' },
+        { heading: 'Facteur d\'intensité (IF)', text: 'NP ÷ FTP. 0.75 = endurance, 0.90 = tempo, 1.05+ = effort intense.' },
+        { heading: 'TSS', text: 'Training Stress Score. 100 = 1h à FTP. Indicateur de charge de la séance.' },
+        { heading: 'EF (Efficiency Factor)', text: 'NP ÷ FC moyenne. Mesure l\'efficacité cardiaque. Progresse avec la forme.' },
+      ], tips: [
+        'IF > 1.05 → effort très intense, récupération longue nécessaire',
+        'EF qui monte au fil des semaines = ta forme s\'améliore',
+        'TSS > 150 → prévois 2 jours de récupération',
+      ]}} />
+
+      {/* Key stats */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        {avgWatts > 0 && <StatBox label="MOY PUISSANCE" value={`${avgWatts}W`} sub={wkg ? `${wkg} W/kg` : null} />}
+        {npWatts > 0 && <StatBox label="NP" value={`${npWatts}W`} sub={npWkg ? `${npWkg} W/kg` : null} color="var(--accent-orange)" />}
+        {intensityFactor && <StatBox label="IF" value={intensityFactor} color={ifColor} sub={intensityFactor > 1 ? 'Au-dessus FTP' : 'Sous FTP'} />}
+        {tss != null && <StatBox label="TSS" value={Math.round(tss)} sub={tss > 150 ? '🔥 Charge haute' : tss > 80 ? 'Charge modérée' : 'Charge légère'} />}
+        {maxWatts > 0 && <StatBox label="MAX" value={`${maxWatts}W`} />}
+        {avgHR && <StatBox label="FC MOY" value={avgHR} sub={maxHR ? `max ${maxHR}` : null} />}
+        {ef && <StatBox label="EF" value={ef} sub="NP/FC" />}
+      </div>
+
+      {/* Zone distribution */}
+      {zoneData.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', letterSpacing: '0.07em', marginBottom: 8 }}>TEMPS PAR ZONE</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {zoneData.map(d => (
+              <div key={d.zone} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: d.color, width: 88, flexShrink: 0 }}>{d.label}</div>
+                <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'var(--bg-3)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${d.pct}%`, background: d.color, borderRadius: 4, transition: 'width 0.4s' }} />
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', width: 44, textAlign: 'right' }}>
+                  {d.pct > 0 ? `${d.pct}%` : ''}
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', width: 36, textAlign: 'right' }}>
+                  {d.secs >= 3600 ? `${Math.floor(d.secs/3600)}h${String(Math.floor((d.secs%3600)/60)).padStart(2,'0')}` : d.secs >= 60 ? `${Math.floor(d.secs/60)}min` : `${d.secs}s`}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* MMP table */}
+      {mmpEntries.length > 0 && (
+        <div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', letterSpacing: '0.07em', marginBottom: 8 }}>PUISSANCE MAX MOYENNE (MMP)</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {mmpEntries.map(([dur, v]) => (
+              <div key={dur} style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', textAlign: 'center', minWidth: 64 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-4)', marginBottom: 3 }}>{dur}</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 800, color: 'var(--accent-orange)' }}>{v.watts}W</div>
+                {v.pctFTP && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginTop: 2 }}>{v.pctFTP}×FTP</div>}
+                {v.wkg && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)' }}>{v.wkg} W/kg</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) {
@@ -878,10 +971,11 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
   const [matchedPlan, setMatchedPlan]           = useState(null);
   const [loading, setLoading]                   = useState(false);
   const [error, setError]                       = useState(null);
-  const [intervalAnalysis, setIntervalAnalysis] = useState(null);
-  const [fatigueCurve, setFatigueCurve]         = useState(null);
-  const [raceAnalysis, setRaceAnalysis]         = useState(null);
-  const [isRace, setIsRace]                     = useState(false);
+  const [intervalAnalysis, setIntervalAnalysis]   = useState(null);
+  const [fatigueCurve, setFatigueCurve]           = useState(null);
+  const [raceAnalysis, setRaceAnalysis]           = useState(null);
+  const [activityAnalysis, setActivityAnalysis]   = useState(null);
+  const [isRace, setIsRace]                       = useState(false);
 
   const handleSelect = useCallback(async (id) => {
     if (!id) return;
@@ -891,6 +985,7 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
     setIntervalAnalysis(null);
     setFatigueCurve(null);
     setRaceAnalysis(null);
+    setActivityAnalysis(null);
     setIsRace(false);
     setSelectedActivity(null);
     setMatchedPlan(null);
@@ -974,13 +1069,15 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
       setIsRace(actIsRace);
       setSelectedActivity(activity || null);
 
-      const curve = workoutAnalyzer.computeFatigueCurve(rawStreams);
-      const ivSet = workoutAnalyzer.analyzeIntervalSet(rawIntervals, ftp);
-      const race  = actIsRace && ftp ? workoutAnalyzer.analyzeRace(rawStreams, ftp) : null;
+      const curve    = workoutAnalyzer.computeFatigueCurve(rawStreams);
+      const ivSet    = workoutAnalyzer.analyzeIntervalSet(rawIntervals, ftp);
+      const race     = actIsRace && ftp ? workoutAnalyzer.analyzeRace(rawStreams, ftp) : null;
+      const actSummary = ftp ? workoutAnalyzer.analyzeActivity(rawStreams, ftp, activity) : null;
 
       setFatigueCurve(curve);
       setIntervalAnalysis(ivSet);
       setRaceAnalysis(race);
+      setActivityAnalysis(actSummary);
     } catch (err) {
       setError(err.message || 'Erreur lors du chargement des données.');
     } finally {
@@ -1054,24 +1151,36 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
 
           {!loading && !error && selectedId && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+              {/* Always-visible power summary */}
+              <PowerSummarySection analysis={activityAnalysis} ftp={ftp} activity={selectedActivity} />
+
+              {/* Structured intervals (only if detected) */}
               {intervalAnalysis && intervalAnalysis.repCount >= 2 && (
                 <IntervalSetSection intervalAnalysis={intervalAnalysis} ftp={ftp} />
               )}
 
-              {fatigueCurve && fatigueCurve.curve && fatigueCurve.curve.length >= 10 ? (
+              {/* Fatigue curve (only if enough data) */}
+              {fatigueCurve && fatigueCurve.curve && fatigueCurve.curve.length >= 10 && (
                 <FatigueCurveSection fatigueCurve={fatigueCurve} />
-              ) : (
-                !intervalAnalysis && (
-                  <SectionCard>
-                    <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-3)', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
-                      Données de puissance insuffisantes pour l'analyse.
-                    </div>
-                  </SectionCard>
-                )
               )}
 
+              {/* Race analysis (only for races) */}
               {isRace && raceAnalysis && (
                 <RaceSection raceAnalysis={raceAnalysis} ftp={ftp} />
+              )}
+
+              {/* No data at all */}
+              {!activityAnalysis && !intervalAnalysis && !fatigueCurve && !raceAnalysis && (
+                <SectionCard>
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>📡</div>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Pas de données de puissance</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-4)' }}>
+                      Cette activité n'a pas de données de capteur de puissance ou les streams ne sont pas disponibles.
+                    </div>
+                  </div>
+                </SectionCard>
               )}
             </div>
           )}
