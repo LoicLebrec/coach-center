@@ -84,7 +84,20 @@ function WorkoutBlocksGraph({ blocks }) {
 
 const ZONE_COLORS_DETAIL = {
     Z1: '#475569', Z2: '#22c55e', Z3: '#eab308',
-    Z4: '#f97316', Z5: '#ef4444', Z6: '#a855f7', Z7: '#8b5cf6',
+    Z4: '#f97316', Z5: '#ef4444', Z6: '#ef4444', Z7: '#f97316',
+};
+
+const sportIcon = (type = '') => {
+    const t = type.toLowerCase();
+    if (t.includes('ride') || t.includes('cycl') || t.includes('velo') || t.includes('bike')) return '🚴';
+    if (t.includes('run') || t.includes('cour')) return '🏃';
+    if (t.includes('swim') || t.includes('nata')) return '🏊';
+    if (t.includes('walk') || t.includes('marche')) return '🚶';
+    if (t.includes('hike') || t.includes('rando')) return '🥾';
+    if (t.includes('ski')) return '⛷️';
+    if (t.includes('yoga')) return '🧘';
+    if (t.includes('strength') || t.includes('muscu')) return '🏋️';
+    return '⚡';
 };
 const ZONE_LABELS_DETAIL = {
     Z1: 'Recovery', Z2: 'Endurance', Z3: 'Tempo',
@@ -462,8 +475,12 @@ export default function Calendar({
         setWeekSuggesting(true);
         try {
             const todayKey = format(new Date(), 'yyyy-MM-dd');
+            // Build week Mon-Sun but mark past days null so buildWeekPlan skips them
             const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-            const weekDates = Array.from({ length: 7 }, (_, i) => format(addDays(weekStart, i), 'yyyy-MM-dd'));
+            const weekDates = Array.from({ length: 7 }, (_, i) => {
+                const dk = format(addDays(weekStart, i), 'yyyy-MM-dd');
+                return dk >= todayKey ? dk : null;
+            });
 
             // Wellness — get latest entry
             const latestW = (wellness || [])
@@ -1248,16 +1265,18 @@ export default function Calendar({
                             onClick={suggestWeek}
                             disabled={weekSuggesting}
                             style={{
-                                padding: '5px 12px', borderRadius: 7, fontSize: 12,
-                                fontWeight: 700, cursor: weekSuggesting ? 'default' : 'pointer',
-                                border: '1px solid rgba(249,115,22,0.5)',
-                                background: weekSuggesting ? 'var(--bg-2)' : 'rgba(249,115,22,0.12)',
-                                color: weekSuggesting ? 'var(--text-4)' : 'var(--accent-orange)',
+                                padding: '8px 16px', borderRadius: 8, fontSize: 13,
+                                fontWeight: 800, cursor: weekSuggesting ? 'default' : 'pointer',
+                                border: '1px solid var(--accent-orange)',
+                                background: weekSuggesting ? 'var(--bg-2)' : 'var(--accent-orange)',
+                                color: weekSuggesting ? 'var(--text-4)' : '#fff',
                                 transition: 'all 0.15s',
-                                display: 'flex', alignItems: 'center', gap: 5,
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                boxShadow: weekSuggesting ? 'none' : '0 2px 12px rgba(249,115,22,0.35)',
                             }}
                         >
-                            {weekSuggesting ? 'Analyse…' : '✦ Suggérer la semaine'}
+                            <span style={{ fontSize: 14 }}>✦</span>
+                            {weekSuggesting ? 'Analyse…' : 'Suggérer la semaine'}
                         </button>
                     )}
                     <button className="btn btn-sm" onClick={() => { if (viewMode === 'week') setCursor(subWeeks(cursor, 4)); else if (viewMode === 'year') setCursor(subYears(cursor, 1)); else setCursor(subMonths(cursor, 3)); }}>← 3M</button>
@@ -1375,34 +1394,21 @@ export default function Calendar({
                                                     );
                                                 })}
                                                 {dayActPills.slice(0, Math.max(0, 3 - entries.length)).map((act, i) => {
-                                                    const watts = act.icu_average_watts || act.average_watts || null;
-                                                    const nwatts = act.icu_normalized_watts || act.weighted_average_watts || watts;
-                                                    const intensity = act.icu_intensity || (nwatts && ftp ? nwatts / ftp : null);
-                                                    const zone = zoneFromIF(intensity);
-                                                    const zoneColor = zone && zone !== 'Z2' ? ZONE_COLORS_DETAIL[zone] : 'var(--accent-orange)';
-                                                    const name = act.name || act.type || 'Activity';
+                                                    const name = act.name || act.type || 'Activité';
                                                     return (
                                                         <div
                                                             key={`act_${act.id || i}`}
                                                             style={{
-                                                                fontSize: 12,
-                                                                fontWeight: 600,
-                                                                padding: '4px 8px',
-                                                                borderRadius: 6,
-                                                                background: `${zoneColor}15`,
-                                                                borderLeft: `3px solid ${zoneColor}`,
-                                                                color: zoneColor,
-                                                                overflow: 'hidden',
-                                                                whiteSpace: 'nowrap',
-                                                                textOverflow: 'ellipsis',
-                                                                fontFamily: 'var(--font-sans)',
-                                                                cursor: 'pointer',
-                                                                marginBottom: 2,
+                                                                display: 'flex', alignItems: 'center', gap: 5,
+                                                                padding: '3px 6px', borderRadius: 5,
+                                                                background: 'var(--bg-2)', border: '1px solid var(--border)',
+                                                                overflow: 'hidden', cursor: 'pointer', marginBottom: 2,
                                                             }}
-                                                            title={`${name} — completed`}
+                                                            title={name}
                                                             onClick={(e) => { e.stopPropagation(); openDayDetails(dayKey); }}
                                                         >
-                                                            ✓ {name}
+                                                            <span style={{ fontSize: 11, flexShrink: 0 }}>{sportIcon(act.type || act.sport_type || '')}</span>
+                                                            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{name}</span>
                                                         </div>
                                                     );
                                                 })}
@@ -1484,8 +1490,8 @@ export default function Calendar({
                                                                 transition: 'all 0.15s',
                                                                 position: 'relative',
                                                             }}
-                                                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.querySelector('.week-delete-btn').style.opacity = '1'; }}
-                                                            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-2)'; e.currentTarget.querySelector('.week-delete-btn').style.opacity = '0'; }}
+                                                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-3)'; }}
+                                                            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-2)'; }}
                                                         >
                                                             {/* Delete button */}
                                                             {entry.planned && (
@@ -1500,7 +1506,7 @@ export default function Calendar({
                                                                         color: '#ef4444', fontSize: 11, fontWeight: 700,
                                                                         cursor: 'pointer', display: 'flex',
                                                                         alignItems: 'center', justifyContent: 'center',
-                                                                        opacity: 0, transition: 'opacity 0.15s',
+                                                                        opacity: 1,
                                                                         lineHeight: 1,
                                                                     }}
                                                                     title="Supprimer cette séance"
@@ -1524,37 +1530,32 @@ export default function Calendar({
                                                     );
                                                 })}
                                                 {(activitiesByDay.get(dayKey) || []).map((act, i) => {
-                                                    const ftp = athlete?.icu_ftp || athlete?.ftp || athlete?.ftp_watts || null;
-                                                    const watts = act.icu_average_watts || act.average_watts || null;
-                                                    const nwatts = act.icu_normalized_watts || act.weighted_average_watts || watts;
-                                                    const intensity = act.icu_intensity || (nwatts && ftp ? nwatts / ftp : null);
-                                                    const zone = zoneFromIF(intensity);
-                                                    const zoneColor = zone ? ZONE_COLORS_DETAIL[zone] : '#22c55e';
-                                                    const name = act.name || act.type || 'Activity';
+                                                    const name = act.name || act.type || 'Activité';
                                                     const duration = act.moving_time || act.elapsed_time || 0;
-                                                    const durationStr = duration > 0 ? (Math.floor(duration / 3600) > 0 ? `${Math.floor(duration / 3600)}h${String(Math.floor((duration % 3600) / 60)).padStart(2, '0')}` : `${Math.floor(duration / 60)}min`) : null;
+                                                    const durationStr = duration > 0 ? (Math.floor(duration/3600) > 0 ? `${Math.floor(duration/3600)}h${String(Math.floor((duration%3600)/60)).padStart(2,'0')}` : `${Math.floor(duration/60)}min`) : null;
                                                     const tss = act.icu_training_load || act.training_load || null;
+                                                    const watts = act.icu_average_watts || act.average_watts || null;
                                                     return (
                                                         <div
                                                             key={`act_${act.id || i}`}
                                                             style={{
-                                                                borderRadius: 6,
-                                                                padding: '6px 8px',
-                                                                background: `${zoneColor}15`,
-                                                                borderLeft: `3px solid ${zoneColor}`,
-                                                                cursor: 'pointer',
-                                                                marginBottom: 4,
+                                                                borderRadius: 7, padding: '7px 9px',
+                                                                background: 'var(--bg-2)', border: '1px solid var(--border)',
+                                                                cursor: 'pointer', marginBottom: 4,
+                                                                display: 'flex', alignItems: 'center', gap: 8,
                                                             }}
                                                             onClick={(e) => { e.stopPropagation(); openDayDetails(dayKey); }}
+                                                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-3)'}
+                                                            onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-2)'}
                                                         >
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                                                                <div style={{ fontSize: 12, fontWeight: 600, color: zoneColor, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>✓ {name}</div>
-                                                                {tss != null && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--accent-orange)' }}>{Math.round(tss)} TSS</span>}
-                                                            </div>
-                                                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                                                {zone && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: zoneColor }}>{zone}</span>}
-                                                                {durationStr && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)' }}>{durationStr}</span>}
-                                                                {watts && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)' }}>{Math.round(watts)}W</span>}
+                                                            <span style={{ fontSize: 16, flexShrink: 0 }}>{sportIcon(act.type || act.sport_type || '')}</span>
+                                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-0)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{name}</div>
+                                                                <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+                                                                    {durationStr && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-4)' }}>{durationStr}</span>}
+                                                                    {watts && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-4)' }}>{Math.round(watts)}W</span>}
+                                                                    {tss != null && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--accent-orange)' }}>{Math.round(tss)} TSS</span>}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     );
@@ -2122,7 +2123,7 @@ export default function Calendar({
                             <div style={{ fontSize: 22, lineHeight: 1 }}>⌚</div>
                             <div style={{ flex: 1 }}>
                                 <div>Send to Garmin</div>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-purple)', marginTop: 2 }}>Export to device and Intervals.icu</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-orange)', marginTop: 2 }}>Export to device and Intervals.icu</div>
                             </div>
                             <span style={{ fontSize: 14, color: 'var(--text-3)' }}>{collapsed.garmin ? '▼' : '▲'}</span>
                         </button>
@@ -2157,7 +2158,7 @@ export default function Calendar({
                                 {/* Option B — ZIP download */}
                                 <div style={{
                                     background: 'var(--bg-3)', borderRadius: 8, padding: '10px 12px',
-                                    borderLeft: '3px solid var(--accent-purple)',
+                                    borderLeft: '3px solid var(--accent-orange)',
                                 }}>
                                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>
                                         Download as ZIP (.fit files)
