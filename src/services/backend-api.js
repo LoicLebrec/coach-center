@@ -156,6 +156,50 @@ class BackendService {
         return this.request('GET', '/connections');
     }
 
+    // ─── Cross-sync (Garmin <-> Coros) ────────────────────────────────────
+
+    async saveCrossSyncCredentials(provider, email, password) {
+        return this.request('POST', '/cross-sync/credentials', { provider, email, password });
+    }
+
+    async deleteCrossSyncCredentials(provider) {
+        return this.request('DELETE', `/cross-sync/credentials/${provider}`);
+    }
+
+    async getCrossSyncStatus() {
+        return this.request('GET', '/cross-sync/status');
+    }
+
+    async runCrossSyncNow() {
+        return this.request('POST', '/cross-sync/run');
+    }
+
+    // ─── Home-screen widget ──────────────────────────────────────────────
+
+    async saveWidgetSnapshot(data, context = null) {
+        return this.request('POST', '/widget/snapshot', { data, context });
+    }
+
+    async getServerRefresh() {
+        return this.request('GET', '/widget/intervals');
+    }
+
+    async enableServerRefresh(athleteId, apiKey) {
+        return this.request('POST', '/widget/intervals', { athleteId, apiKey });
+    }
+
+    async disableServerRefresh() {
+        return this.request('DELETE', '/widget/intervals');
+    }
+
+    async getWidgetToken() {
+        return this.request('GET', '/widget/token');
+    }
+
+    async rotateWidgetToken() {
+        return this.request('POST', '/widget/token/rotate');
+    }
+
     // ─── Data fetching (future) ──────────────────────────────────────────
 
     async getWellness(startDate, endDate) {

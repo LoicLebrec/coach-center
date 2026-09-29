@@ -134,7 +134,135 @@ function FormGauge({ tsb }) {
   );
 }
 
-export default function Dashboard({ wellness, activities, athlete, loading, error }) {
+// ── Personal Records helpers ─────────────────────────────────────────────────
+
+const PR_DURATIONS = [
+  { label: '5 s',   sec: 5 },
+  { label: '30 s',  sec: 30 },
+  { label: '1 min', sec: 60 },
+  { label: '5 min', sec: 300 },
+  { label: '20 min',sec: 1200 },
+  { label: '60 min',sec: 3600 },
+];
+
+// Extract watts from Intervals.icu power curve for a target duration.
+// Handles two formats:
+//   A) [{secs:[1,2,...], watts:[800,750,...]}] — raw ICU API response (arrays inside object)
+//   B) [{secs:5, watts:800}, ...]             — already-normalized point array
+function getPCWatts(rawCurve, targetSec) {
+  // ICU /power-curves returns { list: [...] }; older callers pass the array directly.
+  const powerCurve = Array.isArray(rawCurve) ? rawCurve : (Array.isArray(rawCurve?.list) ? rawCurve.list : null);
+  if (!powerCurve?.length) return null;
+
+  // Format A: first element has secs/watts as arrays
+  const first = powerCurve[0];
+  if (Array.isArray(first?.secs) && Array.isArray(first?.watts)) {
+    // Find index of closest duration, pick the one with best watts within ±30%
+    let bestW = 0;
+    for (let i = 0; i < first.secs.length; i++) {
+      const s = first.secs[i];
+      const w = first.watts[i] || 0;
+      if (Math.abs(s - targetSec) <= targetSec * 0.3 && w > bestW) bestW = w;
+    }
+    return bestW > 0 ? Math.round(bestW) : null;
+  }
+
+  // Format B: array of {secs, time, watts, power} point objects
+  const sorted = [...powerCurve].sort((a, b) =>
+    Math.abs((a.secs || a.time || 0) - targetSec) - Math.abs((b.secs || b.time || 0) - targetSec)
+  );
+  const pt = sorted[0];
+  if (!pt) return null;
+  const ptSec = pt.secs || pt.time || 0;
+  if (Math.abs(ptSec - targetSec) > targetSec * 0.3) return null;
+  return Math.round(pt.watts || pt.power || 0) || null;
+}
+
+// icu_best_{sec}_watts fields returned by Intervals.icu in activity list
+const ICU_BEST = { 5: 'icu_best_5_watts', 30: 'icu_best_30_watts', 60: 'icu_best_60_watts',
+  300: 'icu_best_300_watts', 1200: 'icu_best_1200_watts', 3600: 'icu_best_3600_watts' };
+
+function computePowerPRs(powerCurve, activities) {
+  return PR_DURATIONS.map(({ label, sec }) => {
+    const field = ICU_BEST[sec];
+
+    // Collect per-activity MMP efforts (icu_best fields = true MMP within the activity)
+    const efforts = [];
+    for (const a of activities) {
+      const w = field ? asNumber(a[field]) : 0;
+      if (w > 0) {
+        efforts.push({
+          watts: Math.round(w),
+          date: a.start_date_local?.slice(0, 10) ?? null,
+          name: a.name ?? null,
+        });
+      }
+    }
+    efforts.sort((a, b) => b.watts - a.watts);
+    const top3 = efforts.slice(0, 3);
+
+    // Power curve best (all-time, covers beyond 120-day window)
+    const pcBest = getPCWatts(powerCurve, sec);
+
+    // If powerCurve beats top3[0], use it as reference for #1 — no date available from curve
+    const best = pcBest
+      ? Math.max(pcBest, top3[0]?.watts ?? 0)
+      : (top3[0]?.watts ?? null);
+
+    return { label, sec, best, top3: top3.length ? top3 : null, hasCurve: !!pcBest };
+  });
+}
+
+function detectFTP(powerCurve, activities, currentFTP) {
+  // Power curve (all-time)
+  const pc20 = getPCWatts(powerCurve, 1200);
+  const pc60 = getPCWatts(powerCurve, 3600);
+
+  // Per-activity icu_best MMP fields (true MMP, more accurate than activity avg)
+  let act20 = 0, act60 = 0;
+  for (const a of activities) {
+    const b20 = asNumber(a.icu_best_1200_watts);
+    const b60 = asNumber(a.icu_best_3600_watts);
+    if (b20 > act20) act20 = b20;
+    if (b60 > act60) act60 = b60;
+  }
+
+  const best20 = Math.max(pc20 ?? 0, act20);
+  const best60 = Math.max(pc60 ?? 0, act60);
+  const from20 = best20 > 0 ? Math.round(best20 * 0.95) : null;
+  const from60 = best60 > 0 ? Math.round(best60) : null;
+  const detected = from20 && from60 ? Math.max(from20, from60) : (from20 || from60);
+  const usedFrom20 = !from60 || (from20 && from20 >= (from60 ?? 0));
+  return {
+    detected: detected || null,
+    method: detected
+      ? (usedFrom20 ? `20 min × 95% · ${best20 > 0 ? Math.round(best20) : '?'}W` : `60 min direct · ${best60 > 0 ? Math.round(best60) : '?'}W`)
+      : null,
+    isNew: !!(detected && currentFTP && detected > currentFTP + 2),
+  };
+}
+
+function detectMaxHR(activities) {
+  let maxHR = 0, maxDate = null, maxName = null;
+  for (const a of activities) {
+    const hr = asNumber(a.max_heartrate);
+    if (hr > maxHR) {
+      maxHR = hr;
+      maxDate = a.start_date_local?.slice(0, 10) ?? null;
+      maxName = a.name ?? null;
+    }
+  }
+  return maxHR > 100 ? { hr: Math.round(maxHR), date: maxDate, name: maxName } : null;
+}
+
+function fmtDate(dateStr) {
+  if (!dateStr) return null;
+  try {
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  } catch { return null; }
+}
+
+export default function Dashboard({ wellness, activities, athlete, loading, error, powerCurve }) {
   const latest = wellness?.[wellness.length - 1];
   const estimatedPMC = useMemo(() => estimatePMCFromActivities(activities), [activities]);
   const ctl = latest?.icu_ctl ?? estimatedPMC?.ctl ?? null;
@@ -149,6 +277,10 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
   const ftpValue = getAthleteFtp(athlete);
   const weightValue = getAthleteWeight(athlete) ?? getWellnessWeight(latest);
   const wkgValue = (ftpValue && weightValue) ? (ftpValue / weightValue) : null;
+
+  const powerPRs = useMemo(() => computePowerPRs(powerCurve, activities || []), [powerCurve, activities]);
+  const ftpDetection = useMemo(() => detectFTP(powerCurve, activities || [], ftpValue), [powerCurve, activities, ftpValue]);
+  const maxHRDetection = useMemo(() => detectMaxHR(activities || []), [activities]);
 
   const pmcTrend = useMemo(() => analytics.computePMCTrend(wellness, 14), [wellness]);
   const efTrend = useMemo(() => analytics.computeEFTrend(activities, 14), [activities]);
@@ -817,6 +949,93 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         {recentActivities.length === 0 && (
           <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-2)', fontSize: 13 }}>
             No activities found in the last 90 days.
+          </div>
+        )}
+      </div>
+
+      {/* ─── Card 7: Records Personnels ─── */}
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Records Personnels</span>
+          <span className="card-badge" style={{ background: 'rgba(255,107,43,0.08)', color: 'var(--brand)', border: '1px solid rgba(255,107,43,0.25)' }}>
+            {activities?.length || 0} activités analysées
+          </span>
+        </div>
+
+        {/* FTP & FC Max détectés */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+          {/* FTP détecté */}
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px', position: 'relative', overflow: 'hidden' }}>
+            {ftpDetection?.isNew && (
+              <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, fontWeight: 700, background: 'var(--brand)', color: '#fff', borderRadius: 99, padding: '2px 7px', letterSpacing: '0.05em' }}>
+                NOUVEAU PR
+              </div>
+            )}
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'var(--text-3)', marginBottom: 6 }}>FTP Détecté</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 34, fontWeight: 700, color: ftpDetection?.isNew ? 'var(--brand)' : 'var(--text-0)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+              {ftpDetection?.detected ?? '—'}<span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-3)', marginLeft: 3, fontFamily: 'var(--font-sans)' }}>W</span>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 5 }}>
+              {ftpValue
+                ? <>Actuel : <span style={{ color: 'var(--text-2)', fontWeight: 600 }}>{ftpValue}W</span>
+                    {ftpDetection?.isNew && ftpDetection.detected > ftpValue && (
+                      <span style={{ color: 'var(--accent-green)', marginLeft: 6 }}>+{ftpDetection.detected - ftpValue}W</span>
+                    )}
+                  </>
+                : 'FTP non configuré'}
+            </div>
+            {ftpDetection?.method && (
+              <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 4 }}>via {ftpDetection.method}</div>
+            )}
+          </div>
+
+          {/* FC Max détectée */}
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'var(--text-3)', marginBottom: 6 }}>FC Max Détectée</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 34, fontWeight: 700, color: 'var(--text-0)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+              {maxHRDetection?.hr ?? '—'}<span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-3)', marginLeft: 3, fontFamily: 'var(--font-sans)' }}>bpm</span>
+            </div>
+            {maxHRDetection?.date && (
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 5 }}>
+                {fmtDate(maxHRDetection.date)}
+              </div>
+            )}
+            {maxHRDetection?.name && (
+              <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{maxHRDetection.name}</div>
+            )}
+          </div>
+        </div>
+
+        {/* Power PR table */}
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'var(--text-3)', marginBottom: 10 }}>Meilleures puissances</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+          {powerPRs.map(({ label, best, top3, hasCurve }) => (
+            <div key={label} style={{ background: best ? 'var(--bg-1)' : 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 10px 8px', textAlign: 'center', boxShadow: best ? 'var(--shadow-sm)' : 'none' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-4)', marginBottom: 6 }}>{label}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: best ? 'var(--text-0)' : 'var(--text-4)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                {best ?? '—'}
+              </div>
+              {best && <div style={{ fontSize: 9, color: 'var(--text-3)', marginTop: 2, fontFamily: 'var(--font-sans)' }}>W{hasCurve ? ' · all-time' : ''}</div>}
+              {top3 && top3.length > 1 && (
+                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {top3.slice(1).map((e, i) => (
+                    <div key={i} style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-4)', fontSize: 9 }}>#{i + 2}</span>
+                      <span>{e.watts}W</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {top3?.[0]?.date && (
+                <div style={{ fontSize: 9, color: 'var(--text-4)', marginTop: 4 }}>{fmtDate(top3[0].date)}</div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {powerPRs.every(p => !p.best) && (
+          <div style={{ padding: '16px 0 4px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
+            Connecte un capteur de puissance + Intervals.icu pour voir tes records.
           </div>
         )}
       </div>

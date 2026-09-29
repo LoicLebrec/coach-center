@@ -1,0 +1,8 @@
+{
+  "uuid": "coach-center@coachcenter",
+  "name": "Coach Center",
+  "description": "Séance du jour de Coach Center dans la barre du haut : adaptée à ta forme, ta VFC et ta charge.",
+  "shell-version": ["45", "46", "47", "48"],
+  "version": 1,
+  "url": ""
+}

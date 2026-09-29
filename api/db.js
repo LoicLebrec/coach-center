@@ -109,6 +109,76 @@ const initDb = async () => {
       )
     `);
 
+    // Cross-sync: unofficial Garmin/Coros credentials (email + encrypted password)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS device_credentials (
+        id               TEXT PRIMARY KEY,
+        user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider         TEXT NOT NULL,
+        email            TEXT NOT NULL,
+        enc_password     TEXT NOT NULL,
+        last_sync_at     TIMESTAMPTZ,
+        last_sync_status TEXT,
+        last_sync_error  TEXT,
+        created_at       TIMESTAMPTZ DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, provider)
+      )
+    `);
+
+    // Cross-sync: dedupe log so a pushed activity doesn't get re-imported back on the next poll
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS synced_activities (
+        id                  TEXT PRIMARY KEY,
+        user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        source_provider     TEXT NOT NULL,
+        source_activity_id  TEXT NOT NULL,
+        target_provider     TEXT NOT NULL,
+        target_activity_id  TEXT,
+        status              TEXT NOT NULL,
+        error               TEXT,
+        created_at          TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, source_provider, source_activity_id, target_provider)
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS widget_snapshots (
+        user_id     TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        token       TEXT UNIQUE NOT NULL,
+        data        TEXT,
+        updated_at  TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await pool.query(`ALTER TABLE widget_snapshots ADD COLUMN IF NOT EXISTS context TEXT`);
+    await pool.query(`ALTER TABLE widget_snapshots ADD COLUMN IF NOT EXISTS source TEXT`);
+
+    // Opt-in: Intervals.icu API key kept server-side (encrypted) so the morning
+    // cron can refresh the widget without the app being opened.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS widget_intervals (
+        user_id      TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        athlete_id   TEXT NOT NULL,
+        enc_api_key  TEXT NOT NULL,
+        last_run_at  TIMESTAMPTZ,
+        last_status  TEXT,
+        last_error   TEXT
+      )
+    `);
+
+    // Backup of the browser-side stores (see api/user-store.js)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_store (
+        user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        key         TEXT NOT NULL,
+        data        TEXT,
+        t           BIGINT NOT NULL,
+        updated_at  TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (user_id, key)
+      )
+    `);
+
     console.log('[db] Tables ready');
   } catch (err) {
     console.error('[db] Init error:', err.message);

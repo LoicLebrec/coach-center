@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import persistence from '../services/persistence';
 import { garminService } from '../services/garmin';
 import { backendService } from '../services/backend-api';
+import WidgetSettings from './WidgetSettings';
 
 export default function Settings({ connections, onSave, onDisconnect, onRefresh, onRepairHistory }) {
   const [intAthleteId, setIntAthleteId] = useState('');
@@ -12,6 +13,13 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
   const [mapTilerKey, setMapTilerKey]   = useState('');
   const [saving, setSaving]             = useState(false);
   const [message, setMessage]           = useState(null);
+
+  const [garminEmail, setGarminEmail]   = useState('');
+  const [garminPassword, setGarminPassword] = useState('');
+  const [corosEmail, setCorosEmail]     = useState('');
+  const [corosPassword, setCorosPassword] = useState('');
+  const [crossSyncStatus, setCrossSyncStatus] = useState(null);
+  const [crossSyncBusy, setCrossSyncBusy] = useState(null); // 'garmin' | 'coros' | 'run' | null
 
   useEffect(() => {
     (async () => {
@@ -31,8 +39,20 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
       setLlmProvider(provider || 'claude');
       const mtKey = await persistence.getPref('maptiler-key', '');
       if (mtKey) setMapTilerKey(mtKey);
+      if (backendService.isAuthenticated()) {
+        refreshCrossSyncStatus();
+      }
     })();
   }, []);
+
+  const refreshCrossSyncStatus = async () => {
+    try {
+      const status = await backendService.getCrossSyncStatus();
+      setCrossSyncStatus(status);
+    } catch (err) {
+      console.error('cross-sync status failed:', err);
+    }
+  };
 
   const showMessage = (text, isError = false) => {
     setMessage({ text, isError });
@@ -61,6 +81,58 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
       await backendService.startOAuthFlow('strava');
     } catch (err) {
       showMessage('Impossible de démarrer Strava OAuth : ' + err.message, true);
+    }
+  };
+
+  const handleSaveCrossSyncCred = async (provider) => {
+    const email = provider === 'garmin' ? garminEmail : corosEmail;
+    const password = provider === 'garmin' ? garminPassword : corosPassword;
+    if (!email.trim() || !password.trim()) {
+      showMessage('Email et mot de passe requis.', true);
+      return;
+    }
+    setCrossSyncBusy(provider);
+    try {
+      await backendService.saveCrossSyncCredentials(provider, email.trim(), password);
+      showMessage(`${provider === 'garmin' ? 'Garmin' : 'Coros'} connecté pour la synchro croisée.`);
+      if (provider === 'garmin') setGarminPassword(''); else setCorosPassword('');
+      await refreshCrossSyncStatus();
+    } catch (err) {
+      showMessage(err.message, true);
+    } finally {
+      setCrossSyncBusy(null);
+    }
+  };
+
+  const handleDeleteCrossSyncCred = async (provider) => {
+    setCrossSyncBusy(provider);
+    try {
+      await backendService.deleteCrossSyncCredentials(provider);
+      showMessage(`${provider === 'garmin' ? 'Garmin' : 'Coros'} déconnecté de la synchro croisée.`);
+      await refreshCrossSyncStatus();
+    } catch (err) {
+      showMessage(err.message, true);
+    } finally {
+      setCrossSyncBusy(null);
+    }
+  };
+
+  const handleRunCrossSyncNow = async () => {
+    setCrossSyncBusy('run');
+    try {
+      const result = await backendService.runCrossSyncNow();
+      if (result.skipped) {
+        showMessage(result.reason, true);
+      } else if (result.error) {
+        showMessage(result.error, true);
+      } else {
+        showMessage(`Synchro lancée : ${result.garminActivitiesSeen} activité(s) Garmin, ${result.corosActivitiesSeen} activité(s) Coros traitées.`);
+      }
+      await refreshCrossSyncStatus();
+    } catch (err) {
+      showMessage(err.message, true);
+    } finally {
+      setCrossSyncBusy(null);
     }
   };
 
@@ -226,6 +298,115 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
         </div>
       </div>
 
+      {/* ═══ Synchro croisée Garmin ↔ Coros ═══ */}
+      <div className="settings-section">
+        <div className="settings-section-title">Synchro croisée Garmin ↔ Coros</div>
+        <div className="settings-section-desc">
+          Pousse automatiquement chaque nouvelle activité d'une montre vers l'autre : Garmin voit vos sorties Coros,
+          Coros voit vos sorties Garmin. Tourne toutes les 30 min côté serveur une fois les deux comptes connectés.
+        </div>
+
+        <div style={{
+          background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)',
+          borderRadius: 10, padding: '14px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text-1)', lineHeight: 1.7,
+        }}>
+          <strong style={{ color: 'var(--accent-orange)' }}>Attention :</strong> aucune des deux marques n'a d'API officielle pour un usage perso.
+          Ceci utilise les mêmes endpoints non-officiels que leurs apps web (login email/mdp), ça peut casser si Garmin/Coros change leur app.<br />
+          <strong>Limite actuelle :</strong> Coros → Garmin fonctionne. Garmin → Coros est bloqué — Coros n'a pas d'endpoint d'import automatisé connu
+          (seul l'import manuel de fichier FIT sur t.coros.com existe). Les activités Garmin sont quand même détectées et journalisées en attendant.
+        </div>
+
+        {/* Garmin credentials */}
+        <div style={{ marginBottom: 18 }}>
+          <div className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            Garmin Connect
+            {crossSyncStatus?.providers?.garmin?.configured
+              ? <span style={{ color: 'var(--accent-green)', fontSize: 12 }}>● Connecté ({crossSyncStatus.providers.garmin.email})</span>
+              : <span style={{ color: 'var(--text-3)', fontSize: 12 }}>● Non connecté</span>}
+          </div>
+          {!crossSyncStatus?.providers?.garmin?.configured ? (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input className="form-input" type="email" placeholder="Email Garmin" style={{ flex: 1, minWidth: 180 }}
+                value={garminEmail} onChange={e => setGarminEmail(e.target.value)} />
+              <input className="form-input" type="password" placeholder="Mot de passe Garmin" style={{ flex: 1, minWidth: 180 }}
+                value={garminPassword} onChange={e => setGarminPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSaveCrossSyncCred('garmin')} />
+              <button className="btn btn-primary" onClick={() => handleSaveCrossSyncCred('garmin')} disabled={crossSyncBusy === 'garmin'}>
+                {crossSyncBusy === 'garmin' ? 'Connexion…' : 'Connecter'}
+              </button>
+            </div>
+          ) : (
+            <button className="btn btn-danger" onClick={() => handleDeleteCrossSyncCred('garmin')} disabled={crossSyncBusy === 'garmin'}>
+              Déconnecter Garmin
+            </button>
+          )}
+        </div>
+
+        {/* Coros credentials */}
+        <div style={{ marginBottom: 18 }}>
+          <div className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            Coros
+            {crossSyncStatus?.providers?.coros?.configured
+              ? <span style={{ color: 'var(--accent-green)', fontSize: 12 }}>● Connecté ({crossSyncStatus.providers.coros.email})</span>
+              : <span style={{ color: 'var(--text-3)', fontSize: 12 }}>● Non connecté</span>}
+          </div>
+          {!crossSyncStatus?.providers?.coros?.configured ? (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input className="form-input" type="email" placeholder="Email Coros" style={{ flex: 1, minWidth: 180 }}
+                value={corosEmail} onChange={e => setCorosEmail(e.target.value)} />
+              <input className="form-input" type="password" placeholder="Mot de passe Coros" style={{ flex: 1, minWidth: 180 }}
+                value={corosPassword} onChange={e => setCorosPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSaveCrossSyncCred('coros')} />
+              <button className="btn btn-primary" onClick={() => handleSaveCrossSyncCred('coros')} disabled={crossSyncBusy === 'coros'}>
+                {crossSyncBusy === 'coros' ? 'Connexion…' : 'Connecter'}
+              </button>
+            </div>
+          ) : (
+            <button className="btn btn-danger" onClick={() => handleDeleteCrossSyncCred('coros')} disabled={crossSyncBusy === 'coros'}>
+              Déconnecter Coros
+            </button>
+          )}
+        </div>
+
+        {crossSyncStatus?.providers?.garmin?.configured && crossSyncStatus?.providers?.coros?.configured && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={handleRunCrossSyncNow} disabled={crossSyncBusy === 'run'}>
+              {crossSyncBusy === 'run' ? 'Synchro en cours…' : 'Synchroniser maintenant'}
+            </button>
+            {crossSyncStatus.providers.garmin.lastSyncAt && (
+              <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                Dernière synchro : {new Date(crossSyncStatus.providers.garmin.lastSyncAt).toLocaleString('fr-FR')}
+              </span>
+            )}
+            {(crossSyncStatus.providers.garmin.lastSyncError || crossSyncStatus.providers.coros.lastSyncError) && (
+              <span style={{ fontSize: 12, color: 'var(--accent-red, #ef4444)' }}>
+                Erreur : {crossSyncStatus.providers.garmin.lastSyncError || crossSyncStatus.providers.coros.lastSyncError}
+              </span>
+            )}
+          </div>
+        )}
+
+        {crossSyncStatus?.log?.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div className="form-label" style={{ marginBottom: 6 }}>Journal récent</div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.8, maxHeight: 160, overflowY: 'auto' }}>
+              {crossSyncStatus.log.map((entry, i) => (
+                <div key={i}>
+                  {entry.source_provider} → {entry.target_provider} : {entry.source_activity_id} —{' '}
+                  <span style={{
+                    color: entry.status === 'ok' ? 'var(--accent-green)'
+                      : entry.status === 'unsupported' ? 'var(--accent-yellow)' : 'var(--accent-red, #ef4444)',
+                  }}>
+                    {entry.status}
+                  </span>
+                  {entry.error && ` (${entry.error})`}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ═══ AI Coach ═══ */}
       <div className="settings-section">
         <div className="settings-section-title">Coach IA — APEX</div>
@@ -320,6 +501,8 @@ export default function Settings({ connections, onSave, onDisconnect, onRefresh,
           </div>
         </div>
       </div>
+
+      <WidgetSettings />
 
       {/* ═══ Gestion des données ═══ */}
       <div className="settings-section">

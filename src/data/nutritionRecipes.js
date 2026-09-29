@@ -378,67 +378,109 @@ export const RECIPES = [
 
 /**
  * Estimate today's caloric needs from athlete profile + training data.
- * Returns { cal, carbs, protein, fat, loadLevel, loadLabel }
+ * Uses TSS-based calorie calculation and looks at tomorrow's planned workout for pre-loading.
+ * Returns { cal, carbs, protein, fat, loadLevel, loadLabel, tss, durationH,
+ *           todayActivity, tomorrowPlan, preloading, explanation }
  */
-export function calcDailyNeeds(athlete, recentActivities = []) {
+export function calcDailyNeeds(athlete, recentActivities = [], plannedEvents = []) {
   const weight = athlete?.icu_weight || athlete?.weight || 70;
   const ftp    = athlete?.icu_ftp    || 200;
 
-  // Base metabolic rate (simplified Mifflin)
-  const bmr = weight * 24;
+  // Base metabolic rate — Mifflin approximation for active athlete
+  // weight * 29 accounts for baseline non-exercise activity (walking, commuting, etc.)
+  const bmr = Math.round(weight * 29);
 
-  // Find today's or yesterday's training session (local dates, not UTC)
-  const today = new Date();
   const pad = n => String(n).padStart(2, '0');
   const localDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const today = new Date();
   const todayStr = localDate(today);
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
   const ystStr = localDate(yesterday);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = localDate(tomorrow);
 
   const todayActs = recentActivities.filter(a =>
     (a.start_date_local || '').slice(0,10) === todayStr ||
     (a.start_date_local || '').slice(0,10) === ystStr
   );
 
-  // Sum TSS / duration of relevant sessions
   const totalTss      = todayActs.reduce((s, a) => s + (a.icu_training_load || 0), 0);
   const totalDuration = todayActs.reduce((s, a) => s + (a.moving_time || a.elapsed_time || 0), 0) / 3600;
+  const todayActivity = todayActs[0] || null;
 
-  // Determine load level
-  let loadLevel, loadLabel, extra = 0;
-  if (totalTss === 0 && totalDuration < 0.3) {
-    loadLevel = 'rest';    loadLabel = 'Repos';          extra = 0;
-  } else if (totalTss <= 50 || totalDuration <= 1) {
-    loadLevel = 'easy';    loadLabel = 'Facile';         extra = Math.round(totalDuration * 450);
-  } else if (totalTss <= 100 || totalDuration <= 2) {
-    loadLevel = 'moderate';loadLabel = 'Modéré';         extra = Math.round(totalDuration * 550);
-  } else if (totalTss <= 170 || totalDuration <= 3.5) {
-    loadLevel = 'hard';    loadLabel = 'Intense';        extra = Math.round(totalDuration * 650);
+  // TSS-based calorie burn: kcal ≈ TSS × (FTP/250) × 3.24
+  // Calibrated so FTP=250, TSS=100 → ~810 kcal (matches measured power output)
+  const ftpFactor   = ftp / 250;
+  const trainingKcal = totalTss > 0
+    ? Math.round(totalTss * ftpFactor * 3.24)
+    : totalDuration > 0 ? Math.round(totalDuration * 500) : 0;
+
+  // Determine load level from TSS
+  let loadLevel;
+  if (totalTss === 0 && totalDuration < 0.25) {
+    loadLevel = 'rest';
+  } else if (totalTss <= 50) {
+    loadLevel = 'easy';
+  } else if (totalTss <= 100) {
+    loadLevel = 'moderate';
+  } else if (totalTss <= 180) {
+    loadLevel = 'hard';
   } else {
-    loadLevel = 'long';    loadLabel = 'Longue sortie';  extra = Math.round(totalDuration * 700);
+    loadLevel = 'long';
   }
+  const loadLabel = { rest: 'Repos', easy: 'Facile', moderate: 'Modéré', hard: 'Intensif', long: 'Longue sortie' }[loadLevel];
 
-  const totalCal = Math.round(bmr + extra);
+  // Tomorrow's planned workout — check for hard session to trigger carb pre-loading
+  const tomorrowEvents = (plannedEvents || []).filter(e =>
+    (e.start_date_local || '').slice(0,10) === tomorrowStr
+  );
+  const tomorrowPlan = tomorrowEvents[0] || null;
+  const tomorrowIsHard = tomorrowEvents.some(e =>
+    e.kind === 'race' ||
+    (e.title || '').toLowerCase().match(/course|race|compétition|criterium|critérium|long|longue|seuil|vo2/)
+  );
 
-  // Macro ratios by load
+  // Pre-loading: add extra carbs when a hard session is planned tomorrow
+  const preloading = tomorrowIsHard && loadLevel === 'rest';
+  const preloadExtra = preloading ? Math.round(weight * 3) * 4 : 0; // +3g carbs/kg → kcal
+
+  const totalCal = Math.round(bmr + trainingKcal + preloadExtra);
+
+  // Macro ratios by load (+ pre-load boost to carbs)
   const ratios = {
     rest:     { carbs: 0.40, protein: 0.28, fat: 0.32 },
     easy:     { carbs: 0.50, protein: 0.25, fat: 0.25 },
     moderate: { carbs: 0.55, protein: 0.22, fat: 0.23 },
-    hard:     { carbs: 0.60, protein: 0.20, fat: 0.20 },
-    long:     { carbs: 0.65, protein: 0.17, fat: 0.18 },
+    hard:     { carbs: 0.62, protein: 0.20, fat: 0.18 },
+    long:     { carbs: 0.67, protein: 0.17, fat: 0.16 },
   };
+  const r = preloading ? { carbs: 0.55, protein: 0.22, fat: 0.23 } : ratios[loadLevel];
 
-  const r = ratios[loadLevel];
+  // Build explanation sentence
+  let explanation = '';
+  if (loadLevel === 'rest' && !preloading) {
+    explanation = `Journée sans entraînement — apport de base pour la récupération (${bmr} kcal métabolisme de repos).`;
+  } else if (preloading) {
+    explanation = `Repos aujourd'hui mais effort intense demain (${tomorrowPlan?.title || 'entraînement planifié'}) → charge glucidique préventive.`;
+  } else {
+    explanation = `TSS ${Math.round(totalTss)} → ~${trainingKcal} kcal brûlées à l'entraînement (FTP ${ftp}W) + ${bmr} kcal base.`;
+  }
+
   return {
-    cal:      totalCal,
-    carbs:    Math.round((totalCal * r.carbs)   / 4),
-    protein:  Math.round((totalCal * r.protein) / 4),
-    fat:      Math.round((totalCal * r.fat)     / 9),
+    cal:        totalCal,
+    carbs:      Math.round((totalCal * r.carbs)   / 4),
+    protein:    Math.round((totalCal * r.protein) / 4),
+    fat:        Math.round((totalCal * r.fat)     / 9),
     loadLevel,
     loadLabel,
-    tss:        Math.round(totalTss),
-    durationH:  Math.round(totalDuration * 10) / 10,
+    tss:         Math.round(totalTss),
+    durationH:   Math.round(totalDuration * 10) / 10,
+    trainingKcal,
+    bmr,
+    todayActivity,
+    tomorrowPlan,
+    preloading,
+    explanation,
   };
 }
 

@@ -16,7 +16,9 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build"
+    "build": "node scripts/build-server.js && react-scripts build",
+    "build:server": "node scripts/build-server.js",
+    "test": "react-scripts test"
   },
   "browserslist": {
     "production": [

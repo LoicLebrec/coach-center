@@ -18,8 +18,8 @@ const DIFFICULTY_OPTIONS = [
 
 const MEAL_META = {
   breakfast: { label: 'Petit-déjeuner',    icon: '☀️',  color: '#f59e0b' },
-  pre:       { label: 'Avant la sortie',   icon: '⚡',   color: '#22d3ee' },
-  during:    { label: 'Pendant la sortie', icon: '🚴',   color: '#4d7fe8' },
+  pre:       { label: 'Avant la sortie',   icon: '⚡',   color: '#f97316' },
+  during:    { label: 'Pendant la sortie', icon: '🚴',   color: '#f97316' },
   post:      { label: 'Récupération',      icon: '💪',   color: '#22c55e' },
   lunch:     { label: 'Déjeuner',          icon: '🍽️',  color: '#a78bfa' },
   snack:     { label: 'Collation',         icon: '🍌',   color: '#fb923c' },
@@ -121,7 +121,7 @@ function RecipeCard({ recipe, expanded, onToggle, onShuffle, poolSize, poolIdx }
             <DifficultyBadge difficulty={difficulty} />
             <span style={{ fontSize: 12, color: 'var(--text-4)' }}>⏱ {time} min</span>
             <span style={{ ...monoVal('#f59e0b'), fontSize: 12 }}>{macros.cal} kcal{macrosEstimated ? '*' : ''}</span>
-            <span style={{ ...monoVal('#4d7fe8'), fontSize: 12 }}>G {macros.carbs}g</span>
+            <span style={{ ...monoVal('#f97316'), fontSize: 12 }}>G {macros.carbs}g</span>
             <span style={{ ...monoVal('#22c55e'), fontSize: 12 }}>P {macros.protein}g</span>
             <span style={{ ...monoVal('#f97316'), fontSize: 12 }}>L {macros.fat}g</span>
           </div>
@@ -155,7 +155,7 @@ function RecipeCard({ recipe, expanded, onToggle, onShuffle, poolSize, poolIdx }
             {ingredients.map((ing, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
                 <span style={{ color: 'var(--text-2)' }}>{ing.name}</span>
-                {ing.qty && <span style={monoVal('var(--accent-cyan)')}>{ing.qty}</span>}
+                {ing.qty && <span style={monoVal('var(--accent-orange)')}>{ing.qty}</span>}
               </div>
             ))}
           </div>
@@ -164,7 +164,7 @@ function RecipeCard({ recipe, expanded, onToggle, onShuffle, poolSize, poolIdx }
             {steps}
           </p>
           {note && (
-            <div style={{ padding: '9px 13px', borderRadius: 8, background: 'rgba(34,211,238,0.07)', border: '1px solid rgba(34,211,238,0.18)', fontSize: 13, color: 'var(--accent-cyan)', lineHeight: 1.6 }}>
+            <div style={{ padding: '9px 13px', borderRadius: 8, background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.18)', fontSize: 13, color: 'var(--accent-orange)', lineHeight: 1.6 }}>
               💡 {note}
             </div>
           )}
@@ -272,7 +272,7 @@ function ShoppingList({ diet, weightKg, difficulty }) {
         Repos · Facile · Intensif · Modéré · Facile · Longue sortie · Repos
       </div>
       <button onClick={generate} style={{
-        padding: '11px 28px', borderRadius: 10, background: 'var(--accent-cyan)', color: '#000',
+        padding: '11px 28px', borderRadius: 10, background: 'var(--accent-orange)', color: '#fff',
         border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer',
       }}>
         Générer la liste de courses
@@ -282,7 +282,7 @@ function ShoppingList({ diet, weightKg, difficulty }) {
 
   if (state === 'loading') return (
     <div style={{ textAlign: 'center', padding: '48px 20px' }}>
-      <div style={{ width: 32, height: 32, border: '3px solid var(--border)', borderTopColor: 'var(--accent-cyan)', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 16px' }} />
+      <div style={{ width: 32, height: 32, border: '3px solid var(--border)', borderTopColor: 'var(--accent-orange)', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 16px' }} />
       <div style={{ fontSize: 14, color: 'var(--text-3)' }}>Génération du plan semaine…</div>
     </div>
   );
@@ -290,7 +290,7 @@ function ShoppingList({ diet, weightKg, difficulty }) {
   if (state === 'error') return (
     <div style={{ textAlign: 'center', padding: 24, color: '#ef4444', fontSize: 14 }}>
       Erreur.{' '}
-      <button onClick={generate} style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', cursor: 'pointer', textDecoration: 'underline', fontSize: 14 }}>
+      <button onClick={generate} style={{ background: 'none', border: 'none', color: 'var(--accent-orange)', cursor: 'pointer', textDecoration: 'underline', fontSize: 14 }}>
         Réessayer
       </button>
     </div>
@@ -340,7 +340,7 @@ function ShoppingList({ diet, weightKg, difficulty }) {
                       background: done ? '#22c55e' : 'transparent',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                      {done && <span style={{ color: '#000', fontSize: 10, fontWeight: 800 }}>✓</span>}
+                      {done && <span style={{ color: '#fff', fontSize: 10, fontWeight: 800 }}>✓</span>}
                     </div>
                     <div>
                       <div style={{ fontSize: 13, color: done ? 'var(--text-4)' : 'var(--text-1)', textDecoration: done ? 'line-through' : 'none', fontWeight: 500 }}>
@@ -449,7 +449,7 @@ function JournalAlimentaire({ needs }) {
   }), { cal: 0, carbs: 0, protein: 0, fat: 0 });
 
   const calRatio = totals.cal / (needs.cal || 2000);
-  const calColor = calRatio < 0.5 ? '#4d7fe8' : calRatio > 1.1 ? '#ef4444' : '#22c55e';
+  const calColor = calRatio < 0.5 ? '#f97316' : calRatio > 1.1 ? '#ef4444' : '#22c55e';
 
   const inputStyle = {
     width: '100%', padding: '9px 12px', background: 'var(--bg-3)', border: '1px solid var(--border)',
@@ -470,7 +470,7 @@ function JournalAlimentaire({ needs }) {
             {formatDate(date)}
           </div>
           {date === todayStr() && (
-            <div style={{ fontSize: 11, color: 'var(--accent-cyan)', marginTop: 2 }}>Aujourd'hui</div>
+            <div style={{ fontSize: 11, color: 'var(--accent-orange)', marginTop: 2 }}>Aujourd'hui</div>
           )}
         </div>
         <button onClick={() => navDay(1)} disabled={date >= todayStr()} style={{
@@ -494,7 +494,7 @@ function JournalAlimentaire({ needs }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
           {[
-            { label: 'Glucides',  value: totals.carbs,   target: needs.carbs,   color: '#4d7fe8' },
+            { label: 'Glucides',  value: totals.carbs,   target: needs.carbs,   color: '#f97316' },
             { label: 'Protéines', value: totals.protein, target: needs.protein, color: '#22c55e' },
             { label: 'Lipides',   value: totals.fat,     target: needs.fat,     color: '#f97316' },
           ].map(m => (
@@ -539,7 +539,7 @@ function JournalAlimentaire({ needs }) {
 
       {/* Formulaire */}
       {showForm && (
-        <div style={{ background: 'var(--bg-2)', border: '1px solid var(--accent-cyan)', borderRadius: 12, padding: 16, marginBottom: 12 }}>
+        <div style={{ background: 'var(--bg-2)', border: '1px solid var(--accent-orange)', borderRadius: 12, padding: 16, marginBottom: 12 }}>
           <input
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -562,7 +562,7 @@ function JournalAlimentaire({ needs }) {
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={addEntry} disabled={!form.name || !form.cal} style={{
-              flex: 1, padding: '10px', borderRadius: 8, background: 'var(--accent-cyan)', color: '#000',
+              flex: 1, padding: '10px', borderRadius: 8, background: 'var(--accent-orange)', color: '#fff',
               border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
               opacity: (!form.name || !form.cal) ? 0.5 : 1,
             }}>Ajouter</button>
@@ -592,13 +592,13 @@ function JournalAlimentaire({ needs }) {
 
 // ── Composant principal ───────────────────────────────────────────────────────
 
-export default function NutritionCoach({ athlete, activities = [] }) {
+export default function NutritionCoach({ athlete, activities = [], plannedEvents = [] }) {
   const [diet,       setDiet]       = useState('omnivore');
   const [difficulty, setDifficulty] = useState(null);
   const [activeTab,  setActiveTab]  = useState('menu');
 
   const weight = athlete?.icu_weight || athlete?.weight || 70;
-  const needs  = useMemo(() => calcDailyNeeds(athlete, activities), [athlete, activities]);
+  const needs  = useMemo(() => calcDailyNeeds(athlete, activities, plannedEvents), [athlete, activities, plannedEvents]);
 
   const showPre    = ['moderate', 'hard', 'long'].includes(needs.loadLevel);
   const showDuring = needs.loadLevel === 'long';
@@ -630,9 +630,9 @@ export default function NutritionCoach({ athlete, activities = [] }) {
             {DIET_OPTIONS.map(opt => (
               <button key={opt.key} onClick={() => setDiet(opt.key)} style={{
                 flex: 1, padding: '10px 6px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
-                border: `1px solid ${diet === opt.key ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                border: `1px solid ${diet === opt.key ? 'var(--accent-orange)' : 'var(--border)'}`,
                 background: diet === opt.key ? 'rgba(34,211,238,0.1)' : 'transparent',
-                color: diet === opt.key ? 'var(--accent-cyan)' : 'var(--text-3)',
+                color: diet === opt.key ? 'var(--accent-orange)' : 'var(--text-3)',
                 transition: 'all 0.15s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
               }}>
                 <span style={{ fontSize: 20 }}>{opt.icon}</span>
@@ -645,7 +645,7 @@ export default function NutritionCoach({ athlete, activities = [] }) {
         <div className="card" style={{ padding: '16px 18px', marginBottom: 0 }}>
           <div style={sectionLabel}>Difficulté des recettes</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button onClick={() => setDifficulty(null)} style={pill('var(--accent-cyan)', difficulty === null)}>
+            <button onClick={() => setDifficulty(null)} style={pill('var(--accent-orange)', difficulty === null)}>
               Toutes
             </button>
             {DIFFICULTY_OPTIONS.map(opt => (
@@ -659,18 +659,41 @@ export default function NutritionCoach({ athlete, activities = [] }) {
 
         <div className="card" style={{ padding: '16px 18px', marginBottom: 0 }}>
           <div style={sectionLabel}>Contexte du jour</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <span style={tag(LOAD_COLORS[needs.loadLevel])}>{needs.loadLabel}</span>
+            {needs.preloading && (
+              <span style={tag('#7c3aed')}>Charge glucidique 🔋</span>
+            )}
             {needs.durationH > 0 && (
-              <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{needs.durationH}h · TSS {needs.tss}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+                {needs.durationH}h · TSS {needs.tss}
+              </span>
             )}
           </div>
-          <div style={{ fontSize: 13, color: 'var(--text-3)' }}>
-            Poids :{' '}
-            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-1)' }}>{weight} kg</span>
+          {needs.trainingKcal > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>
+              <span style={{ color: '#f97316', fontWeight: 600 }}>{needs.trainingKcal} kcal</span> brûlées
+              {' · '}base <span style={{ fontFamily: 'var(--font-mono)' }}>{needs.bmr}</span> kcal
+            </div>
+          )}
+          {needs.explanation && (
+            <div style={{ fontSize: 11, color: 'var(--text-4)', lineHeight: 1.5, marginBottom: 8, fontStyle: 'italic' }}>
+              {needs.explanation}
+            </div>
+          )}
+          {needs.tomorrowPlan && (
+            <div style={{ fontSize: 11, background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 7, padding: '6px 9px', color: 'var(--text-2)' }}>
+              <span style={{ color: '#f97316', fontWeight: 700 }}>Demain :</span>{' '}
+              {needs.tomorrowPlan.title || 'Entraînement planifié'}
+              {needs.preloading && <span style={{ color: '#a78bfa', marginLeft: 6 }}>→ pré-charge glucidique activée</span>}
+            </div>
+          )}
+          <div style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 8 }}>
+            {weight} kg
             {!athlete?.icu_weight && !athlete?.weight && (
-              <span style={{ fontSize: 11, color: '#f97316', marginLeft: 8 }}>valeur par défaut</span>
+              <span style={{ color: '#f97316', marginLeft: 6 }}>· valeur par défaut</span>
             )}
+            {athlete?.icu_ftp && <span> · FTP {athlete.icu_ftp}W</span>}
           </div>
         </div>
       </div>
@@ -700,7 +723,7 @@ export default function NutritionCoach({ athlete, activities = [] }) {
             padding: '9px 20px', display: 'flex', alignItems: 'center', gap: 7,
             background: activeTab === tab.key ? 'rgba(34,211,238,0.1)' : 'transparent',
             border: 'none', borderRight: i < tabs.length - 1 ? '1px solid var(--border)' : 'none',
-            color: activeTab === tab.key ? 'var(--accent-cyan)' : 'var(--text-3)',
+            color: activeTab === tab.key ? 'var(--accent-orange)' : 'var(--text-3)',
             fontSize: 13, fontWeight: activeTab === tab.key ? 600 : 400,
             cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit',
           }}>
@@ -734,7 +757,7 @@ export default function NutritionCoach({ athlete, activities = [] }) {
             ))}
 
             <div style={{ padding: '13px 16px', borderRadius: 10, background: 'rgba(77,127,232,0.07)', border: '1px solid rgba(77,127,232,0.18)', marginTop: 6 }}>
-              <div style={{ ...sectionLabel, color: '#4d7fe8', marginBottom: 6 }}>💧 Hydratation</div>
+              <div style={{ ...sectionLabel, color: '#f97316', marginBottom: 6 }}>💧 Hydratation</div>
               <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, lineHeight: 1.7 }}>
                 {needs.loadLevel === 'long'
                   ? `≥ ${Math.round(weight * 0.05)} L. Pendant : 500–700 ml/h avec électrolytes si > 2h.`
@@ -746,7 +769,7 @@ export default function NutritionCoach({ athlete, activities = [] }) {
 
             {needs.loadLevel !== 'rest' && (
               <div style={{ padding: '13px 16px', borderRadius: 10, background: 'rgba(34,211,238,0.05)', border: '1px solid rgba(34,211,238,0.14)', marginTop: 10 }}>
-                <div style={{ ...sectionLabel, color: 'var(--accent-cyan)', marginBottom: 6 }}>⏱ Timing nutritionnel</div>
+                <div style={{ ...sectionLabel, color: 'var(--accent-orange)', marginBottom: 6 }}>⏱ Timing nutritionnel</div>
                 <ul style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, paddingLeft: 18, lineHeight: 2 }}>
                   <li>Repas pré-séance : <strong>2–3h avant</strong> ou collation 45 min</li>
                   {needs.loadLevel === 'long' && <li>Pendant : <strong>60–90 g glucides/h</strong> dès 45 min</li>}

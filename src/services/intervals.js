@@ -165,8 +165,10 @@ class IntervalsService {
   }
 
   // ─── Power Curve ──────────────────────────────────────────
+  // Explicit all-time range so ICU returns full career PRs, not recent window.
   async getPowerCurve(type = 'Ride') {
-    return this.request(`/athlete/${this.athleteId}/power-curves?type=${type}`);
+    const end = new Date().toISOString().slice(0, 10);
+    return this.request(`/athlete/${this.athleteId}/power-curves?type=${type}&start=2010-01-01&end=${end}`);
   }
 
   // ─── Computed Metrics ─────────────────────────────────────

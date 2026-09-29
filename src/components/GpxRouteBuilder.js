@@ -480,6 +480,58 @@ function scoreRouteShape(coords) {
   };
 }
 
+// ── Google Encoded Polyline decoder ───────────────────────────
+// Returns [[lat, lng], ...] from a Strava summary_polyline string
+function decodePolyline(encoded) {
+  const result = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    let b, shift = 0, val = 0;
+    do { b = encoded.charCodeAt(index++) - 63; val |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (val & 1) ? ~(val >> 1) : (val >> 1);
+    shift = 0; val = 0;
+    do { b = encoded.charCodeAt(index++) - 63; val |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (val & 1) ? ~(val >> 1) : (val >> 1);
+    result.push([lat / 1e5, lng / 1e5]);
+  }
+  return result;
+}
+
+// ── Elevation profile SVG ─────────────────────────────────────
+// rawCoords: BRouter [lng, lat, ele] tuples
+function ElevationProfile({ rawCoords }) {
+  if (!rawCoords?.length || rawCoords[0]?.length < 3) return null;
+  const step = Math.max(1, Math.floor(rawCoords.length / 180));
+  const pts = rawCoords.filter((_, i) => i % step === 0);
+  if (pts.length < 2) return null;
+  const elevs = pts.map(p => p[2] || 0);
+  const minE = Math.min(...elevs);
+  const maxE = Math.max(...elevs);
+  const range = Math.max(1, maxE - minE);
+  const W = 400, H = 56, PAD = 8;
+  const toY = (e) => PAD + (1 - (e - minE) / range) * (H - PAD * 2);
+  const linePts = pts.map((p, i) => `${(i / (pts.length - 1)) * W},${toY(p[2] || 0)}`).join(' ');
+  const areaPts = `0,${H} ${linePts} ${W},${H}`;
+  return (
+    <div style={{ marginTop: 10, marginBottom: 4 }}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 56, display: 'block' }} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="elev-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#4d7fe8" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#4d7fe8" stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
+        <polygon points={areaPts} fill="url(#elev-fill)" />
+        <polyline points={linePts} fill="none" stroke="#4d7fe8" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', marginTop: 2 }}>
+        <span>↑ {Math.round(maxE)}m max</span>
+        <span>{Math.round(minE)}m min</span>
+      </div>
+    </div>
+  );
+}
+
 function routeElevation(rawCoords) {
   if (!rawCoords?.length || rawCoords[0]?.length < 3) return { climbM: 0, descentM: 0, hasData: false };
   let climbM = 0, descentM = 0;
@@ -1050,7 +1102,7 @@ function PoiCard({ poi, thumb, onClose, currentLocation }) {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = [], workoutLibrary = [], mapTilerKey: userKey = '' }) {
+export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = [], workoutLibrary = [], mapTilerKey: userKey = '', activities = [] }) {
   // Location
   const [startLat, setStartLat] = useState('');
   const [startLng, setStartLng] = useState('');
@@ -1111,6 +1163,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
   const [mapCenter, setMapCenter] = useState(null);
   const [mapReady, setMapReady] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
   // POI — each category independently toggleable
   const [activePoiCats, setActivePoiCats] = useState(new Set());
@@ -1136,6 +1189,17 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
     });
     setSelectedPoi(null);
   }, []);
+
+  // Decode past activity polylines for personal heatmap overlay
+  const heatmapPolylines = useMemo(() => {
+    if (!showHeatmap || !activities.length) return [];
+    const rideTypes = new Set(['Ride', 'VirtualRide', 'MountainBikeRide', 'GravelRide', 'EBikeRide', 'EMountainBikeRide', 'Cycling']);
+    return activities
+      .filter(a => rideTypes.has(a.type) && a.map?.summary_polyline)
+      .slice(0, 120)
+      .map(a => { try { return decodePolyline(a.map.summary_polyline); } catch { return null; } })
+      .filter(pl => pl && pl.length > 1);
+  }, [showHeatmap, activities]);
 
   const allPlanned = [...(plannedEvents || []), ...(events || [])];
   const todayTraining = getTodayTraining(allPlanned);
@@ -1670,6 +1734,11 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
             <MapClickHandler onMapClick={({ lat, lng }) => handleMapClick({ lat, lng })} active={!!(mapPickMode || tab === 'draw')} />
             <MapMoveHandler onMoveEnd={(lat, lng) => setMapCenter([lat, lng])} />
             {mapFlyTo && <FlyTo lat={mapFlyTo.lat} lng={mapFlyTo.lng} zoom={mapFlyTo.zoom || 13} />}
+
+            {heatmapPolylines.map((pts, i) => (
+              <Polyline key={`hm-${i}`} positions={pts}
+                pathOptions={{ color: '#f77f3a', weight: 1.5, opacity: 0.22 }} />
+            ))}
 
             {tab === 'generate' && candidates.map((c, i) => (
               <Polyline key={c.id} positions={c.coords.map(([ln, la]) => [la, ln])}
@@ -2720,6 +2789,29 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
 
         {/* Divider */}
         <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '2px 0' }} />
+
+        {/* Heatmap toggle */}
+        {activities.some(a => a.map?.summary_polyline) && (
+          <button onClick={() => setShowHeatmap(v => !v)} style={{
+            ...GLASS,
+            borderRadius: 12, padding: '10px 14px', cursor: 'pointer',
+            fontFamily: 'var(--font-mono)', fontSize: 13,
+            color: showHeatmap ? '#f77f3a' : 'var(--text-2)',
+            border: `1px solid ${showHeatmap ? '#f77f3a' : 'rgba(255,255,255,0.07)'}`,
+            background: showHeatmap ? 'rgba(247,127,58,0.12)' : 'rgba(10,10,10,0.90)',
+            display: 'flex', alignItems: 'center', gap: 9,
+            width: '100%', textAlign: 'left', transition: 'all 0.18s',
+          }}>
+            <span style={{ fontSize: 14, flexShrink: 0, minWidth: 22 }}>🔥</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>My Heatmap</div>
+              {showHeatmap && (
+                <div style={{ fontSize: 12, color: '#f77f3a', opacity: 0.85, marginTop: 1 }}>{heatmapPolylines.length} rides shown</div>
+              )}
+            </div>
+            {showHeatmap && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#f77f3a', flexShrink: 0 }} />}
+          </button>
+        )}
 
         {/* POI category filters */}
         {POI_CATEGORIES.map(cat => {

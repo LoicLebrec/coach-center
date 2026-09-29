@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ZapIcon, UserIcon, DumbbellIcon, MapIcon, TrophyIcon, SaladIcon,
   BarChartIcon, DashboardIcon, TrendingUpIcon, ActivityIcon,
-  CalendarIcon, SettingsIcon, LogOutIcon, BikeIcon,
+  CalendarIcon, SettingsIcon, LogOutIcon, BikeIcon, HomeIcon, ChevronIcon,
 } from './components/Icons';
 import { intervalsService, buildIcuEventPayload } from './services/intervals';
 import { buildRuleBasedWorkout, inferTrainingType } from './services/workout-rules';
@@ -14,7 +14,9 @@ import { aiCoachService } from './services/ai-coach';
 import persistence from './services/persistence';
 import { backendService } from './services/backend-api';
 import LoginPage from './components/LoginPage';
+import cloudSync from './services/cloudSync';
 import Dashboard from './components/Dashboard';
+import Today from './components/Today';
 import Activities from './components/Activities';
 import PMCChart from './components/PMCChart';
 import Settings from './components/Settings';
@@ -48,6 +50,7 @@ function extractJsonBlock(text) {
 }
 
 const VIEWS = {
+  TODAY: 'today',
   COACH: 'coach',
   ATHLETE_PROFILE: 'athlete_profile',
   WORKOUT_BUILDER: 'workout_builder',
@@ -195,7 +198,8 @@ export default function App() {
       .catch(() => { });
   }, [authed]);
 
-  const [view, setView] = useState(VIEWS.DASHBOARD);
+  const [view, setView] = useState(VIEWS.TODAY);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -584,6 +588,7 @@ export default function App() {
       // Cache for offline use
       if (finalWellness.length) await persistence.cacheData('wellness', finalWellness, 30);
       if (dedupedActivities.length) await persistence.cacheData('activities', dedupedActivities, 30);
+      if (icuPowerCurve) await persistence.cacheData('powerCurve', icuPowerCurve, 1440);
       await persistence.savePref('last-sync-meta', {
         mode,
         syncDays,
@@ -596,8 +601,10 @@ export default function App() {
       setError(err.message);
       const cachedWellness = await persistence.getCachedData('wellness');
       const cachedActivities = await persistence.getCachedData('activities');
+      const cachedPowerCurve = await persistence.getCachedData('powerCurve');
       if (cachedWellness) setWellness(cachedWellness);
       if (cachedActivities) setActivities(cachedActivities);
+      if (cachedPowerCurve) setPowerCurve(cachedPowerCurve);
     } finally {
       setLoading(false);
     }
@@ -968,6 +975,23 @@ export default function App() {
     }
 
     switch (view) {
+      case VIEWS.TODAY:
+        return (
+          <Today
+            wellness={wellness}
+            activities={activities}
+            athlete={athlete}
+            events={events}
+            plannedEvents={plannedEvents}
+            powerCurve={powerCurve}
+            loading={loading}
+            onAddPlannedEvent={handleAddPlannedEvent}
+            onRemovePlannedEvent={handleRemovePlannedEvent}
+            onExportToZwift={handleExportToZwift}
+            onSendToWahoo={connections.wahoo ? handleSendToWahoo : null}
+            onOpenCalendar={() => setView(VIEWS.CALENDAR)}
+          />
+        );
       case VIEWS.COACH:
         return (
           <CoachChat
@@ -1024,9 +1048,9 @@ export default function App() {
       case VIEWS.WORKOUT_ANALYSIS:
         return <WorkoutAnalysis activities={activities} athlete={athlete} plannedEvents={plannedEvents} />;
       case VIEWS.NUTRITION:
-        return <NutritionCoach athlete={athlete} activities={activities} />;
+        return <NutritionCoach athlete={athlete} activities={activities} plannedEvents={plannedEvents} />;
       case VIEWS.DASHBOARD:
-        return <Dashboard wellness={wellness} activities={activities} athlete={athlete} loading={loading} error={error} />;
+        return <Dashboard wellness={wellness} activities={activities} athlete={athlete} loading={loading} error={error} powerCurve={powerCurve} />;
       case VIEWS.PMC:
         return (
           <>
@@ -1074,8 +1098,27 @@ export default function App() {
     }
   };
 
+  const MORE_NAV = [
+    [VIEWS.DASHBOARD, DashboardIcon, 'Dashboard'],
+    [VIEWS.PMC, TrendingUpIcon, 'PMC / Forme'],
+    [VIEWS.ACTIVITIES, BikeIcon, 'Activités'],
+    [VIEWS.WORKOUT_ANALYSIS, BarChartIcon, 'Analyse séance'],
+    [VIEWS.WEEKLY, ActivityIcon, 'Charge hebdo'],
+    [VIEWS.WORKOUT_BUILDER, DumbbellIcon, 'Créer une séance'],
+    [VIEWS.GPX_BUILDER, MapIcon, 'Parcours GPX'],
+    [VIEWS.RACE_CALENDAR, TrophyIcon, 'Calendrier courses'],
+    [VIEWS.NUTRITION, SaladIcon, 'Nutrition'],
+    [VIEWS.ATHLETE_PROFILE, UserIcon, 'Profil athlète'],
+    [VIEWS.COACH, ZapIcon, 'Coach APEX (IA)'],
+  ];
+  const showMore = moreOpen || MORE_NAV.some(([id]) => id === view);
+
   if (!authed) {
-    return <LoginPage onSuccess={() => setAuthed(true)} />;
+    return <LoginPage onSuccess={async () => {
+      // Components already loaded from local storage — reload if the backup brought data in.
+      if (await cloudSync.start()) window.location.reload();
+      else setAuthed(true);
+    }} />;
   }
 
   return (
@@ -1084,80 +1127,43 @@ export default function App() {
         {/* ── Logo ── */}
         <div className="sidebar-header">
           <div className="sidebar-logo">
-            <svg className="sidebar-logo-mark" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="lg1" x1="0" y1="0" x2="38" y2="38" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#ff9a5c" />
-                  <stop offset="100%" stopColor="#d94c00" />
-                </linearGradient>
-              </defs>
-              <rect width="38" height="38" rx="10" fill="url(#lg1)" />
-              {/* Bold speed-chevron mark */}
-              <path d="M10 12 L20 19 L10 26" stroke="rgba(255,255,255,0.35)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M18 12 L28 19 L18 26" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+            <svg className="sidebar-logo-mark" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="36" height="36" rx="9" fill="#ff6b2b" />
+              <polyline points="5,21 10,21 14,12 18,26 22,15 27,15 31,15"
+                stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
             </svg>
             <span className="sidebar-logo-wordmark">
-              <span className="sidebar-logo-title">Coach Center</span>
-              <span className="sidebar-logo-sub">Performance</span>
+              <span className="sidebar-logo-title">CoachCenter</span>
             </span>
           </div>
         </div>
 
         {/* ── Navigation ── */}
         <nav className="sidebar-nav">
-          <div className="nav-section-label">Training</div>
+          {[
+            [VIEWS.TODAY, HomeIcon, 'Aujourd\'hui'],
+            [VIEWS.CALENDAR, CalendarIcon, 'Calendrier'],
+          ].map(([id, Ico, label]) => (
+            <button key={id} className={`nav-item nav-item-main ${view === id ? 'active' : ''}`} onClick={() => setView(id)}>
+              <Ico className="nav-icon" size={17} />
+              <span>{label}</span>
+            </button>
+          ))}
 
-          <button className={`nav-item ${view === VIEWS.ATHLETE_PROFILE ? 'active' : ''}`} onClick={() => setView(VIEWS.ATHLETE_PROFILE)}>
-            <UserIcon className="nav-icon" size={15} />
-            <span>Athlete Profile</span>
-          </button>
-          <button className={`nav-item${view === VIEWS.COACH ? ' active coach-nav-active' : ''}`} onClick={() => setView(VIEWS.COACH)}>
-            <ZapIcon className="nav-icon" size={16} />
-            <span>APEX Coach</span>
-          </button>
-          <button className={`nav-item ${view === VIEWS.WORKOUT_BUILDER ? 'active' : ''}`} onClick={() => setView(VIEWS.WORKOUT_BUILDER)}>
-            <DumbbellIcon className="nav-icon" size={15} />
-            <span>Workout Builder</span>
-          </button>
-          <button className={`nav-item ${view === VIEWS.GPX_BUILDER ? 'active' : ''}`} onClick={() => setView(VIEWS.GPX_BUILDER)}>
-            <MapIcon className="nav-icon" size={15} />
-            <span>Route Builder</span>
-          </button>
-          <button className={`nav-item ${view === VIEWS.RACE_CALENDAR ? 'active' : ''}`} onClick={() => setView(VIEWS.RACE_CALENDAR)}>
-            <TrophyIcon className="nav-icon" size={15} />
-            <span>Calendrier courses</span>
-          </button>
-          <button className={`nav-item ${view === VIEWS.NUTRITION ? 'active' : ''}`} onClick={() => setView(VIEWS.NUTRITION)}>
-            <SaladIcon className="nav-icon" size={15} />
-            <span>Nutrition</span>
+          <button
+            className={`nav-section-toggle ${showMore ? 'open' : ''}`}
+            onClick={() => setMoreOpen(o => !o)}
+          >
+            <span>Plus d'outils</span>
+            <ChevronIcon size={13} className="nav-section-chevron" />
           </button>
 
-          <div className="nav-section-label">Analytics</div>
-
-          <button className={`nav-item ${view === VIEWS.DASHBOARD ? 'active' : ''}`} onClick={() => setView(VIEWS.DASHBOARD)}>
-            <DashboardIcon className="nav-icon" size={15} />
-            <span>Dashboard</span>
-          </button>
-          <button className={`nav-item ${view === VIEWS.CALENDAR ? 'active' : ''}`} onClick={() => setView(VIEWS.CALENDAR)}>
-            <CalendarIcon className="nav-icon" size={15} />
-            <span>Calendar</span>
-          </button>
-          <button className={`nav-item ${view === VIEWS.ACTIVITIES ? 'active' : ''}`} onClick={() => setView(VIEWS.ACTIVITIES)}>
-            <BikeIcon className="nav-icon" size={15} />
-            <span>Activities</span>
-          </button>
-          <button className={`nav-item ${view === VIEWS.WORKOUT_ANALYSIS ? 'active' : ''}`} onClick={() => setView(VIEWS.WORKOUT_ANALYSIS)}>
-            <BarChartIcon className="nav-icon" size={15} />
-            <span>Workout Analysis</span>
-          </button>
-          <button className={`nav-item ${view === VIEWS.WEEKLY ? 'active' : ''}`} onClick={() => setView(VIEWS.WEEKLY)}>
-            <ActivityIcon className="nav-icon" size={15} />
-            <span>Weekly Load</span>
-          </button>
-          <button className={`nav-item ${view === VIEWS.PMC ? 'active' : ''}`} onClick={() => setView(VIEWS.PMC)}>
-            <TrendingUpIcon className="nav-icon" size={15} />
-            <span>PMC / Form</span>
-          </button>
+          {showMore && MORE_NAV.map(([id, Ico, label]) => (
+            <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => setView(id)}>
+              <Ico className="nav-icon" size={15} />
+              <span>{label}</span>
+            </button>
+          ))}
         </nav>
 
         {/* ── Footer ── */}

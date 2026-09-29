@@ -21,6 +21,9 @@ const {
 } = require('./oauth-handlers');
 
 const { createOAuthSession } = require('./oauth-sessions');
+const crossSyncRouter = require('./cross-sync');
+const widgetRouter = require('./widget');
+const userStoreRouter = require('./user-store');
 
 const app = express();
 
@@ -30,6 +33,8 @@ app.use(cors({
   origin: [FRONTEND_URL, 'http://localhost:3000', 'http://localhost:3001'],
   credentials: true,
 }));
+// Store backups carry the whole local dataset on first sync — larger limit.
+app.use('/api/user-store', express.json({ limit: '4mb' }));
 app.use(express.json());
 
 // ── Health ────────────────────────────────────────────────────────────────────
@@ -296,6 +301,12 @@ app.delete('/api/connections/:provider', authMiddleware, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── Cross-platform sync (Garmin <-> Coros) ────────────────────────────────────
+
+app.use('/api/cross-sync', crossSyncRouter);
+app.use('/api/widget', widgetRouter);
+app.use('/api/user-store', userStoreRouter);
 
 // ── Connections status (deprecated, use GET /api/connections above) ──────────────
 

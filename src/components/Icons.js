@@ -134,3 +134,17 @@ export const LogOutIcon = ({ size, className, style }) => (
     <line x1="21" y1="12" x2="9" y2="12" />
   </Icon>
 );
+
+export const HomeIcon = ({ size, className, style }) => (
+  <Icon size={size} className={className} style={style}>
+    <path d="M3 10.5 12 3l9 7.5" />
+    <path d="M5 9.5V21h14V9.5" />
+    <path d="M10 21v-6h4v6" />
+  </Icon>
+);
+
+export const ChevronIcon = ({ size, className, style }) => (
+  <Icon size={size} className={className} style={style}>
+    <polyline points="6 9 12 15 18 9" />
+  </Icon>
+);

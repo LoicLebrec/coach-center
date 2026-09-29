@@ -370,7 +370,7 @@ export default function Calendar({
     onOpenWorkoutBuilder,
 }) {
     const csvInputRef = useRef(null);
-    const [cursor, setCursor] = useState(startOfMonth(new Date()));
+    const [cursor, setCursor] = useState(new Date());
     const [viewMode, setViewMode] = useState('week');
     const [collapsed, setCollapsed] = useState({
         builder: false,

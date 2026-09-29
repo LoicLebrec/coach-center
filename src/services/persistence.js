@@ -8,15 +8,16 @@
  * information over time (as requested).
  */
 import localforage from 'localforage';
+import { trackStore } from './cloudSync';
 
 // Separate stores for different data types
-const credentialsStore = localforage.createInstance({ name: 'coach-center', storeName: 'credentials' });
-const dataStore = localforage.createInstance({ name: 'coach-center', storeName: 'cached-data' });
-const notesStore = localforage.createInstance({ name: 'coach-center', storeName: 'coach-notes' });
-const prefsStore = localforage.createInstance({ name: 'coach-center', storeName: 'preferences' });
-const coachStore = localforage.createInstance({ name: 'coach-center', storeName: 'coach' });
-const journalStore = localforage.createInstance({ name: 'coach-center', storeName: 'journal' });
-const planningStore = localforage.createInstance({ name: 'coach-center', storeName: 'planning' });
+const credentialsStore = trackStore(localforage.createInstance({ name: 'coach-center', storeName: 'credentials' }), 'credentials');
+const dataStore = trackStore(localforage.createInstance({ name: 'coach-center', storeName: 'cached-data' }), 'cached-data');
+const notesStore = trackStore(localforage.createInstance({ name: 'coach-center', storeName: 'coach-notes' }), 'coach-notes');
+const prefsStore = trackStore(localforage.createInstance({ name: 'coach-center', storeName: 'preferences' }), 'preferences');
+const coachStore = trackStore(localforage.createInstance({ name: 'coach-center', storeName: 'coach' }), 'coach');
+const journalStore = trackStore(localforage.createInstance({ name: 'coach-center', storeName: 'journal' }), 'journal');
+const planningStore = trackStore(localforage.createInstance({ name: 'coach-center', storeName: 'planning' }), 'planning');
 
 const persistence = {
   // ─── Credentials ──────────────────────────────────────────
