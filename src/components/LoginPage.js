@@ -18,7 +18,9 @@ export default function LoginPage({ onSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(
+    () => new URLSearchParams(window.location.search).get('auth_error') || ''
+  );
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -42,7 +44,7 @@ export default function LoginPage({ onSuccess }) {
 
   const handleGoogle = () => {
     // Redirect to backend Google OAuth — token returned in URL after callback
-    window.location.href = '/api/auth/google/start';
+    window.location.href = backendService.googleLoginUrl();
   };
 
   return (

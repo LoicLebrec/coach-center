@@ -193,6 +193,7 @@ export default function App() {
   // Fetch user profile once authenticated
   useEffect(() => {
     if (!authed || !backendService.isAuthenticated()) return;
+    backendService.refreshToken().catch(() => { });
     backendService.getCurrentUser()
       .then(u => { if (u) setCurrentUser(u); })
       .catch(() => { });

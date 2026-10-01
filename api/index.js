@@ -69,6 +69,16 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Rolling session — the app calls this on start to extend the login.
+app.post('/api/auth/refresh', authMiddleware, async (req, res) => {
+  try {
+    await getUserById(req.userId);
+    res.json({ token: generateToken(req.userId) });
+  } catch (err) {
+    res.status(err.message === 'User not found' ? 401 : 500).json({ error: err.message });
+  }
+});
+
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   try {
     const user = await getUserById(req.userId);

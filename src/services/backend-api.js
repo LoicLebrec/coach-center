@@ -68,8 +68,9 @@ class BackendService {
         try {
             const response = await fetch(url, options);
 
-            if (response.status === 401) {
-                // Token expired or invalid
+            // Token expired or invalid — but a 401 on login/register is just bad
+            // credentials: let the error surface on the form instead of reloading.
+            if (response.status === 401 && this.token && !endpoint.startsWith('/auth/')) {
                 this.clearAuth();
                 window.location.href = '/';
             }
@@ -118,6 +119,21 @@ class BackendService {
         }
 
         return data;
+    }
+
+    // Rolling session: swap the JWT for a fresh one on each app start, so the
+    // login only expires after a long period without opening the app.
+    async refreshToken() {
+        if (!this.token) return;
+        const data = await this.request('POST', '/auth/refresh');
+        if (data.token) {
+            this.token = data.token;
+            this.saveToStorage();
+        }
+    }
+
+    googleLoginUrl() {
+        return `${API_BASE_URL}/auth/google/start`;
     }
 
     async getCurrentUser() {
