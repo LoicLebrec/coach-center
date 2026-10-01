@@ -108,3 +108,38 @@ test('flat HRV history is not flagged as low', () => {
   const a = analyzeTraining({ wellness: wellness({ hrv: () => 60 }), activities: [], seasonState: season, today: TODAY });
   expect(a.hrv.status).toBe('normal');
 });
+
+describe('buildOutlook + day overrides', () => {
+  const { buildOutlook, computeDay } = require('./dailyPlan');
+  const season = { mode: 'manual', phase: 'build', phaseStart: '2026-09-07' };
+
+  test('four weeks from this Monday, each day with a session or rest', () => {
+    const weeks = buildOutlook({ season, today: TODAY });
+    expect(weeks).toHaveLength(4);
+    expect(weeks[0].start).toBe('2026-09-21');
+    expect(weeks[1].start).toBe('2026-09-28');
+    weeks.forEach(w => expect(w.days).toHaveLength(7));
+    const tue = weeks[1].days[1];
+    expect(tue.source).toBe('plan');
+    expect(tue.blocks.length).toBeGreaterThan(0);
+    expect(tue.tss).toBeGreaterThan(0);
+  });
+
+  test('override replaces the template; a race still wins', () => {
+    const overrides = { [key(2)]: { type: 'rest' }, [key(3)]: { type: 'vo2', minutes: 75 } }; // Sat, Sun
+    const plannedEvents = [{ start_date_local: `${key(3)}T09:00:00`, name: 'Course', kind: 'race' }];
+    const [w0] = buildOutlook({ season: { ...season, dayOverrides: overrides }, plannedEvents, today: TODAY });
+    expect(w0.days[5]).toMatchObject({ type: 'rest', source: 'override' });
+    expect(w0.days[6]).toMatchObject({ type: 'race', source: 'race' });
+  });
+
+  test("today's session follows an override", () => {
+    const day = computeDay({
+      wellness: wellness(), activities: [], today: TODAY,
+      season: { ...season, dayOverrides: { [TODAY]: { type: 'endurance', minutes: 120 } } },
+    });
+    expect(day.base.source).toBe('override');
+    expect(day.base.trainingType).toBe('endurance');
+    expect(day.week[3]).toMatchObject({ type: 'endurance', minutes: 120 });
+  });
+});

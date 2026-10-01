@@ -220,6 +220,7 @@ const DEFAULT_SEASON_CONFIG = {
   targetName: '',
   cycleStart: null,    // YYYY-MM-DD — "new cycle" restarts week counting (and progression) here
   cycleFocus: 'auto',  // 'auto' (athlete profile weaknesses) | sprint | punch | vo2max | threshold
+  dayOverrides: {},    // { 'YYYY-MM-DD': { type, minutes } } — days the athlete changed by hand
 };
 
 const CYCLE_FOCUS = {
@@ -329,19 +330,29 @@ const LIMITER_SWAP = {
 
 /**
  * Session the plan wants on a given date.
- * opts: { weaknesses: [], hasRaceThatDay, hasRaceTomorrow }
+ * opts: { weaknesses: [], hasRaceThatDay, hasRaceTomorrow, override: { type, minutes },
+ *         responder: { volume, intensity, rest } traits in -1|0|1 (services/responderProfile) }
+ * A race on the day beats everything; a hand-made override beats the template.
  */
 function templateForDay(state, date, opts = {}) {
   const idx = (date.getDay() + 6) % 7;
   let [type, minutes] = TEMPLATES[state.phase]?.[idx] || ['endurance', 60];
 
   if (opts.hasRaceThatDay) return { type: 'race', minutes: 0 };
+  if (opts.override?.type) {
+    return { type: opts.override.type, minutes: opts.override.type === 'rest' ? 0 : Number(opts.override.minutes) || 60, overridden: true };
+  }
   if (opts.hasRaceTomorrow) return { type: 'openers', minutes: 45 };
   if (type === 'race') { type = 'endurance'; minutes = 150; } // no race planned this Sunday
   if (type === 'openers' && !opts.hasRaceTomorrow && state.phase === 'competition') { type = 'durability'; minutes = 150; }
 
   const limiter = (opts.weaknesses || []).map(w => LIMITER_SWAP[w]).find(Boolean);
   if (limiter && idx === 3 && ['build', 'competition'].includes(state.phase)) type = limiter;
+
+  // Rider's measured response to rest days (responder profile).
+  const rest = opts.responder?.rest || 0;
+  if (rest > 0 && idx === 4 && type === 'recovery') { type = 'rest'; minutes = 0; }
+  if (rest < 0 && idx === 0 && type === 'rest' && state.phase !== 'transition') { type = 'recovery'; minutes = 45; }
 
   if (state.isRecoveryWeek) {
     if (!['rest', 'recovery'].includes(type)) {
@@ -353,6 +364,11 @@ function templateForDay(state, date, opts = {}) {
     // Quality sessions progress through workout levels instead (see progressionFor).
     minutes = Math.round(minutes * (1 + 0.1 * (state.weekInCycle - 1)));
   }
+  // Rider's measured response to volume: ±15 % endurance time on load weeks.
+  const volume = opts.responder?.volume || 0;
+  if (volume && !state.isRecoveryWeek && ['endurance', 'durability'].includes(type)) {
+    minutes = Math.max(45, Math.round(minutes * (1 + 0.15 * volume)));
+  }
 
   return { type, minutes: Math.round(minutes / 5) * 5 };
 }
@@ -362,10 +378,12 @@ function templateForDay(state, date, opts = {}) {
  *  level    — 1 on the first load week of the phase, +1 each load week, +1 per mesocycle.
  *  rotation — changes each mesocycle so the session family (e.g. 30/15 vs 4×4) rotates.
  */
-function progressionFor(state) {
+function progressionFor(state, responder = null) {
   const mesoIndex = Math.floor((state.weekInPhase - 1) / state.cycleLen);
   if (state.isRecoveryWeek) return { level: 1, rotation: mesoIndex, mesoIndex };
-  return { level: mesoIndex + state.weekInCycle, rotation: mesoIndex, mesoIndex };
+  // Rider's measured response to Z5-Z7 work shifts quality sessions one level.
+  const level = Math.max(1, mesoIndex + state.weekInCycle + (responder?.intensity || 0));
+  return { level, rotation: mesoIndex, mesoIndex };
 }
 
 function weekPlan(state, fromDate = new Date(), opts = {}) {
@@ -380,6 +398,8 @@ function weekPlan(state, fromDate = new Date(), opts = {}) {
         weaknesses: opts.weaknesses,
         hasRaceThatDay: opts.raceDays?.has(key),
         hasRaceTomorrow: opts.raceDays?.has(dayKey(next)),
+        override: opts.overrides?.[key],
+        responder: opts.responder,
       }),
     };
   });
@@ -1456,6 +1476,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   adaptWorkout: () => (/* binding */ adaptWorkout),
 /* harmony export */   buildBaseSession: () => (/* binding */ buildBaseSession),
 /* harmony export */   buildCalendar: () => (/* binding */ buildCalendar),
+/* harmony export */   buildOutlook: () => (/* binding */ buildOutlook),
 /* harmony export */   buildSnapshot: () => (/* binding */ buildSnapshot),
 /* harmony export */   computeDay: () => (/* binding */ computeDay),
 /* harmony export */   computePhysio: () => (/* binding */ computePhysio),
@@ -1708,12 +1729,17 @@ function computePhysio(wellness, today) {
   };
 }
 
-/** Today's planned session and races, local plan first, then the Intervals.icu calendar. */
-function buildCalendar(plannedEvents, events, today) {
-  const all = [
+/** Local plan first, then Intervals.icu events not already copied locally; notes dropped. */
+function mergeCalendar(plannedEvents, events) {
+  return [
     ...plannedEvents.map(e => ({ ...e, _local: true })),
     ...events.filter(e => !plannedEvents.some(p => dayOf(p) === dayOf(e) && (p.name || p.title) === e.name)),
   ].filter(e => String(e.category || '').toUpperCase() !== 'NOTE');
+}
+
+/** Today's planned session and races, local plan first, then the Intervals.icu calendar. */
+function buildCalendar(plannedEvents, events, today) {
+  const all = mergeCalendar(plannedEvents, events);
   const todays = all.filter(e => dayOf(e) === today);
   const raceDays = new Set(all.filter(isRace).map(dayOf));
   const t = dateOf(today); t.setDate(t.getDate() + 1);
@@ -1729,8 +1755,9 @@ function buildCalendar(plannedEvents, events, today) {
 }
 
 /** Base session: planned blocks > planned name matched to library > season template — then the data checks. */
-function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date }) {
-  const { planned } = cal;
+function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override = null, responder = null }) {
+  // A day edited by hand in the plan beats whatever the calendar had.
+  const planned = override ? null : cal.planned;
   if (planned) {
     if (isRestDay(planned)) return { rest: true, source: 'planned' };
     const type = sessionType(planned);
@@ -1746,20 +1773,21 @@ function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis,
     const w = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(d.type, d.minutes, seasonState.phase, progression);
     return { ...w, source: 'planned-matched', plannedName: planned.name || planned.title, trainingType: d.type, dataChanges: d.changes };
   }
-  const tpl = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.templateForDay)(seasonState, date, { weaknesses, hasRaceTomorrow: cal.raceTomorrow });
-  if (tpl.type === 'rest') return { rest: true, source: 'season' };
+  const tpl = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.templateForDay)(seasonState, date, { weaknesses, hasRaceTomorrow: cal.raceTomorrow, override, responder });
+  if (tpl.type === 'rest') return { rest: true, source: tpl.overridden ? 'override' : 'season' };
   const d = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.decideSession)(tpl, analysis);
   const w = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(d.type, d.minutes, seasonState.phase, progression);
-  return { ...w, source: 'season', trainingType: d.type, plannedType: tpl.type, dataChanges: d.changes };
+  return { ...w, source: tpl.overridden ? 'override' : 'season', trainingType: d.type, plannedType: tpl.type, dataChanges: d.changes };
 }
 
 /**
  * Everything the Today view shows.
  * season: season config; profileWeaknesses: self-declared; checkin: today's answers (or DEFAULT_CHECKIN).
+ * responder: traits from services/responderProfile ({ volume, intensity, rest }) or null.
  */
 function computeDay({
   wellness = [], activities = [], athlete = null, events = [], plannedEvents = [], powerCurve = null,
-  season, profileWeaknesses = [], checkin = DEFAULT_CHECKIN, today = localDayKey(),
+  season, profileWeaknesses = [], checkin = DEFAULT_CHECKIN, today = localDayKey(), responder = null,
 }) {
   const date = dateOf(today);
   // A cycle scheduled from the suggestion takes over on its start date.
@@ -1773,13 +1801,14 @@ function computeDay({
   const weaknesses = season?.cycleFocus && season.cycleFocus !== 'auto'
     ? [season.cycleFocus]
     : (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.dataWeaknesses)(analysis, profileWeaknesses);
-  const progression = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.progressionFor)(seasonState);
-  const week = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.weekPlan)(seasonState, date, { weaknesses, raceDays: cal.raceDays });
+  const progression = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.progressionFor)(seasonState, responder);
+  const overrides = season?.dayOverrides || {};
+  const week = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.weekPlan)(seasonState, date, { weaknesses, raceDays: cal.raceDays, overrides, responder });
   const readiness = computeReadiness({
     tsb: physio.tsb, hrvStatus: analysis.hrv?.status, hrvRatio: physio.hrvRatio,
     rhrDelta: analysis.rhr.delta ?? physio.rhrDelta, checkin,
   });
-  const base = buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date });
+  const base = buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override: overrides[today], responder });
   const adapted = cal.race || base.rest ? null : adaptWorkout(base, readiness.level, checkin.minutes, seasonState.phase);
   const cycle = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.suggestCycle)({ analysis, seasonState, season, today, weaknesses: profileWeaknesses });
   return {
@@ -1789,6 +1818,57 @@ function computeDay({
     level: LEVELS[readiness.level],
     phaseInfo: _periodization__WEBPACK_IMPORTED_MODULE_1__.PHASES[seasonState.phase],
   };
+}
+
+/**
+ * The next `weeks` weeks (from this Monday), day by day, with the session each day
+ * would get. Precedence per day: race > hand-made override > calendar session > season template.
+ * No readiness adaptation here — that only exists for today.
+ */
+function buildOutlook({ season, plannedEvents = [], events = [], weaknesses = [], today = localDayKey(), weeks = 4, responder = null }) {
+  const all = mergeCalendar(plannedEvents, events);
+  const byDay = new Map();
+  for (const e of all) byDay.set(dayOf(e), [...(byDay.get(dayOf(e)) || []), e]);
+  const raceDays = new Set(all.filter(isRace).map(dayOf));
+  const overrides = season?.dayOverrides || {};
+
+  return Array.from({ length: weeks }, (_, w) => {
+    const ref = dateOf(today);
+    ref.setDate(ref.getDate() + 7 * w);
+    if (w > 0) ref.setDate(ref.getDate() - ((ref.getDay() + 6) % 7)); // Monday of later weeks
+    const refKey = localDayKey(ref);
+    // A scheduled cycle counts for the weeks after its start.
+    const p = season?.pendingCycle;
+    const cfg = p?.cycleStart && p.cycleStart <= refKey ? { ...season, ...p, pendingCycle: null } : season;
+    const state = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.getSeasonState)(cfg, ref);
+    const progression = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.progressionFor)(state, responder);
+    const days = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.weekPlan)(state, ref, { weaknesses, raceDays, overrides, responder }).map(d => {
+      const evs = byDay.get(d.date) || [];
+      const race = evs.find(isRace);
+      if (race) return { ...d, type: 'race', minutes: 0, source: 'race', title: race.name || race.title || 'Course', blocks: [] };
+      const planned = !d.overridden && evs.find(e => !isRace(e));
+      if (planned && isRestDay(planned)) return { date: d.date, type: 'rest', minutes: 0, source: 'planned', blocks: [] };
+      if (planned) {
+        const type = sessionType(planned) || 'endurance';
+        const minutes = sessionMinutes(planned) || 60;
+        const blocks = planned.workoutBlocks?.length
+          ? planned.workoutBlocks.map(b => ({ ...b, durationMin: Number(b.durationMin) || 0 }))
+          : (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(type, minutes, state.phase, progression).blocks;
+        return {
+          date: d.date, type, minutes, source: 'planned', blocks,
+          title: planned.name || planned.title, objective: planned.notes || '', tss: (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.estimateTss)(blocks),
+        };
+      }
+      const source = d.overridden ? 'override' : 'plan';
+      if (d.type === 'rest') return { ...d, source, blocks: [] };
+      const wk = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(d.type, d.minutes, state.phase, progression);
+      return {
+        ...d, source, blocks: wk.blocks, title: wk.title, objective: wk.objective, tss: (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.estimateTss)(wk.blocks),
+        family: wk.family, familyLabel: wk.familyLabel, level: wk.level, levelCount: wk.levelCount,
+      };
+    });
+    return { start: days[0].date, state, phaseInfo: _periodization__WEBPACK_IMPORTED_MODULE_1__.PHASES[state.phase], days };
+  });
 }
 
 /** Compact JSON for the widgets (iOS Scriptable, GNOME extension). */

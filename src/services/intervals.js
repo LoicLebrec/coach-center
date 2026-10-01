@@ -166,6 +166,11 @@ class IntervalsService {
 
   // ─── Power Curve ──────────────────────────────────────────
   // Explicit all-time range so ICU returns full career PRs, not recent window.
+  // Best-power curves for custom date ranges, e.g. ['r.2026-01-05.2026-01-11', ...].
+  async getPowerCurves(ranges, type = 'Ride') {
+    return this.request(`/athlete/${this.athleteId}/power-curves?type=${type}&curves=${ranges.join(',')}`);
+  }
+
   async getPowerCurve(type = 'Ride') {
     const end = new Date().toISOString().slice(0, 10);
     return this.request(`/athlete/${this.athleteId}/power-curves?type=${type}&start=2010-01-01&end=${end}`);

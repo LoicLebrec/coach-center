@@ -5,9 +5,11 @@ import { PHASES, PHASE_ORDER, DEFAULT_SEASON_CONFIG, CYCLE_FOCUS, blocksMinutes,
 import { estimateTss } from '../services/coachEngine';
 import {
   ZONE_PCT, TYPE_LABELS, CHECKIN_QUESTIONS, DEFAULT_CHECKIN, localDayKey, dayOf, num, fmtDur, groupBlocks,
-  computeDay, buildSnapshot,
+  computeDay, buildSnapshot, buildOutlook,
 } from '../services/dailyPlan';
 import { pushWidgetSnapshot } from '../services/widgetSnapshot';
+import { intervalsService } from '../services/intervals';
+import { profileFromData, weekRanges, TRAIT_TEXT } from '../services/responderProfile';
 
 /* ───────────────────────── helpers ───────────────────────── */
 
@@ -17,6 +19,44 @@ const ZONE_COLORS = {
 };
 const DAY_LETTERS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
+
+const PROFILE_TTL_DAYS = 7;
+const PROFILE_HISTORY_DAYS = 730;
+
+/**
+ * Responder profile from 2 years of Intervals.icu rides + weekly best-power curves.
+ * Cached a week; the fetch is two requests and stays out of the app's main activity state.
+ */
+function useResponderProfile() {
+  const [state, setState] = useState({ status: 'loading', profile: null });
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const cached = await persistence.getPref('responder-profile', null).catch(() => null);
+      const fresh = cached?.computedAt && Date.now() - new Date(cached.computedAt).getTime() < PROFILE_TTL_DAYS * 86400000;
+      if (cached?.profile && fresh) { if (alive) setState({ status: 'ok', profile: cached.profile }); return; }
+      if (!intervalsService.isConfigured()) {
+        if (alive) setState({ status: cached?.profile ? 'ok' : 'unavailable', profile: cached?.profile || null });
+        return;
+      }
+      try {
+        const newest = localDayKey();
+        const oldest = localDayKey(new Date(Date.now() - PROFILE_HISTORY_DAYS * 86400000));
+        const [acts, curves] = await Promise.all([
+          intervalsService.getActivities(oldest, newest),
+          intervalsService.getPowerCurves(weekRanges(oldest, newest)),
+        ]);
+        const profile = profileFromData(acts || [], curves);
+        persistence.savePref('responder-profile', { computedAt: new Date().toISOString(), profile }).catch(() => { });
+        if (alive) setState({ status: 'ok', profile });
+      } catch {
+        if (alive) setState({ status: cached?.profile ? 'ok' : 'error', profile: cached?.profile || null });
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+  return state;
+}
 
 /* ───────────────────────── UI bits ───────────────────────── */
 
@@ -215,6 +255,196 @@ function CycleCard({ cycle, pending, onApply, onCancelPending }) {
   );
 }
 
+const EDIT_TYPES = ['recovery', 'endurance', 'durability', 'tempo', 'force', 'sweetspot', 'threshold', 'vo2',
+  'anaerobic', 'sprint', 'race_sim', 'openers'];
+const EDIT_MINUTES = [30, 45, 60, 75, 90, 105, 120, 150, 180, 210, 240];
+const TYPE_SHORT = {
+  recovery: 'Réc', endurance: 'End', durability: 'Dur', tempo: 'Tmp', force: 'For', sweetspot: 'SS',
+  threshold: 'Seuil', vo2: 'VO2', anaerobic: 'Ana', sprint: 'Spr', race_sim: 'Sim', openers: 'Débl', race: '🏁',
+};
+const SOURCE_LABELS = { override: 'modifié', planned: 'calendrier', plan: 'plan', race: 'course' };
+
+function weekLabel(w, i) {
+  const start = new Date(`${w.start}T00:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  const when = i === 0 ? 'Cette semaine' : i === 1 ? 'Semaine prochaine' : `Semaine du ${start}`;
+  const kind = w.state.isRecoveryWeek ? 'récup' : `S${w.state.weekInCycle}/${w.state.cycleLen}`;
+  return { when, sub: `${w.phaseInfo.label} · ${kind}` };
+}
+
+/** Coming weeks of the plan: tap a day for the full session, change it or move it. */
+function PlanAhead({ weeks, today, ftp, onEdit }) {
+  const [wi, setWi] = useState(0);
+  const [sel, setSel] = useState(today);
+  const week = weeks[wi];
+  const idx = week.days.findIndex(d => d.date === sel);
+  const day = idx >= 0 ? week.days[idx] : null;
+  const label = weekLabel(week, wi);
+  const totals = week.days.reduce((t, d) => ({
+    min: t.min + (d.blocks?.length ? blocksMinutes(d.blocks) : 0), tss: t.tss + (d.tss || 0),
+  }), { min: 0, tss: 0 });
+  const goWeek = (i) => { setWi(i); setSel(i === 0 ? today : weeks[i].days[0].date); };
+
+  const editable = day && day.date >= today && day.source !== 'race';
+  const canSwap = (j) => {
+    const other = week.days[j];
+    return editable && other && other.date >= today && other.source !== 'race';
+  };
+  const swap = (j) => {
+    const other = week.days[j];
+    const asOverride = (d) => ({ type: d.type, minutes: d.type === 'rest' ? 0 : Math.round(d.minutes || blocksMinutes(d.blocks)) });
+    onEdit({ [day.date]: asOverride(other), [other.date]: asOverride(day) });
+    setSel(other.date);
+  };
+  const setDay = (patch) => onEdit({ [day.date]: { type: day.type, minutes: day.minutes || 60, ...patch } });
+
+  return (
+    <section className="today-card">
+      <div className="today-card-head">
+        <h2>Programme</h2>
+        <span className="today-pill tone-muted">{Math.round(totals.min / 6) / 10} h · ~{totals.tss} TSS</span>
+      </div>
+      <div className="today-plan-nav">
+        <button type="button" className="today-link" disabled={wi === 0} onClick={() => goWeek(wi - 1)} aria-label="Semaine précédente">‹</button>
+        <div>
+          <div className="today-plan-when">{label.when}</div>
+          <div className="today-metric-sub">{label.sub}</div>
+        </div>
+        <button type="button" className="today-link" disabled={wi === weeks.length - 1} onClick={() => goWeek(wi + 1)} aria-label="Semaine suivante">›</button>
+      </div>
+
+      <div className="today-week">
+        {week.days.map((d, i) => (
+          <button type="button" key={d.date} onClick={() => setSel(d.date)}
+            className={`today-week-day t-${d.type}${d.date === today ? ' is-today' : ''}${d.date === sel ? ' is-selected' : ''}`
+              + `${d.date < today ? ' is-past' : ''}${d.source === 'override' ? ' is-edited' : ''}`}>
+            <div className="today-week-letter">{DAY_LETTERS[i]} {Number(d.date.slice(8))}</div>
+            <div className="today-week-type">
+              {d.type === 'rest' ? '—' : (
+                <><span className="t-long">{TYPE_LABELS[d.type] || d.type}</span><span className="t-short">{TYPE_SHORT[d.type] || d.type}</span></>
+              )}
+            </div>
+            {d.blocks?.length > 0 && <div className="today-week-min">{Math.round(blocksMinutes(d.blocks))}′</div>}
+          </button>
+        ))}
+      </div>
+
+      {day && (
+        <div className="today-plan-day">
+          <div className="today-card-head">
+            <div>
+              <div className="today-metric-label">{fmtDay(day.date)} · {SOURCE_LABELS[day.source]}</div>
+              <div className="today-session-title" style={{ fontSize: 17 }}>
+                {day.type === 'rest' ? 'Repos' : day.type === 'race' ? `🏁 ${day.title}` : day.title || TYPE_LABELS[day.type]}
+              </div>
+            </div>
+          </div>
+          {day.blocks?.length > 0 && (
+            <>
+              <p className="today-hint">
+                {TYPE_LABELS[day.type]} · {Math.round(blocksMinutes(day.blocks))} min · ~{day.tss} TSS
+                {day.familyLabel && day.level ? ` · ${day.familyLabel} niv. ${day.level}/${day.levelCount}` : ''}
+                {day.objective ? ` · ${day.objective}` : ''}
+              </p>
+              <ZoneBar blocks={day.blocks} />
+              <BlockList blocks={day.blocks} ftp={ftp} />
+            </>
+          )}
+          {day.date === today && day.type !== 'rest' && day.type !== 'race' && (
+            <p className="today-hint">Aujourd’hui : la version ajustée à ta forme est dans « Séance du jour ».</p>
+          )}
+
+          {editable && (
+            <div className="today-plan-edit">
+              <label>
+                Séance
+                <select value={day.type} onChange={e => setDay(e.target.value === 'rest' ? { type: 'rest', minutes: 0 } : { type: e.target.value })}>
+                  <option value="rest">Repos</option>
+                  {EDIT_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+                </select>
+              </label>
+              {day.type !== 'rest' && (
+                <label>
+                  Durée
+                  <select value={EDIT_MINUTES.includes(day.minutes) ? day.minutes : ''} onChange={e => setDay({ minutes: Number(e.target.value) })}>
+                    {!EDIT_MINUTES.includes(day.minutes) && <option value="">{Math.round(day.minutes || 0)} min</option>}
+                    {EDIT_MINUTES.map(m => <option key={m} value={m}>{fmtDur(m)}</option>)}
+                  </select>
+                </label>
+              )}
+              <div className="today-inline">
+                <button type="button" className="btn" disabled={!canSwap(idx - 1)} onClick={() => swap(idx - 1)}>← Veille</button>
+                <button type="button" className="btn" disabled={!canSwap(idx + 1)} onClick={() => swap(idx + 1)}>Lendemain →</button>
+                {day.source === 'override' && (
+                  <button type="button" className="today-link" onClick={() => onEdit({ [day.date]: null })}>Revenir au plan</button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const TRAIT_NAMES = { volume: 'Volume', intensity: 'Intensité Z5–Z7', rest: 'Jours de repos' };
+
+function ResponderCard({ state, enabled, onToggle }) {
+  const { status, profile } = state;
+  return (
+    <section className="today-card">
+      <div className="today-card-head">
+        <h2>Ton profil de réponse</h2>
+        {profile?.ready && <span className="today-pill tone-muted">{profile.blocks} blocs de 4 sem.</span>}
+      </div>
+      {status === 'loading' && <p className="today-hint">Calcul sur 2 ans d’entraînement…</p>}
+      {(status === 'unavailable' || status === 'error') && (
+        <p className="today-hint">
+          {status === 'error' ? 'Impossible de charger l’historique Intervals.icu.' : 'Connecte Intervals.icu pour calculer ton profil.'}
+        </p>
+      )}
+      {status === 'ok' && profile && !profile.ready && (
+        <p className="today-hint">
+          Il faut ~6 mois de sorties avec capteur de puissance : {profile.totalBlocks ?? 0} / {profile.minBlocks} blocs utilisables.
+          En attendant, le plan suit la réponse moyenne.
+        </p>
+      )}
+      {status === 'ok' && profile?.ready && (
+        <>
+          <p className="today-hint">
+            Comment ta puissance (5 et 20 min) a réagi à tes blocs d’entraînement, comparé à ~1 400 cyclistes.
+            Un trait ne change le plan que s’il sort nettement de la moyenne.
+          </p>
+          <div className="today-traits">
+            {Object.entries(TRAIT_NAMES).map(([k, name]) => {
+              const score = profile.scores[k];
+              const t = profile.traits[k];
+              const pos = score == null ? 50 : Math.max(0, Math.min(100, 50 + score * 25));
+              return (
+                <div key={k} className="today-trait">
+                  <div className="today-trait-name">{name}</div>
+                  <div className="today-trait-scale" title={score == null ? '' : `score ${score.toFixed(2)}`}>
+                    <span className="today-trait-band" />
+                    <span className={`today-trait-dot${t ? ' is-on' : ''}`} style={{ left: `${pos}%` }} />
+                  </div>
+                  <div className="today-trait-text">
+                    {t ? <><strong>{TRAIT_TEXT[k][t].label}</strong> → {TRAIT_TEXT[k][t].plan}</> : <span className="today-muted">Dans la moyenne</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {Object.values(profile.traits).some(Boolean) && (
+            <label className="today-sick">
+              <input type="checkbox" checked={enabled} onChange={e => onToggle(e.target.checked)} />
+              Adapter mon plan à ce profil
+            </label>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 const LIMITER_LABELS = { sprint: 'Sprint (5 s)', punch: 'Punch (1 min)', vo2max: 'VO2 max (5 min)', threshold: 'Seuil (FTP)' };
 
 function DataCard({ analysis }) {
@@ -337,6 +567,17 @@ export default function Today({
     setSaved(null);
   };
 
+  // Hand edits of single days; value null = back to the plan. Past days are dropped.
+  const editDays = (patch) => {
+    setSeason(prev => {
+      const cur = Object.fromEntries(Object.entries(prev.dayOverrides || {}).filter(([k]) => k >= today));
+      Object.entries(patch).forEach(([k, v]) => { if (v) cur[k] = v; else delete cur[k]; });
+      const next = { ...prev, dayOverrides: cur };
+      persistence.savePref('season-config', next).catch(() => { });
+      return next;
+    });
+  };
+
   const updateSeason = (patch) => {
     setSeason(prev => {
       const next = { ...prev, ...patch };
@@ -346,15 +587,21 @@ export default function Today({
   };
 
   const ftp = num(athlete?.icu_ftp) || num(athlete?.ftp) || null;
+  const responderState = useResponderProfile();
+  const useResponder = season.useResponder !== false;
+  const responder = useResponder && responderState.profile?.ready ? responderState.profile.traits : null;
 
   const day = useMemo(() => computeDay({
     wellness, activities, athlete, events, plannedEvents, powerCurve,
-    season, profileWeaknesses: profile.weaknesses || [], checkin, today,
-  }), [wellness, activities, athlete, events, plannedEvents, powerCurve, season, profile.weaknesses, checkin, today]);
+    season, profileWeaknesses: profile.weaknesses || [], checkin, today, responder,
+  }), [wellness, activities, athlete, events, plannedEvents, powerCurve, season, profile.weaknesses, checkin, today, responder]);
   const {
-    physio, cal, seasonState, analysis, week, readiness, base, adapted, cycle, changes, form, phaseInfo,
+    physio, cal, seasonState, analysis, readiness, base, adapted, cycle, changes, form, phaseInfo,
     level: lvl,
   } = day;
+  const outlook = useMemo(() => buildOutlook({
+    season, plannedEvents, events, weaknesses: day.weaknesses, today, weeks: 4, responder,
+  }), [season, plannedEvents, events, day.weaknesses, today, responder]);
 
   // Persist a scheduled cycle once its start date is reached.
   useEffect(() => {
@@ -378,6 +625,7 @@ export default function Today({
       pushWidgetSnapshot(buildSnapshot(day, { ftp, source: 'app' }), {
         season,
         profileWeaknesses: profile.weaknesses || [],
+        responder,
         checkin: { date: today, ...checkin },
         plannedEvents: plannedEvents.filter(e => dayOf(e) >= today && dayOf(e) <= horizon),
         athlete: { icu_ftp: ftp, icu_weight: num(athlete?.icu_weight) || num(athlete?.weight) || null },
@@ -385,7 +633,7 @@ export default function Today({
       });
     }, 2000);
     return () => clearTimeout(timer);
-  }, [loading, day, ftp, athlete, season, profile.weaknesses, checkin, plannedEvents, today]);
+  }, [loading, day, ftp, athlete, season, profile.weaknesses, checkin, plannedEvents, today, responder]);
 
   const handleSave = async () => {
     if (!adapted || !onAddPlannedEvent) return;
@@ -435,15 +683,6 @@ export default function Today({
           </span>
         </div>
         <p className="today-hint">{phaseInfo.desc} <span className="today-muted">({seasonState.reason})</span></p>
-        <div className="today-week">
-          {week.map((d, i) => (
-            <div key={d.date} className={`today-week-day${d.date === today ? ' is-today' : ''} t-${d.type}`}>
-              <div className="today-week-letter">{DAY_LETTERS[i]}</div>
-              <div className="today-week-type">{d.type === 'rest' ? '—' : TYPE_LABELS[d.type]}</div>
-              {d.minutes > 0 && <div className="today-week-min">{d.minutes}′</div>}
-            </div>
-          ))}
-        </div>
         <div className="today-inline">
           <button type="button" className="today-link" onClick={() => { setShowNewCycle(v => !v); setShowSeasonSettings(false); }}>
             + Nouveau cycle
@@ -461,6 +700,8 @@ export default function Today({
         {showNewCycle && <NewCycleForm config={season} onChange={updateSeason} onDone={() => setShowNewCycle(false)} />}
         {showSeasonSettings && <SeasonSettings config={season} onChange={updateSeason} />}
       </section>
+
+      <PlanAhead weeks={outlook} today={today} ftp={ftp} onEdit={editDays} />
 
       <CycleCard
         cycle={cycle}
@@ -494,6 +735,8 @@ export default function Today({
       </section>
 
       <DataCard analysis={analysis} />
+
+      <ResponderCard state={responderState} enabled={useResponder} onToggle={v => updateSeason({ useResponder: v })} />
 
       {/* ── 2. Check-in → readiness ── */}
       <section className="today-card">

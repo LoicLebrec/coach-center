@@ -80,6 +80,7 @@ async function refreshUser(userId, { force = false } = {}) {
       plannedEvents: context.plannedEvents || [],
       season: context.season || {},
       profileWeaknesses: context.profileWeaknesses || [],
+      responder: context.responder || null,
       checkin,
       today,
     });

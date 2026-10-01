@@ -30,6 +30,7 @@ export const DEFAULT_SEASON_CONFIG = {
   targetName: '',
   cycleStart: null,    // YYYY-MM-DD — "new cycle" restarts week counting (and progression) here
   cycleFocus: 'auto',  // 'auto' (athlete profile weaknesses) | sprint | punch | vo2max | threshold
+  dayOverrides: {},    // { 'YYYY-MM-DD': { type, minutes } } — days the athlete changed by hand
 };
 
 export const CYCLE_FOCUS = {
@@ -139,19 +140,29 @@ const LIMITER_SWAP = {
 
 /**
  * Session the plan wants on a given date.
- * opts: { weaknesses: [], hasRaceThatDay, hasRaceTomorrow }
+ * opts: { weaknesses: [], hasRaceThatDay, hasRaceTomorrow, override: { type, minutes },
+ *         responder: { volume, intensity, rest } traits in -1|0|1 (services/responderProfile) }
+ * A race on the day beats everything; a hand-made override beats the template.
  */
 export function templateForDay(state, date, opts = {}) {
   const idx = (date.getDay() + 6) % 7;
   let [type, minutes] = TEMPLATES[state.phase]?.[idx] || ['endurance', 60];
 
   if (opts.hasRaceThatDay) return { type: 'race', minutes: 0 };
+  if (opts.override?.type) {
+    return { type: opts.override.type, minutes: opts.override.type === 'rest' ? 0 : Number(opts.override.minutes) || 60, overridden: true };
+  }
   if (opts.hasRaceTomorrow) return { type: 'openers', minutes: 45 };
   if (type === 'race') { type = 'endurance'; minutes = 150; } // no race planned this Sunday
   if (type === 'openers' && !opts.hasRaceTomorrow && state.phase === 'competition') { type = 'durability'; minutes = 150; }
 
   const limiter = (opts.weaknesses || []).map(w => LIMITER_SWAP[w]).find(Boolean);
   if (limiter && idx === 3 && ['build', 'competition'].includes(state.phase)) type = limiter;
+
+  // Rider's measured response to rest days (responder profile).
+  const rest = opts.responder?.rest || 0;
+  if (rest > 0 && idx === 4 && type === 'recovery') { type = 'rest'; minutes = 0; }
+  if (rest < 0 && idx === 0 && type === 'rest' && state.phase !== 'transition') { type = 'recovery'; minutes = 45; }
 
   if (state.isRecoveryWeek) {
     if (!['rest', 'recovery'].includes(type)) {
@@ -163,6 +174,11 @@ export function templateForDay(state, date, opts = {}) {
     // Quality sessions progress through workout levels instead (see progressionFor).
     minutes = Math.round(minutes * (1 + 0.1 * (state.weekInCycle - 1)));
   }
+  // Rider's measured response to volume: ±15 % endurance time on load weeks.
+  const volume = opts.responder?.volume || 0;
+  if (volume && !state.isRecoveryWeek && ['endurance', 'durability'].includes(type)) {
+    minutes = Math.max(45, Math.round(minutes * (1 + 0.15 * volume)));
+  }
 
   return { type, minutes: Math.round(minutes / 5) * 5 };
 }
@@ -172,10 +188,12 @@ export function templateForDay(state, date, opts = {}) {
  *  level    — 1 on the first load week of the phase, +1 each load week, +1 per mesocycle.
  *  rotation — changes each mesocycle so the session family (e.g. 30/15 vs 4×4) rotates.
  */
-export function progressionFor(state) {
+export function progressionFor(state, responder = null) {
   const mesoIndex = Math.floor((state.weekInPhase - 1) / state.cycleLen);
   if (state.isRecoveryWeek) return { level: 1, rotation: mesoIndex, mesoIndex };
-  return { level: mesoIndex + state.weekInCycle, rotation: mesoIndex, mesoIndex };
+  // Rider's measured response to Z5-Z7 work shifts quality sessions one level.
+  const level = Math.max(1, mesoIndex + state.weekInCycle + (responder?.intensity || 0));
+  return { level, rotation: mesoIndex, mesoIndex };
 }
 
 export function weekPlan(state, fromDate = new Date(), opts = {}) {
@@ -190,6 +208,8 @@ export function weekPlan(state, fromDate = new Date(), opts = {}) {
         weaknesses: opts.weaknesses,
         hasRaceThatDay: opts.raceDays?.has(key),
         hasRaceTomorrow: opts.raceDays?.has(dayKey(next)),
+        override: opts.overrides?.[key],
+        responder: opts.responder,
       }),
     };
   });

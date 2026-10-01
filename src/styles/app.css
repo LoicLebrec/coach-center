@@ -2533,6 +2533,70 @@ body,
 .today-week-day.t-sweetspot, .today-week-day.t-tempo, .today-week-day.t-force { box-shadow: inset 0 -3px 0 var(--accent-yellow); }
 .today-week-day.t-race { box-shadow: inset 0 -3px 0 var(--brand); }
 
+button.today-week-day { font-family: var(--font-sans); cursor: pointer; color: inherit; position: relative; }
+.today-week-day.is-selected { border-color: var(--text-2); }
+.today-week-day.is-today.is-selected { border-color: var(--brand); }
+.today-week-day.is-past { opacity: 0.5; }
+.today-week-day.is-edited::after {
+  content: ''; position: absolute; top: 4px; right: 4px;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--brand);
+}
+
+.today-week-type .t-short { display: none; }
+@media (max-width: 560px) {
+  .today-week-type .t-long { display: none; }
+  .today-week-type .t-short { display: inline; }
+}
+
+.today-traits { display: grid; gap: 10px; margin: 6px 0 10px; }
+.today-trait {
+  display: grid;
+  grid-template-columns: 120px 120px 1fr;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.today-trait-name { font-weight: 600; color: var(--text-1); }
+.today-trait-text { color: var(--text-2); }
+.today-trait-scale { position: relative; height: 8px; border-radius: 4px; background: var(--bg-2); }
+.today-trait-band {
+  position: absolute; top: 0; bottom: 0; left: 31.25%; right: 31.25%;
+  background: var(--border-accent); border-radius: 4px;
+}
+.today-trait-dot {
+  position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%;
+  transform: translate(-50%, -50%); background: var(--text-3); border: 2px solid var(--bg-1, #fff);
+}
+.today-trait-dot.is-on { background: var(--brand); }
+@media (max-width: 560px) {
+  .today-trait { grid-template-columns: 1fr 100px; }
+  .today-trait-text { grid-column: 1 / -1; }
+}
+
+.today-plan-nav {
+  display: grid;
+  grid-template-columns: 32px 1fr 32px;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.today-plan-nav .today-link { font-size: 22px; line-height: 1; }
+.today-plan-nav .today-link:disabled { color: var(--text-4); cursor: default; }
+.today-plan-when { font-weight: 700; font-size: 14px; color: var(--text-1); }
+
+.today-plan-day { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; }
+.today-plan-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+.today-plan-edit label {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 12px; font-weight: 600; color: var(--text-2);
+}
+
 .today-link {
   border: none;
   background: none;
