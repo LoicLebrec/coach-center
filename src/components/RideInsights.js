@@ -107,7 +107,7 @@ export default function RideInsights({ rawStreams, intervals, athlete, activity,
     ...settings,
     maxHr: settings.maxHr || Number(activity?.max_heartrate) || null,
     icuHrZoneTimes: activity?.icu_hr_zone_times || null,
-  }), [rawStreams, settings.ftp, settings.lthr, settings.maxHr, settings.wPrime, activity]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [rawStreams, settings.ftp, settings.lthr, settings.maxHr, settings.wPrime, settings.weight, activity]);
   const season = useMemo(() => parsePowerCurve(powerCurve), [powerCurve]);
   if (!m.streams || (!m.streams.watts && !m.streams.heartrate)) return null;
 
