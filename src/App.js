@@ -972,7 +972,7 @@ export default function App() {
           </div>
         );
       case VIEWS.WORKOUT_ANALYSIS:
-        return <WorkoutAnalysis activities={activities} athlete={athlete} plannedEvents={plannedEvents} />;
+        return <WorkoutAnalysis activities={activities} athlete={athlete} plannedEvents={plannedEvents} powerCurve={powerCurve} />;
       case VIEWS.NUTRITION:
         return <NutritionCoach athlete={athlete} activities={activities} plannedEvents={plannedEvents} />;
       case VIEWS.DASHBOARD:

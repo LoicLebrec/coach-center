@@ -3163,3 +3163,45 @@ button.today-week-day { font-family: var(--font-sans); cursor: pointer; color: i
   border: 1.5px solid var(--border); border-radius: 22px; padding: 22px 24px; box-shadow: var(--shadow-lg);
 }
 .cal-modal .btn-danger { color: var(--accent-red); border-color: rgba(200, 55, 45, 0.35); background: var(--bg-1); }
+
+/* ═══ Ride analysis ═══ */
+.ride-card { background: var(--bg-1); border: 1.5px solid var(--border); border-radius: var(--radius-lg); padding: 16px 18px; }
+.ride-card h3 { font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--pine); margin: 0 0 10px; }
+.ride-chart svg { display: block; width: 100%; height: 240px; touch-action: none; cursor: crosshair; }
+.ride-chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--text-2); margin-bottom: 8px; }
+.ride-chart-legend i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.lg-power { background: var(--pine); } .lg-hr { background: var(--accent-red); } .lg-alt { background: #c9d99a; height: 10px !important; } .lg-int { background: rgba(240, 102, 58, 0.35); height: 10px !important; }
+.ride-alt { fill: #dfe8bd; }
+.ride-int { fill: rgba(240, 102, 58, 0.13); }
+.ride-ftp { stroke: var(--sun); stroke-width: 1.5; stroke-dasharray: 6 6; vector-effect: non-scaling-stroke; }
+.ride-power { fill: none; stroke: var(--pine); stroke-width: 1.6; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.ride-hr { fill: none; stroke: var(--accent-red); stroke-width: 1.4; opacity: 0.8; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.ride-cursor { stroke: var(--text-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ride-readout { display: flex; flex-wrap: wrap; gap: 14px; min-height: 22px; margin-top: 6px; font-size: 14px; color: var(--text-1); }
+.ride-hint { color: var(--text-3); font-size: 13px; }
+.ride-insights { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.ride-insight { background: var(--bg-2); border-radius: 14px; padding: 12px 14px; border-left: 4px solid var(--border-accent); }
+.ride-insight.tone-green { border-left-color: var(--accent-green); }
+.ride-insight.tone-yellow { border-left-color: var(--accent-yellow); }
+.ride-insight.tone-orange { border-left-color: var(--accent-orange); }
+.ride-insight-label { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.ride-insight-value { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--pine); margin: 2px 0; }
+.ride-insight-sub { font-size: 13px; color: var(--text-2); line-height: 1.5; }
+.ride-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+.ride-peaks, .ride-hrz { list-style: none; margin: 0; padding: 0; }
+.ride-peaks li { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.ride-peak-dur { width: 52px; color: var(--text-3); }
+.ride-peaks strong { font-size: 16px; color: var(--text-0); min-width: 62px; }
+.ride-peak-wkg, .ride-peak-pct { color: var(--text-3); font-size: 13px; }
+.ride-record { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 700; color: var(--sun); }
+.ride-hrz li { display: grid; grid-template-columns: 110px 1fr 64px; align-items: center; gap: 10px; padding: 5px 0; font-size: 13.5px; }
+.ride-hrz-name { color: var(--text-2); }
+.ride-hrz-bar { height: 10px; background: var(--bg-3); border-radius: 999px; overflow: hidden; }
+.ride-hrz-bar i { display: block; height: 100%; border-radius: 999px; }
+.hrz-Z1 { background: #a9b597; } .hrz-Z2 { background: var(--accent-green); } .hrz-Z3 { background: var(--accent-yellow); } .hrz-Z4 { background: var(--accent-orange); } .hrz-Z5 { background: var(--accent-red); }
+.ride-hrz-time { text-align: right; color: var(--text-1); }
+.ride-note { font-size: 12.5px; color: var(--text-3); margin-top: 8px; }
+.ride-climbs { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ride-climbs th { text-align: left; font-size: 12.5px; font-weight: 600; color: var(--text-3); padding: 6px 8px; border-bottom: 1.5px solid var(--border); }
+.ride-climbs td { padding: 8px; border-bottom: 1px solid var(--border); color: var(--text-1); white-space: nowrap; }
+@media (max-width: 640px) { .ride-climbs { display: block; overflow-x: auto; } .ride-chart svg { height: 180px; } }

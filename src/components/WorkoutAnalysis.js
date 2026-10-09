@@ -13,6 +13,7 @@ import { intervalsService } from '../services/intervals';
 import { stravaService } from '../services/strava';
 import workoutAnalyzer from '../services/workout-analyzer';
 import Picto from './Pictos';
+import RideInsights from './RideInsights';
 
 // Convert Strava laps array → format expected by workoutAnalyzer.parseIntervals()
 function stravaLapsToIntervals(laps) {
@@ -60,13 +61,7 @@ const TOOLTIP_STYLE = {
 
 function SectionCard({ children, style }) {
   return (
-    <div style={{
-      background: 'var(--bg-1)',
-      border: '1px solid var(--border)',
-      borderRadius: 10,
-      padding: 16,
-      ...style,
-    }}>
+    <div className="ride-card" style={style}>
       {children}
     </div>
   );
@@ -75,7 +70,7 @@ function SectionCard({ children, style }) {
 function SectionHeader({ title, badges, help, style }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, ...style }}>
-      <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, color: 'var(--text-0)', display: 'flex', alignItems: 'center' }}>
+      <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 17, color: 'var(--pine)', display: 'flex', alignItems: 'center' }}>
         {title}
         {help && <HelpPopup {...help} />}
       </span>
@@ -94,7 +89,6 @@ function Badge({ label, color, bg }) {
       background: bg || 'var(--bg-3)',
       color: color || 'var(--text-2)',
       border: `1px solid ${color ? color + '44' : 'var(--border)'}`,
-      letterSpacing: '0.05em',
       fontWeight: 600,
     }}>
       {label}
@@ -112,7 +106,7 @@ function StatRow({ stats }) {
           borderRadius: 7,
           padding: '8px 10px',
         }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 3, letterSpacing: '0.07em' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 3 }}>
             {s.label}
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 700, color: s.color || 'var(--text-0)' }}>
@@ -445,7 +439,7 @@ function ZoneBar({ zoneDistribution }) {
   const zones = Object.keys(zoneDistribution);
   return (
     <div>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.07em', marginBottom: 6 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 6 }}>
         DISTRIBUTION DE ZONES
       </div>
       <div style={{
@@ -494,7 +488,7 @@ function MatchList({ matches }) {
   const top3 = matches.slice(0, 3);
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.07em', marginBottom: 6 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 6 }}>
         TOP ATTAQUES
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -533,7 +527,7 @@ function MMPTable({ mmp, ftp }) {
 
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.07em', marginBottom: 6 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 6 }}>
         PUISSANCE MAX MOYENNE (MMP)
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${entries.length}, 1fr)`, gap: 5 }}>
@@ -579,7 +573,7 @@ function PacingRow({ pacing }) {
 
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.07em', marginBottom: 6 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 6 }}>
         ALLURE (1ère moitié vs 2ème moitié)
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
@@ -683,7 +677,7 @@ function ActivitySelector({ activities, selectedId, onChange }) {
 
   return (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 6 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 6 }}>
         SÉLECTIONNER UNE ACTIVITÉ
       </div>
       <select
@@ -778,7 +772,7 @@ function PlannedVsActualSection({ plannedEvent, activity, ftp }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {/* Planned */}
         <div style={{ background: 'var(--bg-2)', borderRadius: 8, padding: '12px' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.07em', marginBottom: 8 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 8 }}>
             PRÉVU {plannedEvent ? `· ${plannedEvent.title || plannedEvent.name || ''}` : '· Non planifié'}
           </div>
           {blocks.length > 0 ? (
@@ -829,7 +823,7 @@ function PlannedVsActualSection({ plannedEvent, activity, ftp }) {
 
         {/* Actual */}
         <div style={{ background: 'var(--bg-2)', borderRadius: 8, padding: '12px' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.07em', marginBottom: 8 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 8 }}>
             RÉALISÉ · {activity.name || 'Activité'}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
@@ -874,7 +868,7 @@ function PlannedVsActualSection({ plannedEvent, activity, ftp }) {
 function StatBox({ label, value, sub, color }) {
   return (
     <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', flex: 1, minWidth: 90 }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-4)', letterSpacing: '0.07em', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-4)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: color || 'var(--text-0)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{value ?? '—'}</div>
       {sub && <div style={{ fontSize: 10, color: 'var(--text-4)', marginTop: 3 }}>{sub}</div>}
     </div>
@@ -910,19 +904,19 @@ function PowerSummarySection({ analysis, ftp, activity }) {
 
       {/* Key stats */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        {avgWatts > 0 && <StatBox label="MOY PUISSANCE" value={`${avgWatts}W`} sub={wkg ? `${wkg} W/kg` : null} />}
+        {avgWatts > 0 && <StatBox label="Puissance moy." value={`${avgWatts}W`} sub={wkg ? `${wkg} W/kg` : null} />}
         {npWatts > 0 && <StatBox label="NP" value={`${npWatts}W`} sub={npWkg ? `${npWkg} W/kg` : null} color="var(--accent-orange)" />}
         {intensityFactor && <StatBox label="IF" value={intensityFactor} color={ifColor} sub={intensityFactor > 1 ? 'Au-dessus FTP' : 'Sous FTP'} />}
         {tss != null && <StatBox label="TSS" value={Math.round(tss)} sub={tss > 150 ? 'Charge haute' : tss > 80 ? 'Charge modérée' : 'Charge légère'} />}
-        {maxWatts > 0 && <StatBox label="MAX" value={`${maxWatts}W`} />}
-        {avgHR && <StatBox label="FC MOY" value={avgHR} sub={maxHR ? `max ${maxHR}` : null} />}
+        {maxWatts > 0 && <StatBox label="Max" value={`${maxWatts}W`} />}
+        {avgHR && <StatBox label="FC moy." value={avgHR} sub={maxHR ? `max ${maxHR}` : null} />}
         {ef && <StatBox label="EF" value={ef} sub="NP/FC" />}
       </div>
 
       {/* Zone distribution */}
       {zoneData.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', letterSpacing: '0.07em', marginBottom: 8 }}>TEMPS PAR ZONE</div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', marginBottom: 8 }}>Temps par zone de puissance</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {zoneData.map(d => (
               <div key={d.zone} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -945,7 +939,7 @@ function PowerSummarySection({ analysis, ftp, activity }) {
       {/* MMP table */}
       {mmpEntries.length > 0 && (
         <div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', letterSpacing: '0.07em', marginBottom: 8 }}>PUISSANCE MAX MOYENNE (MMP)</div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', marginBottom: 8 }}>Meilleures puissances</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {mmpEntries.map(([dur, v]) => (
               <div key={dur} style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', textAlign: 'center', minWidth: 64 }}>
@@ -964,7 +958,7 @@ function PowerSummarySection({ analysis, ftp, activity }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) {
+export default function WorkoutAnalysis({ activities, athlete, plannedEvents, powerCurve = null }) {
   const ftp = athlete?.icu_ftp || athlete?.ftp || null;
 
   const [selectedId, setSelectedId]             = useState(null);
@@ -977,6 +971,7 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
   const [raceAnalysis, setRaceAnalysis]           = useState(null);
   const [activityAnalysis, setActivityAnalysis]   = useState(null);
   const [isRace, setIsRace]                       = useState(false);
+  const [rideData, setRideData]                   = useState(null);
 
   const handleSelect = useCallback(async (id) => {
     if (!id) return;
@@ -988,6 +983,7 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
     setRaceAnalysis(null);
     setActivityAnalysis(null);
     setIsRace(false);
+    setRideData(null);
     setSelectedActivity(null);
     setMatchedPlan(null);
 
@@ -1014,7 +1010,7 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
       if (stravaConnected && stravaId) {
         try {
           const [stravaStreams, stravaLaps, stravaDetail] = await Promise.allSettled([
-            stravaService.getActivityStreams(stravaId, ['watts', 'heartrate', 'cadence', 'velocity_smooth']),
+            stravaService.getActivityStreams(stravaId, ['watts', 'heartrate', 'cadence', 'velocity_smooth', 'altitude', 'distance', 'time']),
             stravaService.getActivityLaps(stravaId),
             stravaService.getActivity(stravaId),
           ]);
@@ -1053,7 +1049,7 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
       if (!rawStreams && intervalsService.isConfigured()) {
         try {
           const [icuStreams, icuIntervals] = await Promise.allSettled([
-            intervalsService.getActivityStreams(id, ['watts', 'heartrate', 'cadence']),
+            intervalsService.getActivityStreams(id, ['watts', 'heartrate', 'cadence', 'altitude', 'distance']),
             intervalsService.getActivityIntervals(id),
           ]);
           if (icuStreams.status === 'fulfilled') rawStreams = icuStreams.value;
@@ -1079,6 +1075,7 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
       setIntervalAnalysis(ivSet);
       setRaceAnalysis(race);
       setActivityAnalysis(actSummary);
+      setRideData({ streams: rawStreams, intervals: workoutAnalyzer.parseIntervals ? workoutAnalyzer.parseIntervals(rawIntervals) : [] });
     } catch (err) {
       setError(err.message || 'Erreur lors du chargement des données.');
     } finally {
@@ -1155,6 +1152,11 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
 
               {/* Always-visible power summary */}
               <PowerSummarySection analysis={activityAnalysis} ftp={ftp} activity={selectedActivity} />
+
+              {rideData && (
+                <RideInsights rawStreams={rideData.streams} intervals={rideData.intervals} athlete={athlete}
+                  activity={selectedActivity} powerCurve={powerCurve} />
+              )}
 
               {/* Structured intervals (only if detected) */}
               {intervalAnalysis && intervalAnalysis.repCount >= 2 && (
