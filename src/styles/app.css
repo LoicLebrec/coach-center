@@ -3297,3 +3297,6 @@ button.today-week-day { font-family: var(--font-sans); cursor: pointer; color: i
 .db-records { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 10px; }
 .db-records .wl-tile { background: var(--bg-2); border: none; }
 .db-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.calendar-grid-week .calendar-day-num { cursor: pointer; }
+.calendar-grid-week .calendar-day-num:hover { color: var(--pine); }
+.calendar-grid-week .calendar-day-num:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; border-radius: 4px; }

@@ -489,6 +489,18 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit, availabil
               </div>
             </div>
           )}
+          {!editable && day.date >= today && (
+            <div className="today-plan-edit">
+              <div className="today-plan-edit-fields">
+                <label>
+                  <span>Ta dispo</span>
+                  <select value={availabilityValue(availability[day.date])} onChange={e => onAvailability(day.date, e.target.value)}>
+                    {AVAILABILITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </label>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
