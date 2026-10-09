@@ -105,3 +105,21 @@ test('real season and manual phases that expire', () => {
   // Build for a December A-race: kept while the race is ahead.
   expect(gs({ mode: 'manual', phase: 'build', phaseStart: '2026-09-21', targetDate: '2026-12-20' }, oct9).phase).toBe('build');
 });
+
+test('lost endurance volume is carried to the remaining endurance days', () => {
+  // eslint-disable-next-line global-require
+  const { weekPlan: wp } = require('./periodization');
+  const base = { phase: 'base', isRecoveryWeek: false, weekInCycle: 1, cycleLen: 4, weekInPhase: 1 };
+  // base week: Mon rest, Tue force 75, Wed endurance 90, Thu tempo 90, Fri recovery 45, Sat endurance 180, Sun endurance 120
+  const plain = wp(base, monday);
+  const days = wp(base, monday, { availability: { '2026-12-09': { off: true } } });
+  expect(days[2]).toMatchObject({ type: 'rest', unavailable: true });
+  const extra = days.reduce((s, d) => s + (d.carried?.minutes || 0), 0);
+  expect(extra).toBeGreaterThan(60);
+  expect(days[5].minutes).toBeLessThanOrEqual(Math.round(plain[5].minutes * 1.3));
+  expect(days[5].carried.from).toEqual(['2026-12-09']);
+  expect(days[4].carried).toBeUndefined(); // recovery never stretched
+  // Recovery week: no catching up.
+  const rec = wp({ ...base, isRecoveryWeek: true, weekInCycle: 4 }, monday, { availability: { '2026-12-12': { off: true } } });
+  expect(rec.some(d => d.carried)).toBe(false);
+});

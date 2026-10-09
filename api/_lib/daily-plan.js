@@ -482,13 +482,16 @@ const HARD_DAY = (d) => d && (QUALITY.includes(d.type) || d.type === 'race');
  * never in the past); with no such day it is dropped rather than stacked. A time
  * given time sets the day's length. Races are never touched. Mutates `days`.
  */
-function applyAvailability(days, availability = {}, today = null) {
-  if (!availability) return days;
+function applyAvailability(days, availability = {}, today = null, { carryOver = true } = {}) {
+  if (!availability || !Object.keys(availability).length) return days;
   const capOf = (d) => num0(availability[d.date]?.minutes);
+  // Endurance minutes the week loses (day off, shortened day, easy day taken by a moved session).
+  const lost = [];
   days.forEach((d, i) => {
     const a = availability[d.date];
     if (!a?.off || d.type === 'race' || d._race?.today) return;
     const moved = { type: d.type, minutes: d.minutes };
+    if (d.type === 'endurance') lost.push({ date: d.date, minutes: d.minutes });
     Object.assign(d, { type: 'rest', minutes: 0, unavailable: true });
     if (!QUALITY.includes(moved.type)) return;
     const order = days.map((_, j) => j).filter(j => j !== i)
@@ -504,6 +507,7 @@ function applyAvailability(days, availability = {}, today = null) {
     });
     if (target == null) { d.dropped = moved.type; return; }
     const t = days[target];
+    if (t.type === 'endurance') lost.push({ date: t.date, minutes: t.minutes });
     Object.assign(t, { type: moved.type, minutes: moved.minutes, movedFrom: d.date });
     d.movedTo = t.date;
   });
@@ -513,9 +517,39 @@ function applyAvailability(days, availability = {}, today = null) {
     const cap = capOf(d);
     if (!cap || d.unavailable || d.type === 'rest' || d.type === 'race') return;
     const minutes = d.type === 'recovery' ? Math.min(d.minutes, cap) : cap;
+    if (d.type === 'endurance' && minutes < d.minutes) lost.push({ date: d.date, minutes: d.minutes - minutes });
     if (minutes !== d.minutes) Object.assign(d, { minutes, capped: cap });
   });
+  if (carryOver) carryLostVolume(days, lost, today);
   return days;
+}
+
+/**
+ * Spread lost endurance minutes over the week's remaining endurance days:
+ * at most +30 % each (rounded to 5 min), never on a day whose time was set by
+ * the athlete, a past day, or the day before a race. What doesn't fit is let go
+ * — one missed ride isn't worth stacking fatigue.
+ */
+function carryLostVolume(days, lost, today) {
+  let left = lost.reduce((s, l) => s + l.minutes, 0);
+  if (left < 10) return;
+  const from = [...new Set(lost.map(l => l.date))];
+  const takers = days.filter(d => d.type === 'endurance' && !d.unavailable && !d.capped && !d.movedFrom
+    && !d._race?.tomorrow && (!today || d.date >= today) && !from.includes(d.date));
+  if (!takers.length) return;
+  const room = takers.map(d => Math.floor((d.minutes * 0.3) / 5) * 5);
+  // Fill evenly, 5 min at a time, so the extra is shared rather than piled on one day.
+  const extra = takers.map(() => 0);
+  let progress = true;
+  while (left >= 5 && progress) {
+    progress = false;
+    takers.forEach((_, k) => {
+      if (left >= 5 && extra[k] + 5 <= room[k]) { extra[k] += 5; left -= 5; progress = true; }
+    });
+  }
+  takers.forEach((d, k) => {
+    if (extra[k]) Object.assign(d, { minutes: d.minutes + extra[k], carried: { minutes: extra[k], from } });
+  });
 }
 
 function num0(v) {
@@ -538,7 +572,7 @@ function weekPlan(state, fromDate = new Date(), opts = {}) {
     };
     return { date: key, ...templateForDay(state, d, ctx), _race: { today: ctx.hasRaceThatDay, tomorrow: ctx.hasRaceTomorrow } };
   });
-  applyAvailability(days, opts.availability, opts.today);
+  applyAvailability(days, opts.availability, opts.today, { carryOver: !state.isRecoveryWeek });
   const auto = strengthForWeek(state, days, days.map(d => d._race));
   // A hand edit wins: false = none, a kind = that kind, true = the phase's kind (core by default).
   return days.map(({ _race, ...d }, i) => {
@@ -2204,12 +2238,13 @@ function computeDay({
       cal, seasonState, progression, weaknesses, analysis, date, override: overrides[today] || availOverride, responder,
       // Time available: sets the session length (calendar sessions are only shortened).
       maxMinutes: (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(avail?.minutes),
-      targetMinutes: todayPlan.capped ? todayPlan.minutes : null,
+      targetMinutes: todayPlan.capped || todayPlan.carried ? todayPlan.minutes : null,
     }),
     ...(todayPlan.unavailable ? { unavailable: true } : {}),
     ...(todayPlan.movedFrom ? { movedFrom: todayPlan.movedFrom } : {}),
     ...(todayPlan.movedTo ? { movedTo: todayPlan.movedTo } : {}),
     ...(todayPlan.dropped ? { dropped: todayPlan.dropped } : {}),
+    ...(todayPlan.carried ? { carried: todayPlan.carried } : {}),
   };
   // checkin.minutes is the pre-availability way of saying "short on time today".
   const timeCap = [avail ? null : checkin.minutes, (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(avail?.minutes)].filter(Boolean);

@@ -340,12 +340,13 @@ export function computeDay({
       cal, seasonState, progression, weaknesses, analysis, date, override: overrides[today] || availOverride, responder,
       // Time available: sets the session length (calendar sessions are only shortened).
       maxMinutes: num(avail?.minutes),
-      targetMinutes: todayPlan.capped ? todayPlan.minutes : null,
+      targetMinutes: todayPlan.capped || todayPlan.carried ? todayPlan.minutes : null,
     }),
     ...(todayPlan.unavailable ? { unavailable: true } : {}),
     ...(todayPlan.movedFrom ? { movedFrom: todayPlan.movedFrom } : {}),
     ...(todayPlan.movedTo ? { movedTo: todayPlan.movedTo } : {}),
     ...(todayPlan.dropped ? { dropped: todayPlan.dropped } : {}),
+    ...(todayPlan.carried ? { carried: todayPlan.carried } : {}),
   };
   // checkin.minutes is the pre-availability way of saying "short on time today".
   const timeCap = [avail ? null : checkin.minutes, num(avail?.minutes)].filter(Boolean);

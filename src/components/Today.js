@@ -400,6 +400,7 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit, availabil
             </div>
             {d.blocks?.length > 0 && <div className="today-week-min">{Math.round(blocksMinutes(d.blocks))}′</div>}
             {d.strength && <div className="today-week-strength" title={d.strength.title}>+ renfo</div>}
+            {d.carried && <div className="today-week-carry">+{d.carried.minutes}′</div>}
             {availability[d.date] && <div className="today-week-avail">{availability[d.date].off ? 'pas dispo' : availabilityLabel(availability[d.date])}</div>}
             {reviews[d.date]?.review && <span className={`today-week-check tone-${reviews[d.date].review.tone}`} title={reviews[d.date].review.title} />}
           </button>
@@ -434,6 +435,7 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit, availabil
             </p>
           )}
           {day.movedFrom && <p className="today-avail-note">Séance déplacée du {fmtDay(day.movedFrom)} (pas dispo ce jour-là).</p>}
+          {day.carried && <p className="today-avail-note">+{day.carried.minutes} min d’endurance reportées du {day.carried.from.map(fmtDay).join(', ')}.</p>}
           {avail?.minutes && !day.unavailable && <p className="today-avail-note">Séance calée sur ton temps dispo : {availabilityLabel(avail)}.</p>}
           {day.date === today && (
             <p className="today-hint">Le détail du jour est en haut de la page.</p>
@@ -861,6 +863,9 @@ export default function Today({
           </div>
         ) : adapted && (
           <>
+            {base.carried && (
+              <p className="today-avail-note">+{base.carried.minutes} min d’endurance reportées du {base.carried.from.map(fmtDay).join(', ')}, où tu n’étais pas dispo ou avais moins de temps.</p>
+            )}
             <div className="today-session-title">{adapted.title}</div>
             <p className="today-hint">{fmtDur(adapted.minutes)} · {adapted.objective}</p>
             {readiness.level !== 'go' && <p className="today-verdict-short">{lvl.text}</p>}

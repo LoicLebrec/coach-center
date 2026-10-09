@@ -3300,3 +3300,4 @@ button.today-week-day { font-family: var(--font-sans); cursor: pointer; color: i
 .calendar-grid-week .calendar-day-num { cursor: pointer; }
 .calendar-grid-week .calendar-day-num:hover { color: var(--pine); }
 .calendar-grid-week .calendar-day-num:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; border-radius: 4px; }
+.today-week-carry { font-size: 10px; font-weight: 700; color: var(--brand); }
