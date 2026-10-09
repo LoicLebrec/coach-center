@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
  * Outdoor pictograms in the logo's palette — pine, moss, sun — replacing emojis.
  * 24×24, flat shapes, round strokes. <Picto name="bike" size={16} />
  */
-const P = '#24402e'; // pine
+const P = 'currentColor'; // pine by default (.picto colour), cream on the dark sidebar
 const M = '#8db255'; // moss
 const L = '#c9e08f'; // meadow
 const S = '#f0663a'; // sun
@@ -58,6 +58,16 @@ const ICONS = {
   fresh: <circle cx="12" cy="12" r="7" fill={M} />,
   normal: <circle cx="12" cy="12" r="7" fill={Y} />,
   tired: <circle cx="12" cy="12" r="7" fill={S} />,
+  calendar: <><rect x="3" y="5" width="18" height="16" rx="3" fill={L} /><path d="M3 8a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v3H3z" fill={M} /><path d="M8 3v4M16 3v4" stroke={P} strokeWidth="2.2" strokeLinecap="round" /><circle cx="15.5" cy="16" r="2.3" fill={S} /></>,
+  chart: <><rect x="3.5" y="12" width="4.5" height="8" rx="1.2" fill={M} /><rect x="9.75" y="6" width="4.5" height="14" rx="1.2" fill={S} /><rect x="16" y="9.5" width="4.5" height="10.5" rx="1.2" fill={L} /><path d="M2 21h20" stroke={P} strokeWidth="2" strokeLinecap="round" /></>,
+  trend: <><path d="M3 20v-3l6-6 4 3 8-8v14z" fill={L} /><path d="M3 17l6-6 4 3 8-8" {...line} /><circle cx="21" cy="6" r="2.2" fill={S} /></>,
+  load: <><rect x="2.5" y="14" width="4" height="7" rx="1" fill={M} /><rect x="7.5" y="10" width="4" height="11" rx="1" fill={M} /><rect x="12.5" y="5" width="4" height="16" rx="1" fill={S} /><rect x="17.5" y="13" width="4" height="8" rx="1" fill={L} /></>,
+  dashboard: <><rect x="3" y="3" width="8" height="10" rx="2" fill={M} /><rect x="13" y="3" width="8" height="6" rx="2" fill={L} /><rect x="3" y="15" width="8" height="6" rx="2" fill={L} /><rect x="13" y="11" width="8" height="10" rx="2" fill={S} /></>,
+  blocks: <><path d="M2 21v-6h4v-4h3v10zM13 21V7h4v14z" fill={M} /><path d="M9 21V4h4v17z" fill={S} /><path d="M17 21v-8h5v8z" fill={L} /></>,
+  person: <><circle cx="12" cy="7.5" r="4" fill={S} /><path d="M4 21c0-4.5 3.6-7.5 8-7.5s8 3 8 7.5z" fill={M} /></>,
+  gear: <><path d="M12 2l1.6 2.6 3-.7.7 3 2.6 1.6-1.4 2.7 1.4 2.7-2.6 1.6-.7 3-3-.7L12 22l-1.6-2.6-3 .7-.7-3-2.6-1.6L5.5 12 4.1 9.3l2.6-1.6.7-3 3 .7z" fill={M} /><circle cx="12" cy="12" r="3.4" fill={W} /><circle cx="12" cy="12" r="1.6" fill={S} /></>,
+  door: <><path d="M4 3h9v18H4z" fill={L} /><path d="M4 3h9v18H4z" fill="none" stroke={P} strokeWidth="1.8" strokeLinejoin="round" /><path d="M11 12h10M18 9l3 3-3 3" {...line} stroke={S} /></>,
+  more: <><circle cx="5" cy="12" r="2.4" fill={M} /><circle cx="12" cy="12" r="2.4" fill={S} /><circle cx="19" cy="12" r="2.4" fill={M} /></>,
 };
 
 export const PICTO_NAMES = Object.keys(ICONS);

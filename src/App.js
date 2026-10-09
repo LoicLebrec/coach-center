@@ -1,9 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  ZapIcon, UserIcon, DumbbellIcon, MapIcon, TrophyIcon, SaladIcon,
-  BarChartIcon, DashboardIcon, TrendingUpIcon, ActivityIcon,
-  CalendarIcon, SettingsIcon, LogOutIcon, BikeIcon, HomeIcon, ChevronIcon,
-} from './components/Icons';
 import { intervalsService, buildIcuEventPayload } from './services/intervals';
 import { buildRuleBasedWorkout, inferTrainingType } from './services/workout-rules';
 import { stravaService } from './services/strava';
@@ -35,6 +30,7 @@ import { LIBRARY_WORKOUTS } from './data/workoutLibrary';
 import './styles/app.css';
 import { asNumber } from './services/number';
 import Logo from './components/Logo';
+import Picto from './components/Pictos';
 import SeasonLandscape from './components/SeasonLandscape';
 
 function extractJsonBlock(text) {
@@ -1029,30 +1025,30 @@ export default function App() {
   };
 
   const MAIN_NAV = [
-    [VIEWS.TODAY, HomeIcon, 'Aujourd\'hui'],
-    [VIEWS.CALENDAR, CalendarIcon, 'Calendrier'],
+    [VIEWS.TODAY, 'house', 'Aujourd\'hui'],
+    [VIEWS.CALENDAR, 'calendar', 'Calendrier'],
   ];
   const NAV_GROUPS = [
     ['Analyser', [
-      [VIEWS.ACTIVITIES, BikeIcon, 'Activités'],
-      [VIEWS.WORKOUT_ANALYSIS, BarChartIcon, 'Analyse séance'],
-      [VIEWS.PMC, TrendingUpIcon, 'Forme (PMC)'],
-      [VIEWS.WEEKLY, ActivityIcon, 'Charge hebdo'],
-      [VIEWS.DASHBOARD, DashboardIcon, 'Tableau de bord'],
+      [VIEWS.ACTIVITIES, 'bike', 'Activités'],
+      [VIEWS.WORKOUT_ANALYSIS, 'chart', 'Analyse séance'],
+      [VIEWS.PMC, 'trend', 'Forme (PMC)'],
+      [VIEWS.WEEKLY, 'load', 'Charge hebdo'],
+      [VIEWS.DASHBOARD, 'dashboard', 'Tableau de bord'],
     ]],
     ['Préparer', [
-      [VIEWS.WORKOUT_BUILDER, DumbbellIcon, 'Créer une séance'],
-      [VIEWS.GPX_BUILDER, MapIcon, 'Parcours GPX'],
-      [VIEWS.RACE_CALENDAR, TrophyIcon, 'Courses'],
-      [VIEWS.NUTRITION, SaladIcon, 'Nutrition'],
+      [VIEWS.WORKOUT_BUILDER, 'blocks', 'Créer une séance'],
+      [VIEWS.GPX_BUILDER, 'map', 'Parcours GPX'],
+      [VIEWS.RACE_CALENDAR, 'flag', 'Courses'],
+      [VIEWS.NUTRITION, 'apple', 'Nutrition'],
     ]],
     ['Toi', [
-      [VIEWS.ATHLETE_PROFILE, UserIcon, 'Profil athlète'],
-      [VIEWS.COACH, ZapIcon, 'Coach APEX'],
+      [VIEWS.ATHLETE_PROFILE, 'person', 'Profil athlète'],
+      [VIEWS.COACH, 'compass', 'Coach APEX'],
     ]],
   ];
   // Mobile tab bar: the two main views, the two most used tools, then "Plus".
-  const TAB_NAV = [...MAIN_NAV, [VIEWS.ACTIVITIES, BikeIcon, 'Activités'], [VIEWS.COACH, ZapIcon, 'Coach']];
+  const TAB_NAV = [...MAIN_NAV, [VIEWS.ACTIVITIES, 'bike', 'Activités'], [VIEWS.COACH, 'compass', 'Coach']];
   const go = (id) => { setView(id); setMoreOpen(false); };
 
   if (!authed) {
@@ -1078,9 +1074,9 @@ export default function App() {
 
         {/* ── Navigation ── */}
         <nav className="sidebar-nav">
-          {MAIN_NAV.map(([id, Ico, label]) => (
+          {MAIN_NAV.map(([id, ico, label]) => (
             <button key={id} className={`nav-item nav-item-main ${view === id ? 'active' : ''}`} onClick={() => go(id)}>
-              <Ico className="nav-icon" size={18} />
+              <Picto name={ico} size={21} className="nav-icon" />
               <span>{label}</span>
             </button>
           ))}
@@ -1088,9 +1084,9 @@ export default function App() {
           {NAV_GROUPS.map(([title, items]) => (
             <div key={title} className="nav-group">
               <div className="nav-group-title">{title}</div>
-              {items.map(([id, Ico, label]) => (
+              {items.map(([id, ico, label]) => (
                 <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => go(id)}>
-                  <Ico className="nav-icon" size={16} />
+                  <Picto name={ico} size={19} className="nav-icon" />
                   <span>{label}</span>
                 </button>
               ))}
@@ -1119,13 +1115,13 @@ export default function App() {
           )}
 
           <button className={`nav-item sidebar-settings-btn ${view === VIEWS.SETTINGS ? 'active' : ''}`} onClick={() => setView(VIEWS.SETTINGS)}>
-            <SettingsIcon className="nav-icon" size={14} />
+            <Picto name="gear" size={18} className="nav-icon" />
             <span>Réglages</span>
           </button>
 
           {requiresAuth && (
             <button className="nav-item sidebar-logout-btn" onClick={() => { backendService.logout(); setAuthed(false); setCurrentUser(null); }}>
-              <LogOutIcon className="nav-icon" size={14} />
+              <Picto name="door" size={18} className="nav-icon" />
               <span>Se déconnecter</span>
             </button>
           )}
@@ -1134,15 +1130,15 @@ export default function App() {
 
       {/* ── Mobile tab bar ── */}
       <nav className="tabbar" aria-label="Navigation">
-        {TAB_NAV.map(([id, Ico, label]) => (
+        {TAB_NAV.map(([id, ico, label]) => (
           <button key={id} className={`tabbar-item ${view === id && !moreOpen ? 'active' : ''}`} onClick={() => go(id)}>
-            <Ico size={21} />
+            <Picto name={ico} size={24} />
             <span>{label}</span>
           </button>
         ))}
         <button className={`tabbar-item ${moreOpen || (!TAB_NAV.some(([id]) => id === view)) ? 'active' : ''}`}
           onClick={() => setMoreOpen(o => !o)} aria-expanded={moreOpen}>
-          <ChevronIcon size={21} className={`tabbar-more-icon${moreOpen ? ' open' : ''}`} />
+          <Picto name="more" size={24} />
           <span>Plus</span>
         </button>
       </nav>
@@ -1153,9 +1149,9 @@ export default function App() {
               <div key={title} className="tabbar-sheet-group">
                 <div className="nav-group-title">{title}</div>
                 <div className="tabbar-sheet-grid">
-                  {items.map(([id, Ico, label]) => (
+                  {items.map(([id, ico, label]) => (
                     <button key={id} className={`tabbar-tile ${view === id ? 'active' : ''}`} onClick={() => go(id)}>
-                      <Ico size={20} />
+                      <Picto name={ico} size={26} />
                       <span>{label}</span>
                     </button>
                   ))}
@@ -1163,10 +1159,10 @@ export default function App() {
               </div>
             ))}
             <div className="tabbar-sheet-foot">
-              <button className="btn" onClick={() => go(VIEWS.SETTINGS)}><SettingsIcon size={15} /> Réglages</button>
+              <button className="btn" onClick={() => go(VIEWS.SETTINGS)}><Picto name="gear" size={16} /> Réglages</button>
               {requiresAuth && (
                 <button className="btn" onClick={() => { backendService.logout(); setAuthed(false); setCurrentUser(null); }}>
-                  <LogOutIcon size={15} /> Se déconnecter
+                  <Picto name="door" size={16} /> Se déconnecter
                 </button>
               )}
             </div>

@@ -414,7 +414,7 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit }) {
               </div>
             </div>
           </div>
-          {day.blocks?.length > 0 && (
+          {day.blocks?.length > 0 && day.date !== today && (
             <>
               <p className="today-hint">
                 {TYPE_LABELS[day.type]} · {Math.round(blocksMinutes(day.blocks))} min · ~{day.tss} TSS
@@ -425,14 +425,13 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit }) {
               <BlockList blocks={day.blocks} ftp={ftp} />
             </>
           )}
-          {day.date === today && day.type !== 'rest' && day.type !== 'race' && (
-            <p className="today-hint">Aujourd’hui : la version ajustée à ta forme est dans « Séance du jour ».</p>
+          {day.date === today && (
+            <p className="today-hint">Le détail du jour est en haut de la page.</p>
           )}
-          {day.strength && (
-            <div className="today-plan-strength">
-              <div className="today-metric-label">+ {day.strength.title}</div>
-              <StrengthDetail session={day.strength} />
-            </div>
+          {day.strength && day.date !== today && (
+            <p className="today-plan-strength-line">
+              <Picto name="strength" size={18} className="picto-inline" /> Renfo : {day.strength.title.replace(' · poids du corps', '')}, ~{day.strength.minutes} min
+            </p>
           )}
           {dayReview && <Review review={dayReview.review} strengthPlanned={day.strength} strengthDone={dayReview.strengthDone} />}
 

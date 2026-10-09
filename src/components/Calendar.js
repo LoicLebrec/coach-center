@@ -250,12 +250,12 @@ function trainingTone(event) {
 }
 
 function toneLabel(tone) {
-    if (tone === 'recovery') return 'Recovery';
-    if (tone === 'intensive') return 'Intensive';
+    if (tone === 'recovery') return 'Récup';
+    if (tone === 'intensive') return 'Intensité';
     if (tone === 'endurance') return 'Endurance';
-    if (tone === 'race') return 'Race';
-    if (tone === 'objective') return 'Objective';
-    return 'Session';
+    if (tone === 'race') return 'Course';
+    if (tone === 'objective') return 'Objectif';
+    return 'Séance';
 }
 
 function sanitizeLabel(text) {
@@ -375,10 +375,10 @@ export default function Calendar({
     const [collapsed, setCollapsed] = useState({
         builder: false,
         manual: true,
-        library: false,
+        library: true,
         csv: true,
         garmin: true,
-        upcoming: false,
+        upcoming: true,
     });
     const [jumpDate, setJumpDate] = useState('');
     const [manualDate, setManualDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -779,10 +779,10 @@ export default function Calendar({
     const periodLabel = useMemo(() => {
         if (viewMode === 'week') {
             const wkEnd = endOfWeek(cursor, { weekStartsOn: 1 });
-            return `${format(weekStart, 'dd MMM')} - ${format(wkEnd, 'dd MMM yyyy')}`;
+            return `${format(weekStart, 'dd MMM', { locale: dateFnsFr })} - ${format(wkEnd, 'dd MMM yyyy', { locale: dateFnsFr })}`;
         }
         if (viewMode === 'year') return format(cursor, 'yyyy');
-        return format(cursor, 'MMMM yyyy');
+        return format(cursor, 'MMMM yyyy', { locale: dateFnsFr });
     }, [viewMode, cursor, weekStart]);
 
     const movePrev = () => {
@@ -803,6 +803,10 @@ export default function Calendar({
 
     const toggleSection = (key) => {
         setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+    // One tool panel open at a time.
+    const openTool = (key) => {
+        setCollapsed(prev => ({ ...prev, manual: true, library: true, csv: true, garmin: true, upcoming: true, [key]: !prev[key] }));
     };
 
     const toIsoDate = (value) => {
@@ -1232,9 +1236,9 @@ export default function Calendar({
                             
                         </div>
 
-                        {viewMode !== 'year' && (
+                        {viewMode === 'month' && (
                             <div className="calendar-weekdays">
-                                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+                                {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => (
                                     <div key={day} className="calendar-weekday">{day}</div>
                                 ))}
                             </div>
@@ -1262,11 +1266,8 @@ export default function Calendar({
                                             onDragLeave={() => setDragOverDay(null)}
                                             onDrop={handleDropOnDay(dayKey)}
                                             onClick={() => openDayDetails(dayKey)}
-                                            style={{
-                                                ...(activityData ? { backgroundColor: activityData.color } : {}),
-                                                cursor: 'pointer',
-                                            }}
-                                            title={activityData ? `${Math.round(activityData.tss)} TSS - Click for details` : 'Click to add workout or note'}
+                                            style={{ cursor: 'pointer' }}
+                                            title={activityData ? `${Math.round(activityData.tss)} TSS` : 'Ajouter une séance ou une note'}
                                         >
                                             <div className="calendar-day-num" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span>{format(day, 'd')}</span>
@@ -1332,10 +1333,7 @@ export default function Calendar({
                                                         </div>
                                                     );
                                                 })}
-                                                {totalPills > 3 && <div className="calendar-more">+{totalPills - 3} more</div>}
-                                                {totalPills === 0 && isSameMonth(day, cursor) && (
-                                                    <div className="calendar-drop-hint">+ add</div>
-                                                )}
+                                                {totalPills > 3 && <div className="calendar-more">+{totalPills - 3}</div>}
                                             </div>
                                         </div>
                                     );
@@ -1360,10 +1358,9 @@ export default function Calendar({
                                             onDragLeave={() => setDragOverDay(null)}
                                             onDrop={handleDropOnDay(dayKey)}
                                             onClick={() => openDayDetails(dayKey)}
-                                            style={activityData ? { backgroundColor: activityData.color } : {}}
-                                            title={activityData ? `${Math.round(activityData.tss)} TSS - Click for details` : 'Click to add workout or note'}
+                                            title={activityData ? `${Math.round(activityData.tss)} TSS` : 'Ajouter une séance ou une note'}
                                         >
-                                            <div className="calendar-day-num">{format(day, 'EEE d')}</div>
+                                            <div className="calendar-day-num">{format(day, 'EEE d', { locale: dateFnsFr })}</div>
                                             <div className="calendar-week-events">
                                                 {entries.map(entry => {
                                                     const tone = trainingTone(entry);
@@ -1404,16 +1401,13 @@ export default function Calendar({
                                                                         lineHeight: 1,
                                                                     }}
                                                                     title="Supprimer cette séance"
-                                                                >✕</button>
+                                                                >×</button>
                                                             )}
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 4, paddingRight: entry.planned ? 20 : 0 }}>
-                                                                <div style={{ fontSize:15, fontWeight: 700, color: 'var(--text-0)', flex: 1 }}>{entry.title}</div>
-                                                                <span style={{ fontFamily: 'var(--font-mono)', fontSize:13, fontWeight: 600, borderRadius: '999px', padding: '2px 7px', border: `1px solid ${toneColor}33`, background: `${toneColor}1a`, color: toneColor, whiteSpace: 'nowrap' }}>
-                                                                    {toneLabel(tone)}
-                                                                </span>
+                                                                <div style={{ fontSize:14, fontWeight: 700, color: 'var(--text-0)', flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{entry.title}</div>
                                                             </div>
                                                             <div style={{ display: 'flex', gap: 8, fontSize:13, color: 'var(--text-3)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
-                                                                {entry.type && <span style={{ color: toneColor }}>{entry.type}</span>}
+                                                                <span style={{ color: toneColor, fontWeight: 600 }}>{toneLabel(tone)}</span>
                                                                 {blocksDuration > 0 && <span>{blocksDuration} min</span>}
                                                             </div>
                                                             <WorkoutBlocksGraph blocks={entry.workoutBlocks} />
@@ -1454,9 +1448,6 @@ export default function Calendar({
                                                         </div>
                                                     );
                                                 })}
-                                                {entries.length === 0 && (activitiesByDay.get(dayKey) || []).length === 0 && (
-                                                    <div className="calendar-drop-hint">Drop workout</div>
-                                                )}
                                                 {entries.length >= 6 && (
                                                     <div className="calendar-more">{entries.length} sessions</div>
                                                 )}
@@ -1471,7 +1462,7 @@ export default function Calendar({
                             <div className="calendar-year-grid">
                                 {yearMonths.map(m => (
                                     <div key={format(m.monthDate, 'yyyy-MM')} className="calendar-year-card">
-                                        <div className="calendar-year-title">{format(m.monthDate, 'MMM')}</div>
+                                        <div className="calendar-year-title">{format(m.monthDate, 'MMM', { locale: dateFnsFr })}</div>
                                         <div className="calendar-year-metric">{m.total} events</div>
                                         <div className="calendar-year-split">
                                             <span className="calendar-kind-training">{m.trainings} T</span>
@@ -1486,35 +1477,22 @@ export default function Calendar({
 
                 </div>
 
-                <div className="card" style={{ marginBottom: 0 }}>
-                    <div className="card-header">
-                        <span className="card-title">Ajouter et importer</span>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            
-                            <button className="planner-toggle" onClick={() => toggleSection('upcoming')}>
-                                <span>{collapsed.upcoming ? 'Show' : 'Hide'}</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div style={{ padding: '0 0 8px' }}>
-                        <button
-                            onClick={() => onOpenWorkoutBuilder?.()}
-                            style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                width: '100%', padding: '11px 14px', borderRadius: 9,
-                                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-                                color: 'var(--text-2)', cursor: 'pointer', transition: 'all 0.15s',
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
-                        >
-                            <div style={{ textAlign: 'left' }}>
-                                <div style={{ fontFamily: 'var(--font-sans)', fontSize:13, fontWeight: 600, color: 'var(--text-1)' }}>Créer une séance</div>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginTop: 2 }}>Construis une séance bloc par bloc</div>
-                            </div>
-                            <span style={{ fontSize:15, color: 'var(--text-3)' }}>→</span>
+                <div className="card cal-tools-card" style={{ marginBottom: 0 }}>
+                    <div className="cal-tools">
+                        <button type="button" onClick={() => onOpenWorkoutBuilder?.()}>
+                            <Picto name="blocks" size={20} /> Créer une séance
                         </button>
+                        {[
+                            ['manual', 'calendar', 'Ajouter au calendrier'],
+                            ['library', 'book', 'Bibliothèque'],
+                            ['upcoming', 'clipboard', 'Séances à venir'],
+                            ['csv', 'send', 'Importer un plan'],
+                            ['garmin', 'signal', 'Envoyer vers Garmin'],
+                        ].map(([key, icon, label]) => (
+                            <button key={key} type="button" className={!collapsed[key] ? 'is-on' : ''} aria-expanded={!collapsed[key]} onClick={() => openTool(key)}>
+                                <Picto name={icon} size={20} /> {label}
+                            </button>
+                        ))}
                     </div>
 
                     <div className="planner-section">
@@ -1536,30 +1514,30 @@ export default function Calendar({
                         >
                             <Picto name="bolt" size={22} />
                             <div style={{ flex: 1 }}>
-                                <div>Quick Manual Entry</div>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--accent-orange)', marginTop: 2 }}>Add single sessions directly</div>
+                                <div>Ajouter au calendrier</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--accent-orange)', marginTop: 2 }}>Une séance, une course ou un objectif</div>
                             </div>
                             <span style={{ fontSize:15, color: 'var(--text-3)' }}>{collapsed.manual ? '▼' : '▲'}</span>
                         </button>
                         {!collapsed.manual && <div style={{ padding: '16px', background: 'rgba(77,127,232,0.04)', border: '1px solid rgba(77,127,232,0.2)', borderTop: 'none' }}>
-                            <div className="card-title" style={{ marginBottom: 8 }}>Quick Manual Entry</div>
+                            <div className="card-title" style={{ marginBottom: 8 }}>Ajouter au calendrier</div>
                             <input className="form-input calendar-form-input" type="date" value={manualDate} onChange={e => setManualDate(e.target.value)} />
-                            <input className="form-input calendar-form-input" placeholder="Session title" value={manualTitle} onChange={e => setManualTitle(e.target.value)} />
+                            <input className="form-input calendar-form-input" placeholder="Titre de la séance" value={manualTitle} onChange={e => setManualTitle(e.target.value)} />
                             <div className="calendar-form-row">
                                 <select className="form-input calendar-form-input" value={manualType} onChange={e => setManualType(e.target.value)}>
                                     <option value="Workout">Workout</option>
                                     <option value="Ride">Ride</option>
                                     <option value="Run">Run</option>
-                                    <option value="Race">Race</option>
+                                    <option value="Race">Course</option>
                                 </select>
                                 <select className="form-input calendar-form-input" value={manualKind} onChange={e => setManualKind(e.target.value)}>
-                                    <option value="training">Training</option>
-                                    <option value="objective">Objective</option>
-                                    <option value="race">Race</option>
+                                    <option value="training">Entraînement</option>
+                                    <option value="objective">Objectif</option>
+                                    <option value="race">Course</option>
                                 </select>
                             </div>
-                            <input className="form-input calendar-form-input" placeholder="Notes / targets" value={manualNotes} onChange={e => setManualNotes(e.target.value)} />
-                            <button className="btn btn-primary" onClick={handleManualAdd}>Add To Calendar</button>
+                            <input className="form-input calendar-form-input" placeholder="Notes, objectifs" value={manualNotes} onChange={e => setManualNotes(e.target.value)} />
+                            <button className="btn btn-primary" onClick={handleManualAdd}>Ajouter</button>
                         </div>}
                     </div>
 
@@ -1582,13 +1560,13 @@ export default function Calendar({
                         >
                             <Picto name="book" size={22} />
                             <div style={{ flex: 1 }}>
-                                <div>Training Library (Drag & Drop)</div>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--accent-green)', marginTop: 2 }}>Drag workouts to calendar</div>
+                                <div>Bibliothèque</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--accent-green)', marginTop: 2 }}>Glisse une séance sur le calendrier</div>
                             </div>
                             <span style={{ fontSize:15, color: 'var(--text-3)' }}>{collapsed.library ? '▼' : '▲'}</span>
                         </button>
                         {!collapsed.library && <div style={{ padding: '16px', background: 'rgba(62,207,110,0.04)', border: '1px solid rgba(62,207,110,0.2)', borderTop: 'none' }}>
-                            <div className="card-title" style={{ marginBottom: 8 }}>Training Library</div>
+                            <div className="card-title" style={{ marginBottom: 8 }}>Bibliothèque</div>
                             <div className="calendar-library-list">
                                 {libraryWorkouts.map((workout, idx) => (
                                     <div
@@ -1612,7 +1590,7 @@ export default function Calendar({
                                     </div>
                                 ))}
                             </div>
-                            <div className="calendar-helper">Drag any library card onto a day in the calendar to schedule it.</div>
+                            <div className="calendar-helper">Glisse une séance sur un jour du calendrier, ou utilise « Ajouter aujourd’hui ».</div>
                         </div>}
                     </div>
 
@@ -1636,13 +1614,13 @@ export default function Calendar({
                         >
                             <Picto name="send" size={22} />
                             <div style={{ flex: 1 }}>
-                                <div>Import CSV Plan</div>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--accent-orange)', marginTop: 2 }}>Bulk import from spreadsheet</div>
+                                <div>Importer un plan (CSV)</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--accent-orange)', marginTop: 2 }}>Depuis un tableur</div>
                             </div>
                             <span style={{ fontSize:15, color: 'var(--text-3)' }}>{collapsed.csv ? '▼' : '▲'}</span>
                         </button>
                         {!collapsed.csv && <div style={{ padding: '16px', background: 'rgba(240,180,41,0.04)', border: '1px solid rgba(240,180,41,0.2)', borderTop: 'none' }}>
-                            <div className="card-title" style={{ marginBottom: 8 }}>Import CSV Plan</div>
+                            <div className="card-title" style={{ marginBottom: 8 }}>Importer un plan (CSV)</div>
                             <input
                                 ref={csvInputRef}
                                 className="form-input calendar-form-input"
@@ -1668,7 +1646,7 @@ export default function Calendar({
                                     {importedSessions.slice(0, 40).map(session => (
                                         <div key={session.id} className="calendar-upcoming-item">
                                             <div>
-                                                <div className="calendar-upcoming-date">{format(session.date, 'EEE dd MMM yyyy')}</div>
+                                                <div className="calendar-upcoming-date">{format(session.date, 'EEE dd MMM yyyy', { locale: dateFnsFr })}</div>
                                                 <div className="calendar-upcoming-title">{session.title}</div>
                                                 <WorkoutBlocksGraph blocks={session.workoutBlocks} />
                                             </div>
@@ -1687,7 +1665,7 @@ export default function Calendar({
                                 </div>
                             )}
                             <button className="btn" disabled={isImportingCsv} onClick={() => csvInputRef.current?.click()}>
-                                {isImportingCsv ? 'Importing...' : 'Choose CSV'}
+                                {isImportingCsv ? 'Importing...' : 'Choisir un fichier CSV'}
                             </button>
                         </div>}
                     </div>
@@ -1712,14 +1690,14 @@ export default function Calendar({
                         >
                             <div style={{ fontSize:20, lineHeight: 1 }}>⌚</div>
                             <div style={{ flex: 1 }}>
-                                <div>Send to Garmin</div>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--accent-orange)', marginTop: 2 }}>Export to device and Intervals.icu</div>
+                                <div>Envoyer vers Garmin</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--accent-orange)', marginTop: 2 }}>Via Intervals.icu ou en fichiers</div>
                             </div>
                             <span style={{ fontSize:15, color: 'var(--text-3)' }}>{collapsed.garmin ? '▼' : '▲'}</span>
                         </button>
                         {!collapsed.garmin && (
                             <div style={{ padding: '16px', background: 'rgba(159,122,234,0.04)', border: '1px solid rgba(159,122,234,0.2)', borderTop: 'none' }}>
-                                <div className="card-title" style={{ marginBottom: 4 }}>Send to Garmin</div>
+                                <div className="card-title" style={{ marginBottom: 4 }}>Envoyer vers Garmin</div>
                                 <div style={{ fontSize:13, color: 'var(--text-3)', marginBottom: 12 }}>
                                     {upcomingStructured.length} structured workout{upcomingStructured.length !== 1 ? 's' : ''} ready to export
                                 </div>
@@ -1796,7 +1774,7 @@ export default function Calendar({
                     {!collapsed.upcoming && (loading && timelineEvents.length === 0 ? (
                         <div className="loading-state" style={{ padding: '24px 8px' }}>
                             <div className="loading-spinner" />
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize:15 }}>Loading planned events...</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize:15 }}>Chargement des séances…</span>
                         </div>
                     ) : timelineEvents.length === 0 ? (
                         <div className="info-banner" style={{ marginBottom: 0 }}>
@@ -1812,7 +1790,7 @@ export default function Calendar({
                             {timelineEvents.map(event => (
                                 <div key={event.id} className="calendar-upcoming-item" onClick={() => openEventCard(event)} style={{ cursor: 'pointer' }}>
                                     <div>
-                                        <div className="calendar-upcoming-date">{format(event.date, 'EEE dd MMM yyyy')}</div>
+                                        <div className="calendar-upcoming-date">{format(event.date, 'EEE dd MMM yyyy', { locale: dateFnsFr })}</div>
                                         <div className="calendar-upcoming-title">{event.title}</div>
                                         <WorkoutBlocksGraph blocks={event.workoutBlocks} />
                                     </div>
@@ -1864,7 +1842,7 @@ export default function Calendar({
                             <div>
                                 <div style={{ fontFamily: 'var(--font-mono)', fontSize:15, color: 'var(--text-3)', marginBottom: 4 }}>DAY DETAILS</div>
                                 <div style={{ fontFamily: 'var(--font-sans)', fontSize:20, fontWeight: 600, color: 'var(--text-0)' }}>
-                                    {format(parseISO(`${selectedActivityDay}T00:00:00`), 'EEEE, dd MMMM yyyy')}
+                                    {format(parseISO(`${selectedActivityDay}T00:00:00`), 'EEEE, dd MMMM yyyy', { locale: dateFnsFr })}
                                 </div>
                             </div>
                             <button
@@ -1904,14 +1882,14 @@ export default function Calendar({
                                         <option value="Note">Note</option>
                                     </select>
                                     <select className="form-input calendar-form-input" value={dayQuickKind} onChange={e => setDayQuickKind(e.target.value)}>
-                                        <option value="training">Training</option>
-                                        <option value="objective">Objective</option>
-                                        <option value="race">Race</option>
+                                        <option value="training">Entraînement</option>
+                                        <option value="objective">Objectif</option>
+                                        <option value="race">Course</option>
                                     </select>
                                 </div>
-                                <input className="form-input calendar-form-input" placeholder="Notes / targets" value={dayQuickNotes} onChange={e => setDayQuickNotes(e.target.value)} />
+                                <input className="form-input calendar-form-input" placeholder="Notes, objectifs" value={dayQuickNotes} onChange={e => setDayQuickNotes(e.target.value)} />
                                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                                    <button className="btn btn-primary" onClick={handleDayQuickAdd}>Add To Calendar</button>
+                                    <button className="btn btn-primary" onClick={handleDayQuickAdd}>Ajouter</button>
                                     <button className="btn" onClick={() => {
                                         setDayQuickType('Note');
                                         setDayQuickKind('objective');
@@ -2075,7 +2053,7 @@ export default function Calendar({
                                     {selectedEvent.title}
                                 </div>
                                 <div style={{ fontFamily: 'var(--font-mono)', fontSize:15, color: 'var(--text-2)' }}>
-                                    {format(selectedEvent.date, 'EEEE, dd MMMM yyyy')}
+                                    {format(selectedEvent.date, 'EEEE, dd MMMM yyyy', { locale: dateFnsFr })}
                                 </div>
                             </div>
                             <button
@@ -2187,7 +2165,7 @@ export default function Calendar({
                             Build route based on your training
                         </div>
                         <div style={{ fontSize:15, color: 'var(--text-1)', lineHeight: 1.6, marginBottom: 14 }}>
-                            Open Route Builder to generate a route for <strong>{routePromptEvent.title}</strong> on {format(routePromptEvent.date, 'EEE dd MMM')}.
+                            Open Route Builder to generate a route for <strong>{routePromptEvent.title}</strong> on {format(routePromptEvent.date, 'EEE dd MMM', { locale: dateFnsFr })}.
                         </div>
                         <div style={{
                             border: '1px solid var(--border)',

@@ -27,6 +27,7 @@ const MEAL_META = {
   dinner:    { label: 'Dîner',             icon: 'moon',   color: '#7dd3fc' },
 };
 
+const DAY_TITLES = { rest: 'Jour de repos', easy: 'Journée facile', moderate: 'Journée modérée', hard: 'Journée intense', long: 'Longue sortie' };
 const LOAD_COLORS = { rest: '#64748b', easy: '#22c55e', moderate: '#f59e0b', hard: '#f97316', long: '#ef4444' };
 const LOAD_LABELS = { rest: 'Repos',   easy: 'Facile',  moderate: 'Modéré',  hard: 'Intensif', long: 'Longue sortie' };
 
@@ -100,75 +101,34 @@ function DifficultyBadge({ difficulty }) {
   return <span style={tag(opt.color)}>{opt.label}</span>;
 }
 
-function RecipeCard({ recipe, expanded, onToggle, onShuffle, poolSize, poolIdx }) {
-  const { name, difficulty, area, time, macros, macrosEstimated, ingredients, steps, note } = recipe;
+function RecipeCard({ recipe, expanded, onToggle, onShuffle, canShuffle }) {
+  const { name, difficulty, time, macros, macrosEstimated, ingredients, steps, note } = recipe;
+  const level = DIFFICULTY_OPTIONS.find(o => o.key === difficulty)?.label;
   return (
-    <div style={{
-      background: 'var(--bg-2)',
-      border: `1px solid ${expanded ? 'rgba(34,211,238,0.35)' : 'var(--border)'}`,
-      borderRadius: 10, overflow: 'hidden', transition: 'border-color 0.15s',
-    }}>
-      {/* Ligne principale */}
-      <div style={{ display: 'flex', alignItems: 'stretch' }}>
-        <button onClick={onToggle} style={{
-          flex: 1, display: 'flex', flexDirection: 'column', gap: 7, padding: '12px 14px',
-          background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-0)' }}>{name}</span>
-            {area && <span style={{ fontSize: 12, color: 'var(--text-4)' }}>{area}</span>}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <DifficultyBadge difficulty={difficulty} />
-            <span style={{ fontSize: 12, color: 'var(--text-4)' }}>{time} min</span>
-            <span style={{ ...monoVal('#f59e0b'), fontSize: 12 }}>{macros.cal} kcal{macrosEstimated ? '*' : ''}</span>
-            <span style={{ ...monoVal('#f97316'), fontSize: 12 }}>G {macros.carbs}g</span>
-            <span style={{ ...monoVal('#22c55e'), fontSize: 12 }}>P {macros.protein}g</span>
-            <span style={{ ...monoVal('#f97316'), fontSize: 12 }}>L {macros.fat}g</span>
-          </div>
+    <div className={`meal-card${expanded ? ' is-open' : ''}`}>
+      <div className="meal-row">
+        <button type="button" className="meal-main" onClick={onToggle} aria-expanded={expanded}>
+          <span className="meal-name">{name}</span>
+          <span className="meal-meta">{time} min · {macros.cal} kcal{macrosEstimated ? ' (estimé)' : ''}{level ? ` · ${level.toLowerCase()}` : ''}</span>
         </button>
-
-        <div style={{ display: 'flex', borderLeft: '1px solid var(--border)' }}>
-          <button onClick={e => { e.stopPropagation(); onShuffle(); }} title="Autre recette"
-            style={{ padding: '0 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text-3)' }}>
-            <Picto name="shuffle" size={18} />
+        {canShuffle && (
+          <button type="button" className="meal-swap" onClick={onShuffle} title="Proposer une autre recette">
+            <Picto name="shuffle" size={16} /> <span>Autre idée</span>
           </button>
-          <button onClick={onToggle} style={{
-            padding: '0 12px', background: 'none', border: 'none', borderLeft: '1px solid var(--border)',
-            cursor: 'pointer', color: 'var(--text-4)', fontSize: 12,
-          }}>
-            {expanded ? '▲' : '▼'}
-          </button>
-        </div>
+        )}
       </div>
-
-      {poolSize > 1 && (
-        <div style={{ padding: '0 14px 8px', fontSize: 11, color: 'var(--text-4)' }}>
-          {poolIdx + 1} / {poolSize} recettes disponibles
-        </div>
-      )}
-
-      {/* Détail expandé */}
       {expanded && (
-        <div style={{ borderTop: '1px solid var(--border)', padding: '14px 16px 16px' }}>
-          <div style={{ ...sectionLabel, marginBottom: 8 }}>Ingrédients</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 20px', marginBottom: 14 }}>
+        <div className="meal-detail">
+          <p className="meal-macros">Glucides {macros.carbs} g · Protéines {macros.protein} g · Lipides {macros.fat} g</p>
+          <div className="meal-subtitle">Ingrédients</div>
+          <ul className="meal-ingredients">
             {ingredients.map((ing, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
-                <span style={{ color: 'var(--text-2)' }}>{ing.name}</span>
-                {ing.qty && <span style={monoVal('var(--accent-orange)')}>{ing.qty}</span>}
-              </div>
+              <li key={i}><span>{ing.name}</span>{ing.qty && <span className="meal-qty">{ing.qty}</span>}</li>
             ))}
-          </div>
-          <div style={{ ...sectionLabel, marginBottom: 6 }}>Préparation</div>
-          <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.75, margin: '0 0 10px', whiteSpace: 'pre-line' }}>
-            {steps}
-          </p>
-          {note && (
-            <div style={{ padding: '9px 13px', borderRadius: 8, background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.18)', fontSize: 13, color: 'var(--accent-orange)', lineHeight: 1.6 }}>
-              {note}
-            </div>
-          )}
+          </ul>
+          <div className="meal-subtitle">Préparation</div>
+          <p className="meal-steps">{steps}</p>
+          {note && <p className="meal-note">{note}</p>}
         </div>
       )}
     </div>
@@ -176,7 +136,7 @@ function RecipeCard({ recipe, expanded, onToggle, onShuffle, poolSize, poolIdx }
 }
 
 function MealSlot({ slotKey, diet, weightKg, difficulty, staticRecipes = null }) {
-  const { label, icon, color } = MEAL_META[slotKey] || {};
+  const { label, icon } = MEAL_META[slotKey] || {};
 
   const pool = useMemo(() => {
     if (staticRecipes) return staticRecipes;
@@ -196,26 +156,20 @@ function MealSlot({ slotKey, diet, weightKg, difficulty, staticRecipes = null })
   const current = pool[idx] || null;
 
   return (
-    <div style={{ marginBottom: 18 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <Picto name={icon} size={18} />
-        <span style={{ fontSize: 13, fontWeight: 600, color }}>{label}</span>
-      </div>
+    <li className="meal">
+      <div className="meal-slot"><Picto name={icon} size={20} /> {label}</div>
       {!current ? (
-        <div style={{ fontSize: 13, color: 'var(--text-4)', padding: '8px 0' }}>
-          Aucune recette {difficulty ? `"${DIFFICULTY_OPTIONS.find(o => o.key === difficulty)?.label}"` : ''} pour ce créneau.
-        </div>
+        <p className="meal-empty">Pas de recette de ce niveau pour ce repas. Choisis « Toutes » dans Recettes.</p>
       ) : (
         <RecipeCard
           recipe={current}
           expanded={expanded}
           onToggle={() => setExpanded(e => !e)}
           onShuffle={handleShuffle}
-          poolSize={pool.length}
-          poolIdx={idx}
+          canShuffle={pool.length > 1}
         />
       )}
-    </div>
+    </li>
   );
 }
 
@@ -605,182 +559,122 @@ export default function NutritionCoach({ athlete, activities = [], plannedEvents
   const showDuring = needs.loadLevel === 'long';
   const showPost   = ['moderate', 'hard', 'long'].includes(needs.loadLevel);
 
-  const leftSlots  = ['breakfast', ...(showPre ? ['pre'] : []), ...(showDuring ? ['during'] : []), 'lunch'];
-  const rightSlots = ['snack', ...(showPost ? ['post'] : []), 'dinner'];
+  // Chronological, assuming a morning ride.
+  const slots = ['breakfast', ...(showPre ? ['pre'] : []), ...(showDuring ? ['during'] : []), ...(showPost ? ['post'] : []), 'lunch', 'snack', 'dinner'];
 
   const tabs = [
-    { key: 'menu',    label: 'Menu du jour',     icon: 'plate' },
-    { key: 'courses', label: 'Liste de courses', icon: 'cart' },
-    { key: 'journal', label: 'Mon journal',      icon: 'book' },
+    { key: 'menu',    label: 'Menu du jour' },
+    { key: 'courses', label: 'Courses de la semaine' },
+    { key: 'journal', label: 'Journal' },
   ];
 
+  const kcalOf = { carbs: needs.carbs * 4, protein: needs.protein * 4, fat: needs.fat * 9 };
+  const kcalSum = kcalOf.carbs + kcalOf.protein + kcalOf.fat || 1;
+  const water = needs.loadLevel === 'long' ? weight * 0.05 : ['rest', 'easy'].includes(needs.loadLevel) ? weight * 0.033 : weight * 0.04;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 48 }}>
-
+    <div className="nutri">
       <div className="page-header">
-        <div className="page-title">Nutrition Coach</div>
-        <div className="page-subtitle">Besoins adaptés à votre charge · Recettes françaises · Journal alimentaire</div>
+        <div className="page-title">Nutrition</div>
+        <div className="page-subtitle">Ce que tu manges aujourd’hui, calé sur ta séance</div>
       </div>
 
-      {/* Panneau de contrôle */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-
-        <div className="card" style={{ padding: '16px 18px', marginBottom: 0 }}>
-          <div style={sectionLabel}>Régime alimentaire</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {DIET_OPTIONS.map(opt => (
-              <button key={opt.key} onClick={() => setDiet(opt.key)} style={{
-                flex: 1, padding: '10px 6px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
-                border: `1px solid ${diet === opt.key ? 'var(--accent-orange)' : 'var(--border)'}`,
-                background: diet === opt.key ? 'rgba(34,211,238,0.1)' : 'transparent',
-                color: diet === opt.key ? 'var(--accent-orange)' : 'var(--text-3)',
-                transition: 'all 0.15s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-              }}>
-                <Picto name={opt.icon} size={26} />
-                <span style={{ fontSize: 12, fontWeight: 600 }}>{opt.label}</span>
-              </button>
-            ))}
+      <section className="card nutri-today">
+        <div className="nutri-today-head">
+          <div>
+            <div className="nutri-day">
+              <Picto name={needs.loadLevel === 'rest' ? 'moon' : needs.loadLevel === 'easy' ? 'leaf' : 'bolt'} size={22} />
+              {DAY_TITLES[needs.loadLevel] || 'Aujourd’hui'}
+              {needs.durationH > 0 && <span className="nutri-day-sub"> · {needs.durationH} h de vélo</span>}
+            </div>
+            <p className="nutri-target"><strong>{needs.cal.toLocaleString('fr')} kcal</strong> à viser aujourd’hui</p>
           </div>
         </div>
+        <div className="nutri-bar" role="img" aria-label={`Glucides ${needs.carbs} g, protéines ${needs.protein} g, lipides ${needs.fat} g`}>
+          <span className="m-carbs" style={{ width: `${(kcalOf.carbs / kcalSum) * 100}%` }} />
+          <span className="m-protein" style={{ width: `${(kcalOf.protein / kcalSum) * 100}%` }} />
+          <span className="m-fat" style={{ width: `${(kcalOf.fat / kcalSum) * 100}%` }} />
+        </div>
+        <div className="nutri-legend">
+          <span><i className="m-carbs" />Glucides <strong>{needs.carbs} g</strong></span>
+          <span><i className="m-protein" />Protéines <strong>{needs.protein} g</strong></span>
+          <span><i className="m-fat" />Lipides <strong>{needs.fat} g</strong></span>
+        </div>
+        {needs.tomorrowPlan && (
+          <p className="nutri-tomorrow">
+            Demain : {needs.tomorrowPlan.title || 'entraînement'}{needs.preloading ? '. Ce soir, recharge en glucides.' : '.'}
+          </p>
+        )}
+        <details className="nutri-how">
+          <summary>Comment c’est calculé</summary>
+          <p>
+            Base {needs.bmr} kcal{needs.trainingKcal > 0 ? ` + ${needs.trainingKcal} kcal brûlées à l’entraînement` : ''}.
+            {' '}{weight} kg{!athlete?.icu_weight && !athlete?.weight ? ' (valeur par défaut, à régler dans ton profil)' : ''}
+            {athlete?.icu_ftp ? `, FTP ${athlete.icu_ftp} W` : ''}.
+          </p>
+          {needs.explanation && <p>{needs.explanation}</p>}
+        </details>
+      </section>
 
-        <div className="card" style={{ padding: '16px 18px', marginBottom: 0 }}>
-          <div style={sectionLabel}>Difficulté des recettes</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button onClick={() => setDifficulty(null)} style={pill('var(--accent-orange)', difficulty === null)}>
-              Toutes
+      <div className="nutri-controls">
+        <div className="nutri-tabs" role="tablist">
+          {tabs.map(tab => (
+            <button key={tab.key} type="button" role="tab" aria-selected={activeTab === tab.key}
+              className={activeTab === tab.key ? 'is-on' : ''} onClick={() => setActiveTab(tab.key)}>
+              {tab.label}
             </button>
-            {DIFFICULTY_OPTIONS.map(opt => (
-              <button key={opt.key} onClick={() => setDifficulty(d => d === opt.key ? null : opt.key)}
-                style={pill(opt.color, difficulty === opt.key)}>
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          ))}
         </div>
-
-        <div className="card" style={{ padding: '16px 18px', marginBottom: 0 }}>
-          <div style={sectionLabel}>Contexte du jour</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={tag(LOAD_COLORS[needs.loadLevel])}>{needs.loadLabel}</span>
-            {needs.preloading && (
-              <span style={tag('#7c3aed')}>Charge glucidique</span>
-            )}
-            {needs.durationH > 0 && (
-              <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
-                {needs.durationH}h · TSS {needs.tss}
-              </span>
-            )}
-          </div>
-          {needs.trainingKcal > 0 && (
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>
-              <span style={{ color: '#f97316', fontWeight: 600 }}>{needs.trainingKcal} kcal</span> brûlées
-              {' · '}base <span style={{ fontFamily: 'var(--font-mono)' }}>{needs.bmr}</span> kcal
-            </div>
-          )}
-          {needs.explanation && (
-            <div style={{ fontSize: 11, color: 'var(--text-4)', lineHeight: 1.5, marginBottom: 8, fontStyle: 'italic' }}>
-              {needs.explanation}
-            </div>
-          )}
-          {needs.tomorrowPlan && (
-            <div style={{ fontSize: 11, background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 7, padding: '6px 9px', color: 'var(--text-2)' }}>
-              <span style={{ color: '#f97316', fontWeight: 700 }}>Demain :</span>{' '}
-              {needs.tomorrowPlan.title || 'Entraînement planifié'}
-              {needs.preloading && <span style={{ color: '#a78bfa', marginLeft: 6 }}>→ pré-charge glucidique activée</span>}
-            </div>
-          )}
-          <div style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 8 }}>
-            {weight} kg
-            {!athlete?.icu_weight && !athlete?.weight && (
-              <span style={{ color: '#f97316', marginLeft: 6 }}>· valeur par défaut</span>
-            )}
-            {athlete?.icu_ftp && <span> · FTP {athlete.icu_ftp}W</span>}
-          </div>
+        <div className="nutri-prefs">
+          <label>
+            Régime
+            <select value={diet} onChange={e => setDiet(e.target.value)}>
+              {DIET_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+            </select>
+          </label>
+          <label>
+            Recettes
+            <select value={difficulty || ''} onChange={e => setDifficulty(e.target.value || null)}>
+              <option value="">Toutes</option>
+              {DIFFICULTY_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+            </select>
+          </label>
         </div>
-      </div>
-
-      {/* Objectifs macros */}
-      <div className="card" style={{ padding: '18px 20px', marginBottom: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
-          <span style={sectionLabel}>Objectifs journaliers</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 28, fontWeight: 700, color: '#f59e0b', letterSpacing: '-0.03em' }}>
-              {needs.cal.toLocaleString('fr')}
-            </span>
-            <span style={{ fontSize: 14, color: 'var(--text-3)' }}>kcal / jour</span>
-          </div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0 28px' }}>
-          <MacroProgress label="Glucides"  value={needs.carbs}   max={400} color="#4d7fe8" />
-          <MacroProgress label="Protéines" value={needs.protein} max={200} color="#22c55e" />
-          <MacroProgress label="Lipides"   value={needs.fat}     max={120} color="#f97316" />
-        </div>
-      </div>
-
-      {/* Sélecteur d'onglets */}
-      <div style={{ display: 'flex', alignSelf: 'flex-start', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-        {tabs.map((tab, i) => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
-            padding: '9px 20px', display: 'flex', alignItems: 'center', gap: 7,
-            background: activeTab === tab.key ? 'rgba(34,211,238,0.1)' : 'transparent',
-            border: 'none', borderRight: i < tabs.length - 1 ? '1px solid var(--border)' : 'none',
-            color: activeTab === tab.key ? 'var(--accent-orange)' : 'var(--text-3)',
-            fontSize: 13, fontWeight: activeTab === tab.key ? 600 : 400,
-            cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit',
-          }}>
-            <Picto name={tab.icon} size={17} />
-            {tab.label}
-          </button>
-        ))}
       </div>
 
       {/* ═══ Menu du jour ═══ */}
       {activeTab === 'menu' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, alignItems: 'start' }}>
-          <div className="card" style={{ padding: '16px 18px', marginBottom: 0 }}>
-            <div style={{ ...sectionLabel, marginBottom: 16 }}>Matin &amp; Midi</div>
-            {leftSlots.map(slot => (
+        <>
+          <ol className="meals">
+            {slots.map(slot => (
               <MealSlot
                 key={`${slot}-${diet}-${difficulty}`}
                 slotKey={slot} diet={diet} weightKg={weight} difficulty={difficulty}
                 staticRecipes={slot === 'during' ? DURING_STATIC : null}
               />
             ))}
-          </div>
+          </ol>
 
-          <div className="card" style={{ padding: '16px 18px', marginBottom: 0 }}>
-            <div style={{ ...sectionLabel, marginBottom: 16 }}>Après-midi &amp; Soir</div>
-            {rightSlots.map(slot => (
-              <MealSlot
-                key={`${slot}-${diet}-${difficulty}`}
-                slotKey={slot} diet={diet} weightKg={weight} difficulty={difficulty}
-              />
-            ))}
-
-            <div style={{ padding: '13px 16px', borderRadius: 10, background: 'rgba(77,127,232,0.07)', border: '1px solid rgba(77,127,232,0.18)', marginTop: 6 }}>
-              <div style={{ ...sectionLabel, color: '#f97316', marginBottom: 6 }}>Hydratation</div>
-              <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, lineHeight: 1.7 }}>
-                {needs.loadLevel === 'long'
-                  ? `≥ ${Math.round(weight * 0.05)} L. Pendant : 500–700 ml/h avec électrolytes si > 2h.`
-                  : needs.loadLevel === 'rest' || needs.loadLevel === 'easy'
-                  ? `≥ ${Math.round(weight * 0.033)} L d'eau par jour.`
-                  : `≥ ${Math.round(weight * 0.04)} L. Pendant l'effort : 400–600 ml/h.`}
-              </p>
-            </div>
-
+          <section className="card nutri-tips">
+            <h3><Picto name="drop" size={20} /> Boire</h3>
+            <p>
+              Au moins {Math.round(water * 10) / 10} L sur la journée.
+              {needs.loadLevel === 'long' ? ' Sur le vélo : 500 à 700 ml par heure, avec électrolytes au-delà de 2 h.'
+                : !['rest', 'easy'].includes(needs.loadLevel) ? ' Sur le vélo : 400 à 600 ml par heure.' : ''}
+            </p>
             {needs.loadLevel !== 'rest' && (
-              <div style={{ padding: '13px 16px', borderRadius: 10, background: 'rgba(34,211,238,0.05)', border: '1px solid rgba(34,211,238,0.14)', marginTop: 10 }}>
-                <div style={{ ...sectionLabel, color: 'var(--accent-orange)', marginBottom: 6 }}>Timing nutritionnel</div>
-                <ul style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, paddingLeft: 18, lineHeight: 2 }}>
-                  <li>Repas pré-séance : <strong>2–3h avant</strong> ou collation 45 min</li>
-                  {needs.loadLevel === 'long' && <li>Pendant : <strong>60–90 g glucides/h</strong> dès 45 min</li>}
-                  <li>Fenêtre de récupération : <strong>30 min</strong> après l'effort</li>
-                  <li>Dîner : <strong>protéines + légumes</strong>, glucides modérés</li>
+              <>
+                <h3><Picto name="recover" size={20} /> Quand manger</h3>
+                <ul>
+                  <li>Repas 2 à 3 h avant la sortie, ou une collation 45 min avant.</li>
+                  {needs.loadLevel === 'long' && <li>Sur le vélo : 60 à 90 g de glucides par heure dès 45 min.</li>}
+                  <li>Dans les 30 min après : glucides + protéines.</li>
+                  <li>Le soir : protéines et légumes, glucides modérés.</li>
                 </ul>
-              </div>
+              </>
             )}
-          </div>
-        </div>
+          </section>
+        </>
       )}
 
       {/* ═══ Liste de courses ═══ */}
