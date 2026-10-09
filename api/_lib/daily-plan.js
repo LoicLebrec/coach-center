@@ -184,6 +184,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   nextLevelOf: () => (/* binding */ nextLevelOf),
 /* harmony export */   pickWorkout: () => (/* binding */ pickWorkout),
 /* harmony export */   progressionFor: () => (/* binding */ progressionFor),
+/* harmony export */   strengthForDay: () => (/* binding */ strengthForDay),
+/* harmony export */   strengthLevel: () => (/* binding */ strengthLevel),
 /* harmony export */   templateForDay: () => (/* binding */ templateForDay),
 /* harmony export */   weekPlan: () => (/* binding */ weekPlan)
 /* harmony export */ });
@@ -386,22 +388,59 @@ function progressionFor(state, responder = null) {
   return { level, rotation: mesoIndex, mesoIndex };
 }
 
+// ── Bodyweight strength (off the bike) ────────────────────────────────────────
+// Weekday index → session kind. Put on quality days so easy days stay easy
+// ("hard days hard"); 2/week to build, 1/week is enough to maintain in season
+// (Rønnestad 2010). None in the last week before the A-race.
+const STRENGTH_DAYS = {
+  transition: { 1: 'legs', 3: 'core' },
+  base: { 1: 'legs', 3: 'core' },
+  build: { 1: 'legs', 3: 'plyo' },
+  competition: { 1: 'plyo' },
+  peak: { 1: 'core' },
+  taper: {},
+};
+
+/**
+ * Strength session kind for a day, or null.
+ * opts: { type (the ride that day), hasRaceThatDay, hasRaceTomorrow, override: { strength } }
+ * override.strength: true = add (kind from the phase, core by default), false = remove, a kind = that kind.
+ */
+function strengthForDay(state, date, opts = {}) {
+  if (opts.hasRaceThatDay || opts.hasRaceTomorrow) return null;
+  const idx = (date.getDay() + 6) % 7;
+  const plan = STRENGTH_DAYS[state.phase] || {};
+  let kind = plan[idx] || null;
+  // Recovery week: one short core session only.
+  if (state.isRecoveryWeek) kind = idx === Number(Object.keys(plan)[0]) ? 'core' : null;
+  const o = opts.override?.strength;
+  if (o === false) return null;
+  if (typeof o === 'string') return o;
+  if (o === true) return kind || 'core';
+  return kind;
+}
+
+/** Strength level: +1 per mesocycle in the phase, back to 1 on recovery weeks. */
+function strengthLevel(state) {
+  if (state.isRecoveryWeek) return 1;
+  return Math.min(3, 1 + Math.floor((state.weekInPhase - 1) / state.cycleLen));
+}
+
 function weekPlan(state, fromDate = new Date(), opts = {}) {
   const monday = mondayOf(fromDate);
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday); d.setDate(monday.getDate() + i);
     const key = dayKey(d);
     const next = new Date(d); next.setDate(d.getDate() + 1);
-    return {
-      date: key,
-      ...templateForDay(state, d, {
-        weaknesses: opts.weaknesses,
-        hasRaceThatDay: opts.raceDays?.has(key),
-        hasRaceTomorrow: opts.raceDays?.has(dayKey(next)),
-        override: opts.overrides?.[key],
-        responder: opts.responder,
-      }),
+    const ctx = {
+      weaknesses: opts.weaknesses,
+      hasRaceThatDay: opts.raceDays?.has(key),
+      hasRaceTomorrow: opts.raceDays?.has(dayKey(next)),
+      override: opts.overrides?.[key],
+      responder: opts.responder,
     };
+    const tpl = templateForDay(state, d, ctx);
+    return { date: key, ...tpl, strength: strengthForDay(state, d, { ...ctx, type: tpl.type }) };
   });
 }
 
@@ -940,6 +979,162 @@ function workoutMinutes(w) {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   STRENGTH_KINDS: () => (/* binding */ STRENGTH_KINDS),
+/* harmony export */   STRENGTH_LABELS: () => (/* binding */ STRENGTH_LABELS),
+/* harmony export */   fmtDose: () => (/* binding */ fmtDose),
+/* harmony export */   strengthMinutes: () => (/* binding */ strengthMinutes),
+/* harmony export */   strengthSession: () => (/* binding */ strengthSession)
+/* harmony export */ });
+/**
+ * Bodyweight strength sessions — no gym, no equipment beyond a chair/bench and a wall.
+ *
+ * Three session kinds, three levels each (level = mesocycle in the phase):
+ *   legs  — unilateral strength, slow eccentrics (bodyweight can't go heavy, so time under tension does the work)
+ *   plyo  — jumps for rate of force development (sprint, relances)
+ *   core  — trunk and hip stability: posture on the bike, lower back
+ *
+ * Exercise: { name, sets, reps | secs, perSide, rest (s), cue }
+ */
+
+const WARMUP = [
+  'Cercles de hanches et de chevilles — 1 min',
+  'Squats lents, amplitude complète — 10',
+  'Fentes avant dynamiques — 5 / jambe',
+  'Montées de genoux sur place — 30 s',
+];
+
+const S = (name, sets, dose, rest, cue, perSide = false) => ({
+  name, sets, rest, cue, perSide, ...(typeof dose === 'string' ? { secs: parseInt(dose, 10) } : { reps: dose }),
+});
+
+const SESSIONS = {
+  legs: {
+    title: 'Force jambes',
+    objective: 'Force unilatérale et chaîne postérieure, descente lente',
+    notes: 'Descente en 3 s, remontée dynamique. Si la dernière série est facile, ralentis la descente avant d’ajouter des reps.',
+    levels: [
+      [
+        S('Squat', 3, 15, 60, 'Descente 3 s, cuisses parallèles'),
+        S('Fente arrière', 3, 10, 60, 'Genou avant au-dessus de la cheville', true),
+        S('Pont fessier 1 jambe', 3, 10, 45, 'Bassin à plat, 1 s en haut', true),
+        S('Mollets 1 jambe (marche)', 3, 15, 45, 'Amplitude complète', true),
+        S('Planche', 3, '30', 45, 'Fessiers serrés, dos plat'),
+      ],
+      [
+        S('Squat bulgare (pied arrière sur chaise)', 3, 10, 75, 'Descente 3 s, buste légèrement penché', true),
+        S('Soulevé de terre 1 jambe', 3, 10, 60, 'Dos plat, hanche qui recule', true),
+        S('Step-up sur chaise', 3, 10, 60, 'Pousser par le talon, ne pas s’aider de la jambe arrière', true),
+        S('Pont fessier 1 jambe', 3, 12, 45, 'Pause 2 s en haut', true),
+        S('Chaise contre le mur', 3, '45', 60, 'Cuisses parallèles au sol'),
+      ],
+      [
+        S('Squat bulgare tempo', 4, 12, 75, 'Descente 4 s, pause 1 s en bas', true),
+        S('Pistol squat assisté (sur banc)', 3, 6, 90, 'S’asseoir lentement, remonter sans élan', true),
+        S('Nordic ischios (pieds calés)', 3, 5, 90, 'Freiner la chute le plus longtemps possible'),
+        S('Step-up haut', 4, 12, 60, 'Contrôle à la descente', true),
+        S('Chaise 1 jambe', 3, '20', 60, 'Bassin horizontal', true),
+      ],
+    ],
+  },
+  plyo: {
+    title: 'Explosivité',
+    objective: 'Sauts courts et réactifs : production de force rapide',
+    notes: 'Qualité avant quantité : chaque saut à fond, récup complète. Arrête la série dès que la hauteur baisse.',
+    levels: [
+      [
+        S('Squat jump', 3, 6, 90, 'Réception souple, rebondir vers le haut'),
+        S('Fentes sautées', 3, 8, 90, 'Alterner, buste droit'),
+        S('Skater (bonds latéraux)', 3, 8, 60, 'Stabiliser 1 s à chaque réception', true),
+        S('Planche latérale', 3, '25', 45, 'Corps aligné', true),
+      ],
+      [
+        S('Squat jump', 4, 6, 90, 'Hauteur max, temps au sol court'),
+        S('Saut sur marche / banc', 4, 5, 90, 'Redescendre en marchant'),
+        S('Fentes sautées', 3, 10, 90, 'Alterner, réception silencieuse'),
+        S('Skater (bonds latéraux)', 3, 10, 60, 'Distance max', true),
+        S('Planche latérale', 3, '30', 45, 'Corps aligné', true),
+      ],
+      [
+        S('Contre-saut depuis une marche', 4, 5, 120, 'Tomber, toucher, rebondir — sol le plus court possible'),
+        S('Sauts 1 jambe sur place', 3, 5, 90, 'Genou dans l’axe', true),
+        S('Bond en longueur', 4, 5, 90, 'Bras en balancier, réception stable'),
+        S('Skater (bonds latéraux)', 3, 12, 60, 'Distance max', true),
+        S('Planche latérale + élévation jambe', 3, '25', 45, 'Bassin haut', true),
+      ],
+    ],
+  },
+  core: {
+    title: 'Gainage & posture',
+    objective: 'Tronc et bassin stables : transmettre la puissance, protéger le dos',
+    notes: 'Respire pendant le maintien. Tremblements OK, cambrure non : arrête la série si le dos se creuse.',
+    levels: [
+      [
+        S('Planche', 3, '30', 30, 'Fessiers serrés, dos plat'),
+        S('Planche latérale', 3, '20', 30, 'Hanche haute', true),
+        S('Dead bug', 3, 10, 30, 'Bas du dos collé au sol', true),
+        S('Bird dog', 3, 10, 30, 'Bassin immobile', true),
+        S('Superman', 3, 12, 30, 'Regard au sol, 1 s en haut'),
+      ],
+      [
+        S('Planche', 3, '45', 30, 'Fessiers serrés, dos plat'),
+        S('Planche latérale', 3, '30', 30, 'Hanche haute', true),
+        S('Dead bug lent', 3, 12, 30, '3 s par répétition', true),
+        S('Hollow hold', 3, '20', 45, 'Lombaires au sol'),
+        S('Pont fessier 1 jambe', 3, 12, 30, 'Pause 2 s en haut', true),
+      ],
+      [
+        S('Planche + touches d’épaule', 3, 20, 45, 'Bassin immobile'),
+        S('Copenhagen plank (adducteurs)', 3, '20', 45, 'Jambe du dessus sur chaise', true),
+        S('Hollow rock', 3, 15, 45, 'Garder la forme banane'),
+        S('Bird dog avec pause', 3, 12, 30, '2 s bras/jambe tendus', true),
+        S('Superman', 3, 15, 30, 'Regard au sol'),
+      ],
+    ],
+  },
+};
+
+const STRENGTH_KINDS = Object.keys(SESSIONS);
+const STRENGTH_LABELS = Object.fromEntries(Object.entries(SESSIONS).map(([k, v]) => [k, v.title]));
+
+/** Minutes for an exercise list: ~3 s per rep, work + rest per set, plus warm-up. */
+function strengthMinutes(exercises, warmupMin = 5) {
+  const secs = exercises.reduce((s, e) => {
+    const work = (e.secs || (e.reps || 0) * 3) * (e.perSide ? 2 : 1);
+    return s + e.sets * work + (e.sets - 1) * e.rest + 60; // + 1 min to set up / move on
+  }, 0);
+  return Math.round(warmupMin + secs / 60);
+}
+
+function strengthSession(kind, level = 1) {
+  const s = SESSIONS[kind] || SESSIONS.core;
+  const lv = Math.max(1, Math.min(s.levels.length, level));
+  const exercises = s.levels[lv - 1];
+  return {
+    kind: SESSIONS[kind] ? kind : 'core',
+    title: `${s.title} · poids du corps`,
+    objective: s.objective,
+    notes: s.notes,
+    level: lv,
+    levelCount: s.levels.length,
+    warmup: WARMUP,
+    exercises,
+    minutes: strengthMinutes(exercises),
+    ref: 'Rønnestad & Mujika 2014 · Vikmoen 2016',
+  };
+}
+
+function fmtDose(e) {
+  const dose = e.secs ? `${e.secs} s` : `${e.reps}`;
+  return `${e.sets} × ${dose}${e.perSide ? ' / côté' : ''}`;
+}
+
+
+/***/ }),
+/* 5 */
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   HARD_TYPES: () => (/* binding */ HARD_TYPES),
 /* harmony export */   MODERATE_TYPES: () => (/* binding */ MODERATE_TYPES),
 /* harmony export */   analyzeTraining: () => (/* binding */ analyzeTraining),
@@ -952,6 +1147,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   suggestCycle: () => (/* binding */ suggestCycle)
 /* harmony export */ });
 /* harmony import */ var _periodization__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(2);
+/* harmony import */ var _number__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(6);
 /**
  * Data-driven coaching layer — deterministic, no LLM.
  *
@@ -973,6 +1169,7 @@ __webpack_require__.r(__webpack_exports__);
 
 
 
+
 const DAY = 86400000;
 
 function dayKey(d) {
@@ -987,11 +1184,6 @@ function addDays(key, n) {
 
 function daysBetween(a, b) {
   return Math.round((new Date(`${b}T00:00:00`) - new Date(`${a}T00:00:00`)) / DAY);
-}
-
-function num(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
 }
 
 function mean(xs) {
@@ -1026,7 +1218,7 @@ function estimateTss(blocks = []) {
 }
 
 function intensityFactor(a) {
-  let f = num(a.icu_intensity) ?? num(a.intensity_factor) ?? num(a.if);
+  let f = (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(a.icu_intensity) ?? (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(a.intensity_factor) ?? (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(a.if);
   if (f == null) return null;
   if (f > 3) f /= 100; // Intervals.icu reports IF as a percentage
   return f;
@@ -1039,20 +1231,20 @@ function zoneSplit(a) {
     const out = { low: 0, mid: 0, high: 0, source: 'power' };
     pz.forEach(z => {
       const id = String(z.id || '').toUpperCase();
-      const s = num(z.secs) || 0;
+      const s = (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(z.secs) || 0;
       if (id === 'Z1' || id === 'Z2') out.low += s;
       else if (id === 'Z3' || id === 'SS') out.mid += s;
       else if (/^Z[4-7]$/.test(id)) out.high += s;
     });
     if (out.low + out.mid + out.high > 0) return out;
   }
-  const hz = Array.isArray(a.icu_hr_zone_times) ? a.icu_hr_zone_times.map(num) : null;
+  const hz = Array.isArray(a.icu_hr_zone_times) ? a.icu_hr_zone_times.map(_number__WEBPACK_IMPORTED_MODULE_1__.num) : null;
   if (hz?.length >= 5) {
     const out = { low: (hz[0] || 0) + (hz[1] || 0), mid: hz[2] || 0, high: hz.slice(3).reduce((s, x) => s + (x || 0), 0), source: 'hr' };
     if (out.low + out.mid + out.high > 0) return out;
   }
   const f = intensityFactor(a);
-  const secs = num(a.moving_time) || 0;
+  const secs = (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(a.moving_time) || 0;
   if (f == null || !secs) return null;
   if (f < 0.75) return { low: secs, mid: 0, high: 0, source: 'if' };
   if (f < 0.85) return { low: secs * 0.6, mid: secs * 0.4, high: 0, source: 'if' };
@@ -1084,12 +1276,12 @@ function parsePowerCurve(pc) {
   if (!pc) return [];
   if (Array.isArray(pc)) {
     if (pc.length && Array.isArray(pc[0]?.secs)) return parsePowerCurve(pc[0]);
-    return pc.map(p => ({ secs: num(p.secs ?? p.time), watts: num(p.watts ?? p.power) })).filter(p => p.secs && p.watts);
+    return pc.map(p => ({ secs: (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(p.secs ?? p.time), watts: (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(p.watts ?? p.power) })).filter(p => p.secs && p.watts);
   }
   if (Array.isArray(pc.list)) return parsePowerCurve(pc.list[0]);
   const secs = pc.secs || [];
   const w = pc.watts || pc.values || [];
-  return secs.map((s, i) => ({ secs: num(s), watts: num(w[i]) })).filter(p => p.secs && p.watts);
+  return secs.map((s, i) => ({ secs: (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(s), watts: (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(w[i]) })).filter(p => p.secs && p.watts);
 }
 
 function bestAt(curve, secs) {
@@ -1131,13 +1323,19 @@ function analyzeTraining({ wellness = [], activities = [], athlete = null, power
   const phase = seasonState?.phase || 'base';
 
   // ── Load (PMC) ──
+  // Today's session is prescribed from the state at the start of the day: today's
+  // wellness row already carries today's ride in ctl/atl, so load comes from the day before.
+  // (HRV and resting HR are morning readings and stay today's.)
   const ws = [...wellness].filter(w => w?.id && w.id <= today).sort((a, b) => a.id.localeCompare(b.id));
-  const last = ws[ws.length - 1] || {};
-  const ctl = num(last.icu_ctl);
-  const atl = num(last.icu_atl);
+  const wsBefore = ws.filter(w => w.id < today);
+  const last = wsBefore[wsBefore.length - 1] || ws[ws.length - 1] || {};
+  // Intervals.icu wellness uses ctl/atl; synthetic (Strava-only) wellness uses icu_ctl/icu_atl.
+  const ctl = (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(last.icu_ctl ?? last.ctl);
+  const atl = (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(last.icu_atl ?? last.atl);
   const tsb = ctl != null && atl != null ? ctl - atl : null;
-  const weekAgo = ws.filter(w => w.id <= addDays(today, -7)).pop();
-  const ramp7 = ctl != null && num(weekAgo?.icu_ctl) != null ? ctl - num(weekAgo.icu_ctl) : null;
+  const weekAgo = ws.filter(w => w.id <= addDays(last.id || today, -7)).pop();
+  const ctlWeekAgo = (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(weekAgo?.icu_ctl ?? weekAgo?.ctl);
+  const ramp7 = ctl != null && ctlWeekAgo != null ? ctl - ctlWeekAgo : null;
   const acwr = ctl && atl != null ? atl / ctl : null;
 
   if (ramp7 != null && ramp7 > 8) {
@@ -1150,7 +1348,7 @@ function analyzeTraining({ wellness = [], activities = [], athlete = null, power
   }
 
   // ── HRV: 7-day rolling ln(rMSSD) vs 60-day baseline ──
-  const lnHrv = ws.filter(w => w.id > addDays(today, -60)).map(w => ({ id: w.id, v: num(w.hrv) > 0 ? Math.log(num(w.hrv)) : null })).filter(x => x.v != null);
+  const lnHrv = ws.filter(w => w.id > addDays(today, -60)).map(w => ({ id: w.id, v: (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(w.hrv) > 0 ? Math.log((0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(w.hrv)) : null })).filter(x => x.v != null);
   let hrv = null;
   if (lnHrv.length >= 14) {
     const baseVals = lnHrv.map(x => x.v);
@@ -1177,15 +1375,19 @@ function analyzeTraining({ wellness = [], activities = [], athlete = null, power
   }
 
   // ── Resting HR vs 30-day baseline ──
-  const rhrToday = num(ws.find(w => w.id === today)?.restingHR);
-  const rhrBase = mean(ws.filter(w => w.id < today && w.id > addDays(today, -30)).map(w => num(w.restingHR)));
+  const rhrToday = (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(ws.find(w => w.id === today)?.restingHR);
+  const rhrBase = mean(ws.filter(w => w.id < today && w.id > addDays(today, -30)).map(w => (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(w.restingHR)));
   const rhrDelta = rhrToday && rhrBase ? rhrToday - rhrBase : null;
   if (rhrDelta != null && rhrDelta >= 5) {
     signals.push({ id: 'rhr', tone: 'yellow', title: `FC repos +${Math.round(rhrDelta)} bpm vs 30 j`, detail: 'Signe possible de fatigue, de chaleur ou de début de maladie.', ref: '' });
   }
 
   // ── Activities: hard days, weekly load, distribution ──
-  const acts = activities.filter(a => actDay(a) && actDay(a) <= today && ENDURANCE_SPORTS.test(String(a.type || 'Ride')));
+  // Only what was done before today drives the decision, so the session doesn't
+  // change under the rider once it's been ridden.
+  const all = activities.filter(a => actDay(a) && actDay(a) <= today && ENDURANCE_SPORTS.test(String(a.type || 'Ride')));
+  const acts = all.filter(a => actDay(a) < today);
+  const todayActs = all.filter(a => actDay(a) === today);
   const hardDays = [...new Set(acts.filter(isHardActivity).map(actDay))].sort();
   const lastHardDay = hardDays[hardDays.length - 1] || null;
   const lastHard = lastHardDay ? {
@@ -1196,19 +1398,22 @@ function analyzeTraining({ wellness = [], activities = [], athlete = null, power
 
   const monday = (() => { const d = new Date(`${today}T00:00:00`); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return dayKey(d); })();
   const weekActs = acts.filter(a => actDay(a) >= monday);
-  const doneTss = Math.round(weekActs.reduce((s, a) => s + (num(a.icu_training_load) || 0), 0));
+  const loadOf = (xs) => Math.round(xs.reduce((s, a) => s + ((0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(a.icu_training_load) || 0), 0));
+  const doneBefore = loadOf(weekActs);
+  const todayTss = loadOf(todayActs);
   const hardThisWeek = new Set(weekActs.filter(isHardActivity).map(actDay)).size;
-  const doneToday = acts.some(a => actDay(a) === today);
 
   let rampTarget = seasonState?.isRecoveryWeek ? -4 : (PHASE_RAMP[phase] ?? 3);
   if (ramp7 != null && ramp7 > 8) rampTarget = Math.min(rampTarget, 0);
   const weekTarget = ctl != null ? Math.max(0, Math.round(7 * (ctl + 6 * rampTarget))) : null;
-  const daysLeft = 7 - daysBetween(monday, today) - (doneToday ? 1 : 0);
-  const remaining = weekTarget != null ? Math.max(0, weekTarget - doneTss) : null;
+  const daysLeft = 7 - daysBetween(monday, today);
+  const remaining = weekTarget != null ? Math.max(0, weekTarget - doneBefore) : null;
   const week = {
-    monday, doneTss, weekTarget, remaining, rampTarget, daysLeft,
+    // doneTss includes today (display); the budget uses doneBefore.
+    monday, doneTss: doneBefore + todayTss, doneBefore, todayTss, weekTarget, remaining, rampTarget, daysLeft,
     perDay: remaining != null && daysLeft > 0 ? Math.round(remaining / daysLeft) : null,
     hard: hardThisWeek,
+    hardToday: todayActs.some(isHardActivity),
     maxHard: seasonState?.isRecoveryWeek ? 1 : (PHASE_MAX_HARD[phase] ?? 2),
   };
 
@@ -1236,8 +1441,8 @@ function analyzeTraining({ wellness = [], activities = [], athlete = null, power
   }
 
   // ── Limiter from the power curve ──
-  const ftp = num(athlete?.icu_ftp) || num(athlete?.ftp) || null;
-  const weight = num(athlete?.icu_weight) || num(athlete?.weight) || num(last.weight) || null;
+  const ftp = (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(athlete?.icu_ftp) || (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(athlete?.ftp) || null;
+  const weight = (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(athlete?.icu_weight) || (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(athlete?.weight) || (0,_number__WEBPACK_IMPORTED_MODULE_1__.num)(last.weight) || null;
   const profile = powerProfile(powerCurve, ftp, weight);
 
   if (lastHard?.daysAgo === 1) {
@@ -1288,7 +1493,7 @@ function decideSession(candidate, analysis) {
       const ifSq = 0.65 * 0.65;
       const capped = Math.max(45, Math.round((cap / (ifSq * 100)) * 60 / 5) * 5);
       if (capped < minutes - 10) {
-        changes.push({ text: `Budget semaine ${week.doneTss}/${week.weekTarget} TSS → ${minutes} → ${capped} min`, ref: 'Coggan PMC' });
+        changes.push({ text: `Budget semaine ${week.doneBefore ?? week.doneTss}/${week.weekTarget} TSS → ${minutes} → ${capped} min`, ref: 'Coggan PMC' });
         minutes = capped;
       }
     }
@@ -1406,6 +1611,36 @@ function suggestCycle({ analysis, seasonState, season = {}, today = dayKey(new D
 }
 
 
+/***/ }),
+/* 6 */
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   asNumber: () => (/* binding */ asNumber),
+/* harmony export */   num: () => (/* binding */ num)
+/* harmony export */ });
+/**
+ * Number parsing for API payloads. Missing values stay missing:
+ * Number(null) and Number('') are 0, which silently turned absent fields
+ * (no resting HR yet today, no CTL key) into real-looking zeros.
+ */
+function num(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** First argument that parses to a finite number, else null. */
+function asNumber(...values) {
+  for (const v of values) {
+    const n = num(v);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+
 /***/ })
 /******/ 	]);
 /************************************************************************/
@@ -1473,6 +1708,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   LEVELS: () => (/* binding */ LEVELS),
 /* harmony export */   TYPE_LABELS: () => (/* binding */ TYPE_LABELS),
 /* harmony export */   ZONE_PCT: () => (/* binding */ ZONE_PCT),
+/* harmony export */   adaptStrength: () => (/* binding */ adaptStrength),
 /* harmony export */   adaptWorkout: () => (/* binding */ adaptWorkout),
 /* harmony export */   buildBaseSession: () => (/* binding */ buildBaseSession),
 /* harmony export */   buildCalendar: () => (/* binding */ buildCalendar),
@@ -1490,18 +1726,22 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   isRestDay: () => (/* binding */ isRestDay),
 /* harmony export */   localDayKey: () => (/* binding */ localDayKey),
 /* harmony export */   mean: () => (/* binding */ mean),
-/* harmony export */   num: () => (/* binding */ num),
+/* harmony export */   num: () => (/* reexport safe */ _number__WEBPACK_IMPORTED_MODULE_4__.num),
 /* harmony export */   sessionMinutes: () => (/* binding */ sessionMinutes),
 /* harmony export */   sessionType: () => (/* binding */ sessionType)
 /* harmony export */ });
 /* harmony import */ var _workout_rules__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(1);
 /* harmony import */ var _periodization__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(2);
-/* harmony import */ var _coachEngine__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(4);
+/* harmony import */ var _data_strengthLibrary__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(4);
+/* harmony import */ var _coachEngine__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(5);
+/* harmony import */ var _number__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(6);
 /**
  * Today's decision, end to end — pure and deterministic, no React, no storage.
  * Used by the Today view and, bundled, by the server cron that refreshes the
  * home-screen widget every morning (api/_lib/daily-plan.js, `npm run build:server`).
  */
+
+
 
 
 
@@ -1525,10 +1765,7 @@ function dayOf(e) {
   return String(e?.start_date_local || e?.date || '').slice(0, 10);
 }
 
-function num(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
+
 
 function mean(values) {
   const v = values.filter(x => x != null);
@@ -1553,9 +1790,9 @@ function isRestDay(e) {
 function sessionMinutes(e) {
   const fromBlocks = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.blocksMinutes)(e?.workoutBlocks || []);
   if (fromBlocks > 0) return Math.round(fromBlocks);
-  if (num(e?.durationMin)) return num(e.durationMin);
-  if (num(e?.moving_time)) return Math.round(e.moving_time / 60);
-  if (num(e?.workout_doc?.duration)) return Math.round(e.workout_doc.duration / 60);
+  if ((0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(e?.durationMin)) return (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(e.durationMin);
+  if ((0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(e?.moving_time)) return Math.round(e.moving_time / 60);
+  if ((0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(e?.workout_doc?.duration)) return Math.round(e.workout_doc.duration / 60);
   return null;
 }
 
@@ -1638,6 +1875,19 @@ const LEVELS = {
 
 const ADAPT_HARD_TYPES = ['vo2', 'threshold', 'sweetspot', 'tempo', 'force', 'anaerobic', 'sprint', 'race_sim', 'durability'];
 
+/**
+ * Today's bodyweight session, adjusted like the ride: lighter level when the day is
+ * "adjust", core only when intensity is removed, nothing on a rest day.
+ */
+function adaptStrength(kind, level, readinessLevel) {
+  if (!kind || readinessLevel === 'rest') return null;
+  if (readinessLevel === 'downgrade' || readinessLevel === 'recover') {
+    return { ...(0,_data_strengthLibrary__WEBPACK_IMPORTED_MODULE_2__.strengthSession)('core', 1), adjusted: kind !== 'core' || level > 1 ? 'Allégé : gainage seulement' : null };
+  }
+  if (readinessLevel === 'adjust' && level > 1) return { ...(0,_data_strengthLibrary__WEBPACK_IMPORTED_MODULE_2__.strengthSession)(kind, level - 1), adjusted: 'Allégé : niveau en dessous' };
+  return (0,_data_strengthLibrary__WEBPACK_IMPORTED_MODULE_2__.strengthSession)(kind, level);
+}
+
 /** Adapt the actual planned blocks to today's readiness + time available. */
 function adaptWorkout(base, level, availableMin, phase) {
   if (!base || level === 'rest') return null;
@@ -1710,17 +1960,20 @@ function dateOf(key) {
 /** Fitness / fatigue / form + today's HRV and resting HR vs the previous 7 days. */
 function computePhysio(wellness, today) {
   const sorted = [...wellness].filter(w => w?.id && w.id <= today).sort((a, b) => a.id.localeCompare(b.id));
-  const last = sorted[sorted.length - 1] || {};
-  const ctl = num(last.icu_ctl);
-  const atl = num(last.icu_atl);
+  // Start of the day: today's row already includes today's ride.
+  const before = sorted.filter(w => w.id < today);
+  const last = before[before.length - 1] || sorted[sorted.length - 1] || {};
+  // Intervals.icu wellness uses ctl/atl; synthetic (Strava-only) wellness uses icu_ctl/icu_atl.
+  const ctl = (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(last.icu_ctl ?? last.ctl);
+  const atl = (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(last.icu_atl ?? last.atl);
   const tsb = ctl != null && atl != null ? ctl - atl : null;
 
   const todayW = sorted.find(w => w.id === today) || {};
   const prev = sorted.filter(w => w.id < today).slice(-7);
-  const hrv = num(todayW.hrv);
-  const hrvBase = mean(prev.map(w => num(w.hrv)));
-  const rhr = num(todayW.restingHR);
-  const rhrBase = mean(prev.map(w => num(w.restingHR)));
+  const hrv = (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(todayW.hrv);
+  const hrvBase = mean(prev.map(w => (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(w.hrv)));
+  const rhr = (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(todayW.restingHR);
+  const rhrBase = mean(prev.map(w => (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(w.restingHR)));
 
   return {
     ctl, atl, tsb,
@@ -1762,7 +2015,7 @@ function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis,
     if (isRestDay(planned)) return { rest: true, source: 'planned' };
     const type = sessionType(planned);
     const plannedMin = sessionMinutes(planned) || 60;
-    const d = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.decideSession)({ type, minutes: plannedMin }, analysis);
+    const d = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.decideSession)({ type, minutes: plannedMin }, analysis);
     if (planned.workoutBlocks?.length && d.type === type) {
       return {
         source: 'planned', title: planned.name || planned.title, objective: planned.notes || '',
@@ -1775,7 +2028,7 @@ function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis,
   }
   const tpl = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.templateForDay)(seasonState, date, { weaknesses, hasRaceTomorrow: cal.raceTomorrow, override, responder });
   if (tpl.type === 'rest') return { rest: true, source: tpl.overridden ? 'override' : 'season' };
-  const d = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.decideSession)(tpl, analysis);
+  const d = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.decideSession)(tpl, analysis);
   const w = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(d.type, d.minutes, seasonState.phase, progression);
   return { ...w, source: tpl.overridden ? 'override' : 'season', trainingType: d.type, plannedType: tpl.type, dataChanges: d.changes };
 }
@@ -1796,11 +2049,11 @@ function computeDay({
   const physio = computePhysio(wellness, today);
   const cal = buildCalendar(plannedEvents, events, today);
   const seasonState = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.getSeasonState)(season, date);
-  const analysis = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.analyzeTraining)({ wellness, activities, athlete, powerCurve, seasonState, today });
+  const analysis = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.analyzeTraining)({ wellness, activities, athlete, powerCurve, seasonState, today });
   // Manual cycle focus > limiter measured on the power curve > self-declared profile.
   const weaknesses = season?.cycleFocus && season.cycleFocus !== 'auto'
     ? [season.cycleFocus]
-    : (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.dataWeaknesses)(analysis, profileWeaknesses);
+    : (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.dataWeaknesses)(analysis, profileWeaknesses);
   const progression = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.progressionFor)(seasonState, responder);
   const overrides = season?.dayOverrides || {};
   const week = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.weekPlan)(seasonState, date, { weaknesses, raceDays: cal.raceDays, overrides, responder });
@@ -1810,9 +2063,11 @@ function computeDay({
   });
   const base = buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override: overrides[today], responder });
   const adapted = cal.race || base.rest ? null : adaptWorkout(base, readiness.level, checkin.minutes, seasonState.phase);
-  const cycle = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.suggestCycle)({ analysis, seasonState, season, today, weaknesses: profileWeaknesses });
+  const strengthKind = week.find(d => d.date === today)?.strength || null;
+  const strength = cal.race ? null : adaptStrength(strengthKind, (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.strengthLevel)(seasonState), readiness.level);
+  const cycle = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.suggestCycle)({ analysis, seasonState, season, today, weaknesses: profileWeaknesses });
   return {
-    today, season, physio, cal, seasonState, analysis, weaknesses, progression, week, readiness, base, adapted, cycle,
+    today, season, physio, cal, seasonState, analysis, weaknesses, progression, week, readiness, base, adapted, strength, cycle,
     changes: diffWorkouts(base, adapted),
     form: formStatus(physio.tsb),
     level: LEVELS[readiness.level],
@@ -1842,12 +2097,14 @@ function buildOutlook({ season, plannedEvents = [], events = [], weaknesses = []
     const cfg = p?.cycleStart && p.cycleStart <= refKey ? { ...season, ...p, pendingCycle: null } : season;
     const state = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.getSeasonState)(cfg, ref);
     const progression = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.progressionFor)(state, responder);
+    const sLevel = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.strengthLevel)(state);
     const days = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.weekPlan)(state, ref, { weaknesses, raceDays, overrides, responder }).map(d => {
       const evs = byDay.get(d.date) || [];
       const race = evs.find(isRace);
-      if (race) return { ...d, type: 'race', minutes: 0, source: 'race', title: race.name || race.title || 'Course', blocks: [] };
+      if (race) return { ...d, type: 'race', minutes: 0, source: 'race', title: race.name || race.title || 'Course', blocks: [], strength: null };
+      d = { ...d, strength: d.strength ? (0,_data_strengthLibrary__WEBPACK_IMPORTED_MODULE_2__.strengthSession)(d.strength, sLevel) : null };
       const planned = !d.overridden && evs.find(e => !isRace(e));
-      if (planned && isRestDay(planned)) return { date: d.date, type: 'rest', minutes: 0, source: 'planned', blocks: [] };
+      if (planned && isRestDay(planned)) return { date: d.date, type: 'rest', minutes: 0, source: 'planned', blocks: [], strength: d.strength };
       if (planned) {
         const type = sessionType(planned) || 'endurance';
         const minutes = sessionMinutes(planned) || 60;
@@ -1855,15 +2112,15 @@ function buildOutlook({ season, plannedEvents = [], events = [], weaknesses = []
           ? planned.workoutBlocks.map(b => ({ ...b, durationMin: Number(b.durationMin) || 0 }))
           : (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(type, minutes, state.phase, progression).blocks;
         return {
-          date: d.date, type, minutes, source: 'planned', blocks,
-          title: planned.name || planned.title, objective: planned.notes || '', tss: (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.estimateTss)(blocks),
+          date: d.date, type, minutes, source: 'planned', blocks, strength: d.strength,
+          title: planned.name || planned.title, objective: planned.notes || '', tss: (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.estimateTss)(blocks),
         };
       }
       const source = d.overridden ? 'override' : 'plan';
       if (d.type === 'rest') return { ...d, source, blocks: [] };
       const wk = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(d.type, d.minutes, state.phase, progression);
       return {
-        ...d, source, blocks: wk.blocks, title: wk.title, objective: wk.objective, tss: (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.estimateTss)(wk.blocks),
+        ...d, source, blocks: wk.blocks, title: wk.title, objective: wk.objective, tss: (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.estimateTss)(wk.blocks),
         family: wk.family, familyLabel: wk.familyLabel, level: wk.level, levelCount: wk.levelCount,
       };
     });
@@ -1873,7 +2130,7 @@ function buildOutlook({ season, plannedEvents = [], events = [], weaknesses = []
 
 /** Compact JSON for the widgets (iOS Scriptable, GNOME extension). */
 function buildSnapshot(day, { ftp = null, source = 'app' } = {}) {
-  const { cal, base, adapted, readiness, analysis, week, physio, seasonState, form, level, phaseInfo, changes, cycle } = day;
+  const { cal, base, adapted, strength, readiness, analysis, week, physio, seasonState, form, level, phaseInfo, changes, cycle } = day;
   const wattsFor = (zone) => {
     const pct = ZONE_PCT[zone];
     if (!ftp || !pct) return '';
@@ -1889,7 +2146,7 @@ function buildSnapshot(day, { ftp = null, source = 'app' } = {}) {
       title: adapted.title,
       type: TYPE_LABELS[adapted.trainingType] || adapted.trainingType,
       minutes: adapted.minutes,
-      tss: (0,_coachEngine__WEBPACK_IMPORTED_MODULE_2__.estimateTss)(adapted.blocks),
+      tss: (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.estimateTss)(adapted.blocks),
       lines: groupBlocks(adapted.blocks).filter(b => !/warm|cool|échauff|retour/i.test(b.label || '')).slice(0, 5).map(b => (b.reps
         ? `${b.reps}×${fmtDur(b.durationMin)} ${b.zone}${wattsFor(b.zone)} / ${fmtDur(b.rest.durationMin)}`
         : `${fmtDur(b.durationMin)} ${b.zone}${wattsFor(b.zone)} ${b.label}`)),
@@ -1907,7 +2164,8 @@ function buildSnapshot(day, { ftp = null, source = 'app' } = {}) {
     readiness: { score: readiness.score, title: level.title, tone: level.tone },
     load: { done: analysis.week.doneTss, target: analysis.week.weekTarget },
     session,
-    week: week.map(d => ({ date: d.date, type: d.type === 'rest' ? 'Repos' : TYPE_LABELS[d.type], minutes: d.minutes })),
+    strength: strength ? { title: strength.title, minutes: strength.minutes } : null,
+    week: week.map(d => ({ date: d.date, type: d.type === 'rest' ? 'Repos' : TYPE_LABELS[d.type], minutes: d.minutes, strength: !!d.strength })),
     nextRace: cal.nextRace ? { name: cal.nextRace.name || cal.nextRace.title || 'Course', days: cal.nextRaceDays } : null,
     signals: analysis.signals.slice(0, 3).map(sig => ({ title: sig.title, tone: sig.tone })),
     cycle: cycle ? { title: cycle.title, start: cycle.start, summary: cycle.summary } : null,

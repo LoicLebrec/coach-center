@@ -7,9 +7,11 @@
 import { inferTrainingType } from './workout-rules';
 import {
   PHASES, getSeasonState, templateForDay, weekPlan, pickWorkout, fitToDuration, keepRepRatio,
-  lowerOneZone, countWork, blocksMinutes, progressionFor,
+  lowerOneZone, countWork, blocksMinutes, progressionFor, strengthLevel,
 } from './periodization';
+import { strengthSession } from '../data/strengthLibrary';
 import { analyzeTraining, decideSession, dataWeaknesses, estimateTss, suggestCycle } from './coachEngine';
+import { num } from './number';
 
 export const ZONE_PCT = {
   Z1: [45, 55], Z2: [56, 75], Z3: [76, 90],
@@ -29,10 +31,7 @@ export function dayOf(e) {
   return String(e?.start_date_local || e?.date || '').slice(0, 10);
 }
 
-export function num(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
+export { num };
 
 export function mean(values) {
   const v = values.filter(x => x != null);
@@ -142,6 +141,19 @@ export const LEVELS = {
 
 const ADAPT_HARD_TYPES = ['vo2', 'threshold', 'sweetspot', 'tempo', 'force', 'anaerobic', 'sprint', 'race_sim', 'durability'];
 
+/**
+ * Today's bodyweight session, adjusted like the ride: lighter level when the day is
+ * "adjust", core only when intensity is removed, nothing on a rest day.
+ */
+export function adaptStrength(kind, level, readinessLevel) {
+  if (!kind || readinessLevel === 'rest') return null;
+  if (readinessLevel === 'downgrade' || readinessLevel === 'recover') {
+    return { ...strengthSession('core', 1), adjusted: kind !== 'core' || level > 1 ? 'Allégé : gainage seulement' : null };
+  }
+  if (readinessLevel === 'adjust' && level > 1) return { ...strengthSession(kind, level - 1), adjusted: 'Allégé : niveau en dessous' };
+  return strengthSession(kind, level);
+}
+
 /** Adapt the actual planned blocks to today's readiness + time available. */
 export function adaptWorkout(base, level, availableMin, phase) {
   if (!base || level === 'rest') return null;
@@ -214,9 +226,12 @@ function dateOf(key) {
 /** Fitness / fatigue / form + today's HRV and resting HR vs the previous 7 days. */
 export function computePhysio(wellness, today) {
   const sorted = [...wellness].filter(w => w?.id && w.id <= today).sort((a, b) => a.id.localeCompare(b.id));
-  const last = sorted[sorted.length - 1] || {};
-  const ctl = num(last.icu_ctl);
-  const atl = num(last.icu_atl);
+  // Start of the day: today's row already includes today's ride.
+  const before = sorted.filter(w => w.id < today);
+  const last = before[before.length - 1] || sorted[sorted.length - 1] || {};
+  // Intervals.icu wellness uses ctl/atl; synthetic (Strava-only) wellness uses icu_ctl/icu_atl.
+  const ctl = num(last.icu_ctl ?? last.ctl);
+  const atl = num(last.icu_atl ?? last.atl);
   const tsb = ctl != null && atl != null ? ctl - atl : null;
 
   const todayW = sorted.find(w => w.id === today) || {};
@@ -314,9 +329,11 @@ export function computeDay({
   });
   const base = buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override: overrides[today], responder });
   const adapted = cal.race || base.rest ? null : adaptWorkout(base, readiness.level, checkin.minutes, seasonState.phase);
+  const strengthKind = week.find(d => d.date === today)?.strength || null;
+  const strength = cal.race ? null : adaptStrength(strengthKind, strengthLevel(seasonState), readiness.level);
   const cycle = suggestCycle({ analysis, seasonState, season, today, weaknesses: profileWeaknesses });
   return {
-    today, season, physio, cal, seasonState, analysis, weaknesses, progression, week, readiness, base, adapted, cycle,
+    today, season, physio, cal, seasonState, analysis, weaknesses, progression, week, readiness, base, adapted, strength, cycle,
     changes: diffWorkouts(base, adapted),
     form: formStatus(physio.tsb),
     level: LEVELS[readiness.level],
@@ -346,12 +363,14 @@ export function buildOutlook({ season, plannedEvents = [], events = [], weakness
     const cfg = p?.cycleStart && p.cycleStart <= refKey ? { ...season, ...p, pendingCycle: null } : season;
     const state = getSeasonState(cfg, ref);
     const progression = progressionFor(state, responder);
+    const sLevel = strengthLevel(state);
     const days = weekPlan(state, ref, { weaknesses, raceDays, overrides, responder }).map(d => {
       const evs = byDay.get(d.date) || [];
       const race = evs.find(isRace);
-      if (race) return { ...d, type: 'race', minutes: 0, source: 'race', title: race.name || race.title || 'Course', blocks: [] };
+      if (race) return { ...d, type: 'race', minutes: 0, source: 'race', title: race.name || race.title || 'Course', blocks: [], strength: null };
+      d = { ...d, strength: d.strength ? strengthSession(d.strength, sLevel) : null };
       const planned = !d.overridden && evs.find(e => !isRace(e));
-      if (planned && isRestDay(planned)) return { date: d.date, type: 'rest', minutes: 0, source: 'planned', blocks: [] };
+      if (planned && isRestDay(planned)) return { date: d.date, type: 'rest', minutes: 0, source: 'planned', blocks: [], strength: d.strength };
       if (planned) {
         const type = sessionType(planned) || 'endurance';
         const minutes = sessionMinutes(planned) || 60;
@@ -359,7 +378,7 @@ export function buildOutlook({ season, plannedEvents = [], events = [], weakness
           ? planned.workoutBlocks.map(b => ({ ...b, durationMin: Number(b.durationMin) || 0 }))
           : pickWorkout(type, minutes, state.phase, progression).blocks;
         return {
-          date: d.date, type, minutes, source: 'planned', blocks,
+          date: d.date, type, minutes, source: 'planned', blocks, strength: d.strength,
           title: planned.name || planned.title, objective: planned.notes || '', tss: estimateTss(blocks),
         };
       }
@@ -377,7 +396,7 @@ export function buildOutlook({ season, plannedEvents = [], events = [], weakness
 
 /** Compact JSON for the widgets (iOS Scriptable, GNOME extension). */
 export function buildSnapshot(day, { ftp = null, source = 'app' } = {}) {
-  const { cal, base, adapted, readiness, analysis, week, physio, seasonState, form, level, phaseInfo, changes, cycle } = day;
+  const { cal, base, adapted, strength, readiness, analysis, week, physio, seasonState, form, level, phaseInfo, changes, cycle } = day;
   const wattsFor = (zone) => {
     const pct = ZONE_PCT[zone];
     if (!ftp || !pct) return '';
@@ -411,7 +430,8 @@ export function buildSnapshot(day, { ftp = null, source = 'app' } = {}) {
     readiness: { score: readiness.score, title: level.title, tone: level.tone },
     load: { done: analysis.week.doneTss, target: analysis.week.weekTarget },
     session,
-    week: week.map(d => ({ date: d.date, type: d.type === 'rest' ? 'Repos' : TYPE_LABELS[d.type], minutes: d.minutes })),
+    strength: strength ? { title: strength.title, minutes: strength.minutes } : null,
+    week: week.map(d => ({ date: d.date, type: d.type === 'rest' ? 'Repos' : TYPE_LABELS[d.type], minutes: d.minutes, strength: !!d.strength })),
     nextRace: cal.nextRace ? { name: cal.nextRace.name || cal.nextRace.title || 'Course', days: cal.nextRaceDays } : null,
     signals: analysis.signals.slice(0, 3).map(sig => ({ title: sig.title, tone: sig.tone })),
     cycle: cycle ? { title: cycle.title, start: cycle.start, summary: cycle.summary } : null,

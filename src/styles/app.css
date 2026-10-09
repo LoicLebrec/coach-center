@@ -2730,3 +2730,46 @@ button.today-week-day { font-family: var(--font-sans); cursor: pointer; color: i
 .today-cycle-week.is-recovery { border-top-color: var(--accent-blue); }
 .today-cycle-week .today-data-value { font-size: 17px; }
 .today-cycle-reasons { margin: 0 0 12px; padding-left: 18px; font-size: 13px; color: var(--text-2); line-height: 1.6; }
+
+/* ── Planned vs done ── */
+.today-review { margin-top: 8px; color: var(--text-1); }
+.today-review-head { font-size: 13.5px; margin-bottom: 6px; }
+.today-review-head.tone-green  { color: var(--accent-green); }
+.today-review-head.tone-yellow { color: var(--accent-yellow); }
+.today-review-head.tone-orange { color: var(--accent-orange); }
+.today-review-head.tone-red    { color: var(--accent-red); }
+.today-review-head.tone-blue   { color: var(--accent-blue); }
+.today-review-table { border-collapse: collapse; font-size: 12.5px; margin-bottom: 6px; }
+.today-review-table th { font-weight: 600; color: var(--text-3); text-align: left; padding: 2px 14px 2px 0; }
+.today-review-table td { font-family: var(--font-mono); padding: 2px 14px 2px 0; }
+.today-review-table td:first-child { font-family: inherit; color: var(--text-2); }
+.today-review-table tr.is-off td:last-child { color: var(--accent-orange); }
+.today-week-day { position: relative; }
+.today-week-strength { font-size: 10px; font-weight: 600; color: var(--brand); }
+.today-week-check { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; }
+.today-week-check.tone-green  { background: var(--accent-green); }
+.today-week-check.tone-yellow { background: var(--accent-yellow); }
+.today-week-check.tone-orange { background: var(--accent-orange); }
+.today-week-check.tone-red    { background: var(--accent-red); }
+.today-week-check.tone-blue   { background: var(--accent-blue); }
+.today-plan-strength { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border, rgba(127, 127, 127, 0.2)); }
+
+/* ── Bodyweight exercises ── */
+.today-exercises {
+  list-style: none; margin: 0 0 12px; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px;
+}
+.today-exercises li {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg-2); border-radius: var(--radius); padding: 8px 10px; min-width: 0;
+}
+.today-exercise-text { min-width: 0; }
+.today-exercise-name { font-size: 13.5px; font-weight: 600; color: var(--text-1); }
+.today-exercise-cue { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.exfig { flex: none; color: var(--text-1); }
+.exfig line { stroke-linecap: round; }
+.exfig-near { stroke: currentColor; stroke-width: 4.5; }
+.exfig-far { stroke: currentColor; stroke-width: 4; opacity: 0.35; }
+.exfig-head { fill: none; stroke: currentColor; stroke-width: 3.5; }
+.exfig-ground { stroke: var(--text-4, #999); stroke-width: 1; }
+.exfig-prop { fill: var(--brand-dim, rgba(127, 127, 127, 0.15)); stroke: var(--brand); stroke-width: 1; }

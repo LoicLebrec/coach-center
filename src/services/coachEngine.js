@@ -18,6 +18,7 @@
  */
 
 import { PHASES, CYCLE_FOCUS, getSeasonState } from './periodization';
+import { num } from './number';
 
 const DAY = 86400000;
 
@@ -33,11 +34,6 @@ function addDays(key, n) {
 
 function daysBetween(a, b) {
   return Math.round((new Date(`${b}T00:00:00`) - new Date(`${a}T00:00:00`)) / DAY);
-}
-
-function num(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
 }
 
 function mean(xs) {
@@ -177,13 +173,19 @@ export function analyzeTraining({ wellness = [], activities = [], athlete = null
   const phase = seasonState?.phase || 'base';
 
   // ── Load (PMC) ──
+  // Today's session is prescribed from the state at the start of the day: today's
+  // wellness row already carries today's ride in ctl/atl, so load comes from the day before.
+  // (HRV and resting HR are morning readings and stay today's.)
   const ws = [...wellness].filter(w => w?.id && w.id <= today).sort((a, b) => a.id.localeCompare(b.id));
-  const last = ws[ws.length - 1] || {};
-  const ctl = num(last.icu_ctl);
-  const atl = num(last.icu_atl);
+  const wsBefore = ws.filter(w => w.id < today);
+  const last = wsBefore[wsBefore.length - 1] || ws[ws.length - 1] || {};
+  // Intervals.icu wellness uses ctl/atl; synthetic (Strava-only) wellness uses icu_ctl/icu_atl.
+  const ctl = num(last.icu_ctl ?? last.ctl);
+  const atl = num(last.icu_atl ?? last.atl);
   const tsb = ctl != null && atl != null ? ctl - atl : null;
-  const weekAgo = ws.filter(w => w.id <= addDays(today, -7)).pop();
-  const ramp7 = ctl != null && num(weekAgo?.icu_ctl) != null ? ctl - num(weekAgo.icu_ctl) : null;
+  const weekAgo = ws.filter(w => w.id <= addDays(last.id || today, -7)).pop();
+  const ctlWeekAgo = num(weekAgo?.icu_ctl ?? weekAgo?.ctl);
+  const ramp7 = ctl != null && ctlWeekAgo != null ? ctl - ctlWeekAgo : null;
   const acwr = ctl && atl != null ? atl / ctl : null;
 
   if (ramp7 != null && ramp7 > 8) {
@@ -231,7 +233,11 @@ export function analyzeTraining({ wellness = [], activities = [], athlete = null
   }
 
   // ── Activities: hard days, weekly load, distribution ──
-  const acts = activities.filter(a => actDay(a) && actDay(a) <= today && ENDURANCE_SPORTS.test(String(a.type || 'Ride')));
+  // Only what was done before today drives the decision, so the session doesn't
+  // change under the rider once it's been ridden.
+  const all = activities.filter(a => actDay(a) && actDay(a) <= today && ENDURANCE_SPORTS.test(String(a.type || 'Ride')));
+  const acts = all.filter(a => actDay(a) < today);
+  const todayActs = all.filter(a => actDay(a) === today);
   const hardDays = [...new Set(acts.filter(isHardActivity).map(actDay))].sort();
   const lastHardDay = hardDays[hardDays.length - 1] || null;
   const lastHard = lastHardDay ? {
@@ -242,19 +248,22 @@ export function analyzeTraining({ wellness = [], activities = [], athlete = null
 
   const monday = (() => { const d = new Date(`${today}T00:00:00`); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return dayKey(d); })();
   const weekActs = acts.filter(a => actDay(a) >= monday);
-  const doneTss = Math.round(weekActs.reduce((s, a) => s + (num(a.icu_training_load) || 0), 0));
+  const loadOf = (xs) => Math.round(xs.reduce((s, a) => s + (num(a.icu_training_load) || 0), 0));
+  const doneBefore = loadOf(weekActs);
+  const todayTss = loadOf(todayActs);
   const hardThisWeek = new Set(weekActs.filter(isHardActivity).map(actDay)).size;
-  const doneToday = acts.some(a => actDay(a) === today);
 
   let rampTarget = seasonState?.isRecoveryWeek ? -4 : (PHASE_RAMP[phase] ?? 3);
   if (ramp7 != null && ramp7 > 8) rampTarget = Math.min(rampTarget, 0);
   const weekTarget = ctl != null ? Math.max(0, Math.round(7 * (ctl + 6 * rampTarget))) : null;
-  const daysLeft = 7 - daysBetween(monday, today) - (doneToday ? 1 : 0);
-  const remaining = weekTarget != null ? Math.max(0, weekTarget - doneTss) : null;
+  const daysLeft = 7 - daysBetween(monday, today);
+  const remaining = weekTarget != null ? Math.max(0, weekTarget - doneBefore) : null;
   const week = {
-    monday, doneTss, weekTarget, remaining, rampTarget, daysLeft,
+    // doneTss includes today (display); the budget uses doneBefore.
+    monday, doneTss: doneBefore + todayTss, doneBefore, todayTss, weekTarget, remaining, rampTarget, daysLeft,
     perDay: remaining != null && daysLeft > 0 ? Math.round(remaining / daysLeft) : null,
     hard: hardThisWeek,
+    hardToday: todayActs.some(isHardActivity),
     maxHard: seasonState?.isRecoveryWeek ? 1 : (PHASE_MAX_HARD[phase] ?? 2),
   };
 
@@ -334,7 +343,7 @@ export function decideSession(candidate, analysis) {
       const ifSq = 0.65 * 0.65;
       const capped = Math.max(45, Math.round((cap / (ifSq * 100)) * 60 / 5) * 5);
       if (capped < minutes - 10) {
-        changes.push({ text: `Budget semaine ${week.doneTss}/${week.weekTarget} TSS → ${minutes} → ${capped} min`, ref: 'Coggan PMC' });
+        changes.push({ text: `Budget semaine ${week.doneBefore ?? week.doneTss}/${week.weekTarget} TSS → ${minutes} → ${capped} min`, ref: 'Coggan PMC' });
         minutes = capped;
       }
     }

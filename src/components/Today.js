@@ -10,6 +10,9 @@ import {
 import { pushWidgetSnapshot } from '../services/widgetSnapshot';
 import { intervalsService } from '../services/intervals';
 import { profileFromData, weekRanges, TRAIT_TEXT } from '../services/responderProfile';
+import { reviewSession, activitiesOn } from '../services/sessionReview';
+import { fmtDose, STRENGTH_KINDS, STRENGTH_LABELS } from '../data/strengthLibrary';
+import ExerciseFigure from './ExerciseFigure';
 
 /* ───────────────────────── helpers ───────────────────────── */
 
@@ -99,6 +102,65 @@ function BlockList({ blocks, ftp }) {
         );
       })}
     </ol>
+  );
+}
+
+/** Planned vs done for one day. */
+function Review({ review, strengthPlanned, strengthDone }) {
+  if (!review && !strengthPlanned && !strengthDone.length) return null;
+  return (
+    <div className="today-review">
+      {review && (
+        <>
+          <div className={`today-review-head tone-${review.tone}`}>
+            <strong>{review.title}</strong>
+            {review.pct != null && <span className="today-muted"> · {review.pct} % de la charge prévue</span>}
+          </div>
+          {review.rows.length > 0 && (
+            <table className="today-review-table">
+              <thead><tr><th /><th>Prévu</th><th>Fait</th></tr></thead>
+              <tbody>
+                {review.rows.map(r => (
+                  <tr key={r.label} className={r.ok === false ? 'is-off' : ''}>
+                    <td>{r.label}</td><td>{r.planned ?? '—'}</td><td>{r.done}{r.ok === true ? ' ✓' : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {review.notes.map(n => <p key={n} className="today-hint">{n}</p>)}
+        </>
+      )}
+      {strengthDone.length > 0 ? (
+        <p className="today-hint">✓ Renfo fait : {strengthDone.map(a => a.name || a.type).join(', ')}</p>
+      ) : strengthPlanned && (
+        <p className="today-hint today-muted">Renfo prévu ({strengthPlanned.title}) — pas d’activité enregistrée.</p>
+      )}
+    </div>
+  );
+}
+
+function StrengthDetail({ session }) {
+  return (
+    <>
+      <p className="today-hint">
+        {session.objective} · ~{session.minutes} min · niv. {session.level}/{session.levelCount}
+      </p>
+      <p className="today-hint today-muted">Échauffement 5 min : {session.warmup.join(' · ')}</p>
+      <ol className="today-exercises">
+        {session.exercises.map((e, i) => (
+          <li key={e.name}>
+            <ExerciseFigure name={e.name} />
+            <div className="today-exercise-text">
+              <div className="today-exercise-name">{i + 1}. {e.name}</div>
+              <div className="today-block-meta">{fmtDose(e)} · récup {e.rest} s</div>
+              <div className="today-exercise-cue">{e.cue}</div>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <p className="today-note">{session.notes}</p>
+    </>
   );
 }
 
@@ -272,7 +334,7 @@ function weekLabel(w, i) {
 }
 
 /** Coming weeks of the plan: tap a day for the full session, change it or move it. */
-function PlanAhead({ weeks, today, ftp, onEdit }) {
+function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit }) {
   const [wi, setWi] = useState(0);
   const [sel, setSel] = useState(today);
   const week = weeks[wi];
@@ -283,6 +345,11 @@ function PlanAhead({ weeks, today, ftp, onEdit }) {
     min: t.min + (d.blocks?.length ? blocksMinutes(d.blocks) : 0), tss: t.tss + (d.tss || 0),
   }), { min: 0, tss: 0 });
   const goWeek = (i) => { setWi(i); setSel(i === 0 ? today : weeks[i].days[0].date); };
+  const reviews = useMemo(() => Object.fromEntries(week.days.filter(d => d.date < today).map(d => {
+    const done = activitiesOn(activities, d.date);
+    return [d.date, { review: reviewSession(d, done.rides, { past: true }), strengthDone: done.strength }];
+  })), [week, activities, today]);
+  const dayReview = day && reviews[day.date];
 
   const editable = day && day.date >= today && day.source !== 'race';
   const canSwap = (j) => {
@@ -291,11 +358,16 @@ function PlanAhead({ weeks, today, ftp, onEdit }) {
   };
   const swap = (j) => {
     const other = week.days[j];
-    const asOverride = (d) => ({ type: d.type, minutes: d.type === 'rest' ? 0 : Math.round(d.minutes || blocksMinutes(d.blocks)) });
+    const asOverride = (d) => ({
+      type: d.type, minutes: d.type === 'rest' ? 0 : Math.round(d.minutes || blocksMinutes(d.blocks)),
+      strength: d.strength ? d.strength.kind : false,
+    });
     onEdit({ [day.date]: asOverride(other), [other.date]: asOverride(day) });
     setSel(other.date);
   };
-  const setDay = (patch) => onEdit({ [day.date]: { type: day.type, minutes: day.minutes || 60, ...patch } });
+  const setDay = (patch) => onEdit({ [day.date]: { ...overrides[day.date], type: day.type, minutes: day.minutes || 60, ...patch } });
+  // Strength alone doesn't freeze the ride: an override without its own type keeps the plan's.
+  const setStrength = (v) => onEdit({ [day.date]: { ...overrides[day.date], strength: v } });
 
   return (
     <section className="today-card">
@@ -324,6 +396,8 @@ function PlanAhead({ weeks, today, ftp, onEdit }) {
               )}
             </div>
             {d.blocks?.length > 0 && <div className="today-week-min">{Math.round(blocksMinutes(d.blocks))}′</div>}
+            {d.strength && <div className="today-week-strength" title={d.strength.title}>+ renfo</div>}
+            {reviews[d.date]?.review && <span className={`today-week-check tone-${reviews[d.date].review.tone}`} title={reviews[d.date].review.title} />}
           </button>
         ))}
       </div>
@@ -352,6 +426,13 @@ function PlanAhead({ weeks, today, ftp, onEdit }) {
           {day.date === today && day.type !== 'rest' && day.type !== 'race' && (
             <p className="today-hint">Aujourd’hui : la version ajustée à ta forme est dans « Séance du jour ».</p>
           )}
+          {day.strength && (
+            <div className="today-plan-strength">
+              <div className="today-metric-label">+ {day.strength.title}</div>
+              <StrengthDetail session={day.strength} />
+            </div>
+          )}
+          {dayReview && <Review review={dayReview.review} strengthPlanned={day.strength} strengthDone={dayReview.strengthDone} />}
 
           {editable && (
             <div className="today-plan-edit">
@@ -374,10 +455,17 @@ function PlanAhead({ weeks, today, ftp, onEdit }) {
               <div className="today-inline">
                 <button type="button" className="btn" disabled={!canSwap(idx - 1)} onClick={() => swap(idx - 1)}>← Veille</button>
                 <button type="button" className="btn" disabled={!canSwap(idx + 1)} onClick={() => swap(idx + 1)}>Lendemain →</button>
-                {day.source === 'override' && (
+                {overrides[day.date] && (
                   <button type="button" className="today-link" onClick={() => onEdit({ [day.date]: null })}>Revenir au plan</button>
                 )}
               </div>
+              <label>
+                Renfo poids du corps
+                <select value={day.strength ? day.strength.kind : 'none'} onChange={e => setStrength(e.target.value === 'none' ? false : e.target.value)}>
+                  <option value="none">Aucun</option>
+                  {STRENGTH_KINDS.map(k => <option key={k} value={k}>{STRENGTH_LABELS[k]}</option>)}
+                </select>
+              </label>
             </div>
           )}
         </div>
@@ -475,9 +563,10 @@ function DataCard({ analysis }) {
         )}
         <div className="today-data-item">
           <div className="today-metric-label">Séances dures</div>
-          <div className="today-data-value">{week.hard} <span className="today-muted">/ {week.maxHard} max</span></div>
+          <div className="today-data-value">{week.hard + (week.hardToday ? 1 : 0)} <span className="today-muted">/ {week.maxHard} max</span></div>
           <div className="today-metric-sub">
-            {lastHard ? `Dernière : ${lastHard.daysAgo === 0 ? 'aujourd’hui' : lastHard.daysAgo === 1 ? 'hier' : `il y a ${lastHard.daysAgo} j`}` : 'Aucune récente'}
+            {week.hardToday ? 'Dernière : aujourd’hui'
+              : lastHard ? `Dernière : ${lastHard.daysAgo === 1 ? 'hier' : `il y a ${lastHard.daysAgo} j`}` : 'Aucune récente'}
           </div>
         </div>
         {distribution && (
@@ -596,7 +685,7 @@ export default function Today({
     season, profileWeaknesses: profile.weaknesses || [], checkin, today, responder,
   }), [wellness, activities, athlete, events, plannedEvents, powerCurve, season, profile.weaknesses, checkin, today, responder]);
   const {
-    physio, cal, seasonState, analysis, readiness, base, adapted, cycle, changes, form, phaseInfo,
+    physio, cal, seasonState, analysis, readiness, base, adapted, strength, cycle, changes, form, phaseInfo,
     level: lvl,
   } = day;
   const outlook = useMemo(() => buildOutlook({
@@ -609,7 +698,12 @@ export default function Today({
     if (p?.cycleStart && p.cycleStart <= today) updateSeason({ ...p, pendingCycle: null });
   }, [season.pendingCycle, today]);
 
-  const doneToday = useMemo(() => activities.filter(a => dayOf(a) === today), [activities, today]);
+  // Prescription is built from the start-of-day state, so it can be compared with what was done.
+  const doneToday = useMemo(() => activitiesOn(activities, today), [activities, today]);
+  const todayReview = useMemo(() => (cal.race ? null : reviewSession(
+    adapted && readiness.level !== 'rest' ? { type: adapted.trainingType, blocks: adapted.blocks } : { type: 'rest' },
+    doneToday.rides,
+  )), [cal.race, adapted, readiness.level, doneToday]);
   const dateLabel = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const workoutForExport = adapted ? {
@@ -701,7 +795,7 @@ export default function Today({
         {showSeasonSettings && <SeasonSettings config={season} onChange={updateSeason} />}
       </section>
 
-      <PlanAhead weeks={outlook} today={today} ftp={ftp} onEdit={editDays} />
+      <PlanAhead weeks={outlook} today={today} ftp={ftp} activities={activities} overrides={season.dayOverrides || {}} onEdit={editDays} />
 
       <CycleCard
         cycle={cycle}
@@ -796,9 +890,10 @@ export default function Today({
           {!noSession && <span className={`today-pill tone-${lvl.tone}`}>{lvl.title}</span>}
         </div>
 
-        {doneToday.length > 0 && (
+        {todayReview && (
           <div className="today-done">
-            ✓ Déjà fait : {doneToday.map(a => `${a.name || a.type}${a.icu_training_load ? ` (${Math.round(a.icu_training_load)} TSS)` : ''}`).join(', ')}
+            ✓ Fait : {doneToday.rides.map(a => `${a.name || a.type}${a.icu_training_load ? ` (${Math.round(a.icu_training_load)} TSS)` : ''}`).join(', ')}
+            <Review review={todayReview} strengthPlanned={null} strengthDone={[]} />
           </div>
         )}
 
@@ -890,6 +985,23 @@ export default function Today({
           </>
         )}
       </section>
+
+      {strength && (
+        <section className="today-card">
+          <div className="today-card-head">
+            <h2>Renfo du jour</h2>
+            {doneToday.strength.length > 0
+              ? <span className="today-pill tone-green">✓ fait</span>
+              : strength.adjusted && <span className="today-pill tone-yellow">{strength.adjusted}</span>}
+          </div>
+          <div className="today-session-title" style={{ fontSize: 17 }}>{strength.title}</div>
+          <StrengthDetail session={strength} />
+          <p className="today-hint today-muted">
+            {adapted ? 'Après la sortie ou au moins 6 h plus tard. ' : ''}Sans matériel : une chaise, un mur.
+          </p>
+          <p className="today-ref">Réf. : {strength.ref}</p>
+        </section>
+      )}
 
       <div className="today-footer">
         {onOpenCalendar && <button className="btn" onClick={onOpenCalendar}>Voir le calendrier</button>}

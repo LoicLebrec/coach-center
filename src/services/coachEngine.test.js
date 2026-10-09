@@ -143,3 +143,17 @@ describe('buildOutlook + day overrides', () => {
     expect(day.week[3]).toMatchObject({ type: 'endurance', minutes: 120 });
   });
 });
+
+test('a ride done today does not re-adapt today\'s session', () => {
+  const w = wellness();
+  w[w.length - 1] = { ...w[w.length - 1], icu_atl: 95 }; // today's row already counts today's ride
+  const done = ride(0, { icu_intensity: 95, icu_training_load: 120 });
+  const before = analyzeTraining({ wellness: w, activities: [], seasonState: season, today: TODAY });
+  const after = analyzeTraining({ wellness: w, activities: [done], seasonState: season, today: TODAY });
+  expect(after.lastHard).toBeNull();
+  expect(after.load.atl).toBe(60);
+  expect(after.week.perDay).toBe(before.week.perDay);
+  expect(after.week.todayTss).toBe(120);
+  expect(after.week.hardToday).toBe(true);
+  expect(decideSession({ type: 'vo2', minutes: 75 }, after)).toEqual(decideSession({ type: 'vo2', minutes: 75 }, before));
+});
