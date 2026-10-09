@@ -157,3 +157,16 @@ test('a ride done today does not re-adapt today\'s session', () => {
   expect(after.week.hardToday).toBe(true);
   expect(decideSession({ type: 'vo2', minutes: 75 }, after)).toEqual(decideSession({ type: 'vo2', minutes: 75 }, before));
 });
+
+test('weeklyTotals buckets Monday→Sunday weeks', () => {
+  // eslint-disable-next-line global-require
+  const { weeklyTotals } = require('../components/WeeklyLoad');
+  const acts = [
+    { start_date_local: '2026-10-05T08:00:00', icu_training_load: 50, moving_time: 3600, distance: 30000 }, // Monday
+    { start_date_local: '2026-10-04T08:00:00', icu_training_load: 80, moving_time: 7200, distance: 60000 }, // Sunday before
+  ];
+  const w = weeklyTotals(acts, 2, new Date('2026-10-09T12:00:00'));
+  expect(w.map(x => x.start)).toEqual(['2026-09-28', '2026-10-05']);
+  expect(w.map(x => x.tss)).toEqual([80, 50]);
+  expect(w[1].current).toBe(true);
+});

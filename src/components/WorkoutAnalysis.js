@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import HelpPopup from './HelpPopup';
 import {
   BarChart, Bar,
@@ -14,6 +14,8 @@ import { stravaService } from '../services/strava';
 import workoutAnalyzer from '../services/workout-analyzer';
 import Picto from './Pictos';
 import RideInsights from './RideInsights';
+import SessionFeedback, { RecentRides, feedbackFor } from './SessionFeedback';
+import persistence from '../services/persistence';
 
 // Convert Strava laps array → format expected by workoutAnalyzer.parseIntervals()
 function stravaLapsToIntervals(laps) {
@@ -131,10 +133,6 @@ function formatDuration(seconds) {
   return `${s}s`;
 }
 
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  return String(dateStr).slice(0, 10);
-}
 
 function complianceColor(pct) {
   if (pct == null) return 'var(--accent-blue)';
@@ -654,217 +652,6 @@ function RaceSection({ raceAnalysis, ftp }) {
 
 // ─── Activity Selector ────────────────────────────────────────────────────────
 
-function ActivitySelector({ activities, selectedId, onChange }) {
-  const eligible = (activities || [])
-    .filter(a => a.start_date_local && (
-      (a.icu_average_watts || a.average_watts || 0) > 0 ||
-      (a.average_heartrate || 0) > 0 ||
-      (a.moving_time || 0) > 300
-    ))
-    .slice(0, 60);
-
-  const selectedActivity = eligible.find(a => String(a.id) === String(selectedId));
-  const isRace = selectedActivity ? isRaceActivity(selectedActivity) : false;
-  const tss = selectedActivity
-    ? (selectedActivity.icu_training_load || selectedActivity.training_load)
-    : null;
-  const duration = selectedActivity
-    ? (selectedActivity.moving_time || selectedActivity.elapsed_time || selectedActivity.icu_moving_time)
-    : null;
-  const type = selectedActivity
-    ? (selectedActivity.type || selectedActivity.sport_type || '')
-    : '';
-
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 6 }}>
-        SÉLECTIONNER UNE ACTIVITÉ
-      </div>
-      <select
-        value={selectedId || ''}
-        onChange={e => onChange(e.target.value)}
-        style={{
-          background: 'var(--bg-2)',
-          border: '1px solid var(--border)',
-          borderRadius: 8,
-          color: 'var(--text-0)',
-          padding: '8px 12px',
-          fontFamily: 'var(--font-mono)',
-          fontSize: 12,
-          width: '100%',
-          outline: 'none',
-          cursor: 'pointer',
-          appearance: 'none',
-        }}
-      >
-        <option value="" disabled>— Choisir une activité —</option>
-        {eligible.map(a => {
-          const watts = a.icu_average_watts || a.average_watts || 0;
-          const date  = formatDate(a.start_date_local);
-          const tss   = a.icu_training_load || a.training_load;
-          const name  = a.name || a.description || 'Activité';
-          return (
-            <option key={a.id} value={String(a.id)}>
-              {date}  {name}  · {Math.round(watts)}W{tss ? `  · TSS ${Math.round(tss)}` : ''}
-            </option>
-          );
-        })}
-      </select>
-
-      {selectedActivity && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
-          {type && (
-            <Badge label={type} />
-          )}
-          {isRace && (
-            <Badge label="COURSE" color="var(--accent-yellow)" bg="rgba(240,180,41,0.12)" />
-          )}
-          {tss != null && (
-            <Badge label={`TSS ${Math.round(tss)}`} color="var(--accent-cyan)" bg="rgba(34,211,238,0.1)" />
-          )}
-          {duration != null && (
-            <Badge label={formatDuration(duration)} />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Section: Planned vs Actual ──────────────────────────────────────────────
-
-const ZONE_COLORS_PVA = { Z1:'#475569', Z2:'#22c55e', Z3:'#eab308', Z4:'#f97316', Z5:'#ef4444', Z6:'#a855f7', Z7:'#8b5cf6' };
-const ZONE_PCT_PVA    = { Z1:[45,55], Z2:[56,75], Z3:[76,90], Z4:[91,105], Z5:[106,120], Z6:[121,150], Z7:[151,200] };
-
-function PlannedVsActualSection({ plannedEvent, activity, ftp }) {
-  if (!activity) return null;
-  const blocks = plannedEvent?.workoutBlocks || [];
-  const totalPlannedMin = blocks.reduce((s, b) => s + (Number(b.durationMin) || 0), 0);
-  const plannedTSS = plannedEvent?.estimatedTSS || plannedEvent?.icu_training_load || null;
-  const actualTSS  = activity.icu_training_load || activity.training_load || null;
-  const actualDur  = activity.moving_time || activity.elapsed_time || 0;
-  const actualWatts = activity.icu_average_watts || activity.average_watts || null;
-  const actualNP    = activity.icu_normalized_watts || activity.weighted_average_watts || null;
-  const actualIF    = ftp && actualNP ? (actualNP / ftp) : null;
-
-  const tssCompliance = plannedTSS && actualTSS ? Math.round((actualTSS / plannedTSS) * 100) : null;
-  const compColor = tssCompliance == null ? 'var(--text-2)' : tssCompliance >= 95 ? '#3ecf6e' : tssCompliance >= 80 ? '#f77f3a' : '#f06060';
-
-  return (
-    <SectionCard style={{ marginBottom: 14 }}>
-      <SectionHeader
-        title="Prévu vs Réalisé"
-        help={{ title: 'Prévu vs Réalisé', content: [
-          { heading: 'Blocs planifiés (gauche)', text: 'Structure de la séance telle que prévue dans Intervals.icu — zones cibles avec puissances basse et haute.' },
-          { heading: 'Métriques réalisées (droite)', text: 'Ce que vous avez réellement produit : NP, IF, TSS et puissance moyenne.' },
-          { heading: 'Badge de compliance', text: 'Vert (≥95%) = objectif atteint. Orange (80–95%) = léger manque. Rouge (<80%) = séance sous-performée.' },
-        ], tips: ['Une compliance régulièrement faible → cibles trop élevées ou récupération insuffisante', 'Comparez IF réel vs IF cible pour évaluer l\'intensité globale', 'TSS réel > TSS prévu = séance plus longue ou plus intense que prévu'] }}
-        badges={
-          tssCompliance != null && (
-            <Badge
-              label={`Compliance ${tssCompliance}%`}
-              color={compColor}
-              bg={compColor + '18'}
-            />
-          )
-        }
-      />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {/* Planned */}
-        <div style={{ background: 'var(--bg-2)', borderRadius: 8, padding: '12px' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 8 }}>
-            PRÉVU {plannedEvent ? `· ${plannedEvent.title || plannedEvent.name || ''}` : '· Non planifié'}
-          </div>
-          {blocks.length > 0 ? (
-            <>
-              <div style={{ display: 'flex', height: 36, borderRadius: 6, overflow: 'hidden', marginBottom: 8, gap: 2 }}>
-                {blocks.map((b, i) => {
-                  const pct = ((Number(b.durationMin) || 0) / Math.max(1, totalPlannedMin)) * 100;
-                  const zId = String(b.zone || 'Z2').toUpperCase();
-                  const color = ZONE_COLORS_PVA[zId] || '#22c55e';
-                  const zonePct = ZONE_PCT_PVA[zId] || ZONE_PCT_PVA.Z2;
-                  const barH = Math.max(20, Math.round(((zonePct[0] + zonePct[1]) / 2) / 2));
-                  return (
-                    <div key={i} style={{ width: `${Math.max(2, pct)}%`, display: 'flex', alignItems: 'flex-end' }} title={`${b.label} · ${b.durationMin}min @ ${zId}`}>
-                      <div style={{ width: '100%', height: `${barH}%`, background: color, opacity: 0.85, borderRadius: '3px 3px 0 0' }} />
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {blocks.map((b, i) => {
-                  const zId = String(b.zone || 'Z2').toUpperCase();
-                  const color = ZONE_COLORS_PVA[zId] || '#22c55e';
-                  const pct = ZONE_PCT_PVA[zId] || ZONE_PCT_PVA.Z2;
-                  const loW = ftp ? Math.round((pct[0] / 100) * ftp) : null;
-                  const hiW = ftp ? Math.round((pct[1] / 100) * ftp) : null;
-                  return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, borderLeft: `2px solid ${color}`, paddingLeft: 6 }}>
-                      <span style={{ fontWeight: 600, color: 'var(--text-1)' }}>{b.label}</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-3)' }}>
-                        {b.durationMin}min{loW ? ` · ${loW}–${hiW}W` : ` · ${zId}`}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-              {totalPlannedMin > 0 && (
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginTop: 6, textAlign: 'right' }}>
-                  {totalPlannedMin} min{plannedTSS ? ` · ~${Math.round(plannedTSS)} TSS` : ''}
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{ color: 'var(--text-3)', fontSize: 12, fontFamily: 'var(--font-mono)', padding: '8px 0' }}>
-              Aucune séance planifiée ce jour-là
-            </div>
-          )}
-        </div>
-
-        {/* Actual */}
-        <div style={{ background: 'var(--bg-2)', borderRadius: 8, padding: '12px' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginBottom: 8 }}>
-            RÉALISÉ · {activity.name || 'Activité'}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            {actualWatts != null && (
-              <div style={{ background: 'var(--bg-3)', borderRadius: 6, padding: '8px 10px' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 2 }}>MOY PUISSANCE</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700, color: 'var(--accent-blue)' }}>{Math.round(actualWatts)}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-3)', marginLeft: 2 }}>W</span></div>
-              </div>
-            )}
-            {actualNP != null && (
-              <div style={{ background: 'var(--bg-3)', borderRadius: 6, padding: '8px 10px' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 2 }}>NP</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700, color: 'var(--accent-cyan)' }}>{Math.round(actualNP)}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-3)', marginLeft: 2 }}>W</span></div>
-              </div>
-            )}
-            {actualIF != null && (
-              <div style={{ background: 'var(--bg-3)', borderRadius: 6, padding: '8px 10px' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 2 }}>IF</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700, color: 'var(--text-0)' }}>{actualIF.toFixed(2)}</div>
-              </div>
-            )}
-            {actualTSS != null && (
-              <div style={{ background: 'var(--bg-3)', borderRadius: 6, padding: '8px 10px', borderLeft: tssCompliance != null ? `3px solid ${compColor}` : undefined }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-3)', marginBottom: 2 }}>TSS RÉEL</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700, color: compColor }}>{Math.round(actualTSS)}</div>
-              </div>
-            )}
-          </div>
-          {actualDur > 0 && (
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', marginTop: 6, textAlign: 'right' }}>
-              {formatDuration(actualDur)}
-            </div>
-          )}
-        </div>
-      </div>
-    </SectionCard>
-  );
-}
-
-// ─── Power Summary Section (always visible when power data available) ─────────
-
 function StatBox({ label, value, sub, color }) {
   return (
     <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', flex: 1, minWidth: 90 }}>
@@ -963,7 +750,6 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents, po
 
   const [selectedId, setSelectedId]             = useState(null);
   const [selectedActivity, setSelectedActivity] = useState(null);
-  const [matchedPlan, setMatchedPlan]           = useState(null);
   const [loading, setLoading]                   = useState(false);
   const [error, setError]                       = useState(null);
   const [intervalAnalysis, setIntervalAnalysis]   = useState(null);
@@ -974,7 +760,7 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents, po
   const [rideData, setRideData]                   = useState(null);
 
   const handleSelect = useCallback(async (id) => {
-    if (!id) return;
+    if (id == null || id === '') return;
     setSelectedId(id);
     setLoading(true);
     setError(null);
@@ -985,20 +771,9 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents, po
     setIsRace(false);
     setRideData(null);
     setSelectedActivity(null);
-    setMatchedPlan(null);
 
     try {
       let activity = (activities || []).find(a => String(a.id) === String(id));
-
-      // Match to planned event by date
-      if (activity) {
-        const actDate = String(activity.start_date_local || '').slice(0, 10);
-        const plan = (plannedEvents || []).find(ev => {
-          const evDate = String(ev.start_date_local || ev.date || '').slice(0, 10);
-          return evDate === actDate;
-        }) || null;
-        setMatchedPlan(plan);
-      }
 
       const stravaConnected = stravaService.isConfigured();
       const stravaId = activity?.strava_id || activity?.external_id || null;
@@ -1060,7 +835,7 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents, po
         } catch (_) {}
       }
 
-      if (!rawStreams) throw new Error(`Impossible de récupérer les données de stream (source: ${source})`);
+      if (!rawStreams) throw new Error('Le détail seconde par seconde n’est pas disponible pour cette sortie. Il vient d’Intervals.icu ou de Strava : vérifie la connexion dans les réglages.');
 
       const actIsRace = activity ? isRaceActivity(activity) : false;
       setIsRace(actIsRace);
@@ -1083,55 +858,55 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents, po
     }
   }, [activities, plannedEvents, ftp]);
 
-  const eligible = (activities || []).filter(a => a.start_date_local && (
-    (a.icu_average_watts || a.average_watts || 0) > 0 ||
-    (a.average_heartrate || 0) > 0 ||
-    (a.moving_time || 0) > 300
-  ));
+  const recent = useMemo(() => (activities || [])
+    .filter(a => a.start_date_local && /ride|cycl|bike/i.test(String(a.type || 'Ride')) && (a.moving_time || 0) > 300)
+    .sort((x, y) => String(y.start_date_local).localeCompare(String(x.start_date_local)))
+    .slice(0, 12), [activities]);
+
+  // What Today prescribed on each of these days.
+  const [prescriptions, setPrescriptions] = useState({});
+  useEffect(() => {
+    let alive = true;
+    const days = [...new Set(recent.map(a => String(a.start_date_local).slice(0, 10)))];
+    Promise.all(days.map(d => persistence.getPref(`prescription-${d}`, null).catch(() => null)))
+      .then(list => { if (alive) setPrescriptions(Object.fromEntries(days.map((d, i) => [d, list[i]]).filter(([, v]) => v))); });
+    return () => { alive = false; };
+  }, [recent]);
+
+  // Open the latest ride straight away.
+  useEffect(() => {
+    if (selectedId == null && recent.length) handleSelect(recent[0].id);
+  }, [recent, selectedId, handleSelect]);
+
+  const selectedDate = selectedActivity ? String(selectedActivity.start_date_local).slice(0, 10)
+    : recent.find(a => String(a.id) === String(selectedId))?.start_date_local?.slice(0, 10);
+  const feedback = selectedDate ? feedbackFor(selectedDate, activities || [], prescriptions, plannedEvents || []) : null;
+  const toneOf = (date) => feedbackFor(date, activities || [], prescriptions, plannedEvents || []).review?.tone || null;
 
   return (
     <div>
       <div className="page-header">
         <div className="page-title">Analyse de séance</div>
-        <div className="page-subtitle">
-          Intervalles · Courbe de fatigue · Analyse de course
-        </div>
+        <div className="page-subtitle">Ce que tu as roulé, comparé à ce qui était prévu</div>
       </div>
 
-      {eligible.length === 0 ? (
+      {recent.length === 0 ? (
         <SectionCard>
-          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-2)', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
-            Aucune activité avec données de puissance disponible.
-          </div>
+          <p style={{ padding: 16, textAlign: 'center', color: 'var(--text-2)', fontSize: 14 }}>
+            Aucune sortie vélo récente. Connecte Intervals.icu ou Strava dans les réglages.
+          </p>
         </SectionCard>
       ) : (
         <>
-          <SectionCard style={{ marginBottom: 14 }}>
-            <ActivitySelector
-              activities={activities}
-              selectedId={selectedId}
-              onChange={handleSelect}
-            />
-            {!ftp && (
-              <div style={{
-                marginTop: 8, padding: '8px 12px',
-                background: 'rgba(247,127,58,0.1)',
-                border: '1px solid rgba(247,127,58,0.3)',
-                borderRadius: 7,
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                color: 'var(--accent-orange)',
-              }}>
-                FTP non configuré — les analyses de conformité et de course ne seront pas disponibles.
-              </div>
-            )}
-          </SectionCard>
+          <RecentRides rides={recent} selectedId={selectedId} onSelect={handleSelect} toneOf={toneOf} />
 
-          <PlannedVsActualSection
-            plannedEvent={matchedPlan}
-            activity={selectedActivity}
-            ftp={ftp}
-          />
+          {feedback && <SessionFeedback date={selectedDate} plan={feedback.plan} review={feedback.review} />}
+
+          {!ftp && (
+            <p className="ride-note">FTP non renseignée : l’intensité et la charge ne peuvent pas être calculées.</p>
+          )}
+
+          <h2 className="analysis-detail-title">Le détail de la sortie</h2>
 
           {loading && (
             <div className="loading-state">
@@ -1141,13 +916,11 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents, po
 
           {error && (
             <SectionCard>
-              <div style={{ color: 'var(--accent-red)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                {error}
-              </div>
+              <p style={{ color: 'var(--text-1)', fontSize: 14, margin: 0 }}>{error}</p>
             </SectionCard>
           )}
 
-          {!loading && !error && selectedId && (
+          {!loading && !error && selectedId != null && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
               {/* Always-visible power summary */}
@@ -1188,7 +961,7 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents, po
             </div>
           )}
 
-          {!loading && !error && !selectedId && (
+          {!loading && !error && selectedId == null && (
             <SectionCard>
               <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
                 Sélectionnez une activité pour lancer l'analyse.

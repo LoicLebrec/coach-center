@@ -696,6 +696,16 @@ export default function Today({
     season, plannedEvents, events, weaknesses: day.weaknesses, today, weeks: 4, responder,
   }), [season, plannedEvents, events, day.weaknesses, today, responder]);
 
+  // Keep what was prescribed today so the session analysis can compare the ride to it.
+  // The prescription is built from the start-of-day state, so it stays put once ridden.
+  useEffect(() => {
+    if (loading) return;
+    const rx = cal.race ? { type: 'race', title: cal.race.name || cal.race.title || 'Course' }
+      : base.rest || readiness.level === 'rest' || !adapted ? { type: 'rest' }
+      : { type: adapted.trainingType, title: adapted.title, objective: adapted.objective, blocks: adapted.blocks, minutes: adapted.minutes };
+    persistence.savePref(`prescription-${today}`, { ...rx, date: today, strength: strength ? strength.title : null }).catch(() => { });
+  }, [loading, today, cal.race, base.rest, readiness.level, adapted, strength]);
+
   // Persist a scheduled cycle once its start date is reached.
   useEffect(() => {
     const p = season.pendingCycle;
