@@ -55,7 +55,7 @@ export function RecentRides({ rides, selectedId, onSelect, toneOf }) {
   );
 }
 
-export default function SessionFeedback({ date, plan, review }) {
+export default function SessionFeedback({ date, plan, review, children }) {
   const planned = plan && plan.type !== 'rest' && plan.type !== 'none' && plan.blocks?.length;
   return (
     <section className={`feedback tone-${review?.tone || 'muted'}`}>
@@ -87,6 +87,7 @@ export default function SessionFeedback({ date, plan, review }) {
           {review.notes.map(n => <p key={n} className="feedback-note">{n}</p>)}
         </>
       )}
+      {children}
     </section>
   );
 }

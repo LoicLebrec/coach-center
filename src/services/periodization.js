@@ -277,7 +277,7 @@ export function strengthLevel(state) {
   return Math.min(3, 1 + Math.floor((state.weekInPhase - 1) / state.cycleLen));
 }
 
-const QUALITY = ['threshold', 'vo2', 'sweetspot', 'anaerobic', 'sprint', 'race_sim', 'force', 'tempo', 'durability'];
+const QUALITY = ['threshold', 'vo2', 'sweetspot', 'anaerobic', 'sprint', 'race_sim', 'force', 'tempo', 'durability', 'test'];
 const HARD_DAY = (d) => d && (QUALITY.includes(d.type) || d.type === 'race');
 
 /**
@@ -504,7 +504,7 @@ const NO_FAMILY_ROTATION = ['endurance', 'recovery', 'openers'];
  *    Natural duration is kept (only extended with Z2 if the day has more time).
  *  - Otherwise: closest duration, fitted to the target.
  */
-export function pickWorkout(type, minutes, phase, { library = LIBRARY_WORKOUTS, level = 1, rotation = 0, exclude = [] } = {}) {
+export function pickWorkout(type, minutes, phase, { library = LIBRARY_WORKOUTS, level = 1, rotation = 0, exclude = [], levelShift = {} } = {}) {
   const rides = library.filter(w => (w.type || 'Ride') === 'Ride' && w.kind !== 'race' && w.blocks?.length);
   let pool = rides.filter(w => w.trainingType === type && (!w.phases || w.phases.includes(phase)));
   if (!pool.length) pool = rides.filter(w => w.trainingType === type);
@@ -516,6 +516,8 @@ export function pickWorkout(type, minutes, phase, { library = LIBRARY_WORKOUTS, 
   if (familyNames.length && !NO_FAMILY_ROTATION.includes(type)) {
     const fam = familyNames[Math.abs(rotation) % familyNames.length];
     const levels = pool.filter(w => w.family === fam).sort((a, b) => a.level - b.level);
+    // How the last sessions of this family felt (services/rideFeedback) moves the level.
+    level += levelShift[fam] || 0;
     let idx = Math.max(0, Math.min(levels.length - 1, level - 1));
     // The time available wins: step down to the highest level that fits.
     if (minutes) while (idx > 0 && blocksMinutes(levels[idx].blocks) > minutes + 5) idx--;
@@ -524,7 +526,7 @@ export function pickWorkout(type, minutes, phase, { library = LIBRARY_WORKOUTS, 
     let blocks = w.blocks.map(b => ({ ...b }));
     if (minutes && minutes > natural + 5) blocks = fitToDuration(w.blocks, minutes);
     else if (minutes && natural > minutes + 5) blocks = shrinkToFit(w.blocks, minutes);
-    return { ...w, blocks, ...(idx !== level - 1 && level - 1 < levels.length ? { steppedDown: true } : {}) };
+    return { ...w, blocks, ...(levelShift[fam] ? { levelShift: levelShift[fam] } : {}), ...(idx !== level - 1 && level - 1 < levels.length ? { steppedDown: true } : {}) };
   }
 
   const ranked = [...pool].sort((a, b) =>

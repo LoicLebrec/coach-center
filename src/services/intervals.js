@@ -115,6 +115,16 @@ class IntervalsService {
     return this.request(endpoint);
   }
 
+  // ─── Sport settings ───────────────────────────────────────
+  // PUT /api/v1/athlete/{id}/sport-settings/{id} — the id may be an activity type (e.g. Ride).
+  async updateFtp(watts, type = 'Ride') {
+    return this.request(`/athlete/${this.athleteId}/sport-settings/${type}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ftp: Math.round(watts) }),
+    });
+  }
+
   // ─── Activity Intervals / Laps ────────────────────────────
   async getActivityIntervals(activityId) {
     return this.request(`/activity/${activityId}/intervals`);

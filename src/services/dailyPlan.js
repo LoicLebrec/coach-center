@@ -10,6 +10,7 @@ import {
   lowerOneZone, countWork, blocksMinutes, progressionFor, strengthLevel, shrinkToFit,
 } from './periodization';
 import { strengthSession } from '../data/strengthLibrary';
+import { levelShifts, feedbackReadiness } from './rideFeedbackRules';
 import { analyzeTraining, decideSession, dataWeaknesses, estimateTss, suggestCycle } from './coachEngine';
 import { num } from './number';
 
@@ -20,7 +21,7 @@ export const ZONE_PCT = {
 export const TYPE_LABELS = {
   recovery: 'Récupération', endurance: 'Endurance', durability: 'Durabilité', tempo: 'Tempo', force: 'Force',
   sweetspot: 'Sweet spot', threshold: 'Seuil', vo2: 'VO2 max', anaerobic: 'Anaérobie',
-  sprint: 'Sprint', race_sim: 'Simulation course', openers: 'Déblocage', rest: 'Repos', race: 'Course',
+  sprint: 'Sprint', race_sim: 'Simulation course', openers: 'Déblocage', rest: 'Repos', race: 'Course', test: 'Test FTP',
 };
 
 export function localDayKey(d = new Date()) {
@@ -93,7 +94,7 @@ export const CHECKIN_QUESTIONS = [
 
 export const DEFAULT_CHECKIN = { sleep: 'ok', legs: 'normal', energy: 'ok', sick: false, minutes: null };
 
-export function computeReadiness({ tsb, hrvStatus, hrvRatio, rhrDelta, checkin }) {
+export function computeReadiness({ tsb, hrvStatus, hrvRatio, rhrDelta, checkin, extra = [] }) {
   const reasons = [];
   let score = 60;
 
@@ -119,6 +120,9 @@ export function computeReadiness({ tsb, hrvStatus, hrvRatio, rhrDelta, checkin }
     if (opt.pts < 0) reasons.push(`${q.label} : ${opt.label.toLowerCase()}`);
   });
 
+  // How yesterday's session felt (services/rideFeedback).
+  extra.forEach(x => { score += x.delta; if (x.delta < 0) reasons.push(x.reason); });
+
   score = Math.max(0, Math.min(100, Math.round(score)));
 
   let level;
@@ -139,7 +143,7 @@ export const LEVELS = {
   rest: { title: 'Repos', text: 'Pas d’entraînement aujourd’hui. Soigne-toi.', effect: 'repos complet', tone: 'red' },
 };
 
-const ADAPT_HARD_TYPES = ['vo2', 'threshold', 'sweetspot', 'tempo', 'force', 'anaerobic', 'sprint', 'race_sim', 'durability'];
+const ADAPT_HARD_TYPES = ['vo2', 'threshold', 'sweetspot', 'tempo', 'force', 'anaerobic', 'sprint', 'race_sim', 'durability', 'test'];
 
 /**
  * Today's bodyweight session, adjusted like the ride: lighter level when the day is
@@ -160,7 +164,12 @@ export function adaptWorkout(base, level, availableMin, phase) {
   let { blocks, trainingType: type, title, objective } = base;
   const baseMin = blocksMinutes(blocks);
 
-  if (level === 'adjust') {
+  if (type === 'test' && level !== 'go') {
+    // A test only means something when fresh: ride easy, test another day.
+    const w = pickWorkout('endurance', Math.round(Math.min(baseMin, 75) / 5) * 5, phase);
+    ({ blocks, title, objective } = w);
+    type = 'endurance';
+  } else if (level === 'adjust') {
     blocks = keepRepRatio(blocks, 0.67);
     blocks = fitToDuration(blocks, Math.round(Math.min(blocksMinutes(blocks), baseMin * 0.85)));
   } else if (level === 'downgrade') {
@@ -310,7 +319,7 @@ export function buildBaseSession({ cal, seasonState, progression, weaknesses, an
 export function computeDay({
   wellness = [], activities = [], athlete = null, events = [], plannedEvents = [], powerCurve = null,
   season, profileWeaknesses = [], checkin = DEFAULT_CHECKIN, today = localDayKey(), responder = null,
-  availability = {},
+  availability = {}, feedback = {},
 }) {
   const date = dateOf(today);
   // A cycle scheduled from the suggestion takes over on its start date.
@@ -324,14 +333,16 @@ export function computeDay({
   const weaknesses = season?.cycleFocus && season.cycleFocus !== 'auto'
     ? [season.cycleFocus]
     : dataWeaknesses(analysis, profileWeaknesses);
-  const progression = progressionFor(seasonState, responder);
+  const progression = { ...progressionFor(seasonState, responder), levelShift: levelShifts(feedback) };
   const overrides = season?.dayOverrides || {};
+  const yesterday = (() => { const y = dateOf(today); y.setDate(y.getDate() - 1); return localDayKey(y); })();
   const week = weekPlan(seasonState, date, { weaknesses, raceDays: cal.raceDays, overrides, responder, availability, today });
   const todayPlan = week.find(d => d.date === today) || {};
   const avail = availability?.[today] || null;
   const readiness = computeReadiness({
     tsb: physio.tsb, hrvStatus: analysis.hrv?.status, hrvRatio: physio.hrvRatio,
     rhrDelta: analysis.rhr.delta ?? physio.rhrDelta, checkin,
+    extra: feedbackReadiness(feedback[yesterday]),
   });
   // A day off or a session moved here by the availability beats the calendar and the template.
   const availOverride = todayPlan.unavailable || todayPlan.movedFrom ? { type: todayPlan.type, minutes: todayPlan.minutes } : null;
@@ -368,7 +379,8 @@ export function computeDay({
  * would get. Precedence per day: race > hand-made override > calendar session > season template.
  * No readiness adaptation here — that only exists for today.
  */
-export function buildOutlook({ season, plannedEvents = [], events = [], weaknesses = [], today = localDayKey(), weeks = 4, responder = null, availability = {} }) {
+export function buildOutlook({ season, plannedEvents = [], events = [], weaknesses = [], today = localDayKey(), weeks = 4, responder = null, availability = {}, feedback = {} }) {
+  const shift = levelShifts(feedback);
   const all = mergeCalendar(plannedEvents, events);
   const byDay = new Map();
   for (const e of all) byDay.set(dayOf(e), [...(byDay.get(dayOf(e)) || []), e]);
@@ -384,7 +396,7 @@ export function buildOutlook({ season, plannedEvents = [], events = [], weakness
     const p = season?.pendingCycle;
     const cfg = p?.cycleStart && p.cycleStart <= refKey ? { ...season, ...p, pendingCycle: null } : season;
     const state = getSeasonState(cfg, ref);
-    const progression = progressionFor(state, responder);
+    const progression = { ...progressionFor(state, responder), levelShift: shift };
     const sLevel = strengthLevel(state);
     const days = weekPlan(state, ref, { weaknesses, raceDays, overrides, responder, availability, today }).map(d => {
       const evs = byDay.get(d.date) || [];

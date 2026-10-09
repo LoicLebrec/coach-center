@@ -4,6 +4,7 @@ import analytics from '../services/analytics';
 import { asNumber } from '../services/number';
 import { formStatus } from '../services/dailyPlan';
 import { weeklyTotals, Bars } from './WeeklyLoad';
+import { estimateFtp, ftpSuggestion } from '../services/ftp';
 
 function findNumericByKeyPattern(obj, pattern, depth = 0) {
   if (!obj || typeof obj !== 'object' || depth > 2) return null;
@@ -160,35 +161,6 @@ function computePowerPRs(powerCurve, activities) {
   });
 }
 
-function detectFTP(powerCurve, activities, currentFTP) {
-  // Power curve (all-time)
-  const pc20 = getPCWatts(powerCurve, 1200);
-  const pc60 = getPCWatts(powerCurve, 3600);
-
-  // Per-activity icu_best MMP fields (true MMP, more accurate than activity avg)
-  let act20 = 0, act60 = 0;
-  for (const a of activities) {
-    const b20 = asNumber(a.icu_best_1200_watts);
-    const b60 = asNumber(a.icu_best_3600_watts);
-    if (b20 > act20) act20 = b20;
-    if (b60 > act60) act60 = b60;
-  }
-
-  const best20 = Math.max(pc20 ?? 0, act20);
-  const best60 = Math.max(pc60 ?? 0, act60);
-  const from20 = best20 > 0 ? Math.round(best20 * 0.95) : null;
-  const from60 = best60 > 0 ? Math.round(best60) : null;
-  const detected = from20 && from60 ? Math.max(from20, from60) : (from20 || from60);
-  const usedFrom20 = !from60 || (from20 && from20 >= (from60 ?? 0));
-  return {
-    detected: detected || null,
-    method: detected
-      ? (usedFrom20 ? `20 min × 95% · ${best20 > 0 ? Math.round(best20) : '?'}W` : `60 min direct · ${best60 > 0 ? Math.round(best60) : '?'}W`)
-      : null,
-    isNew: !!(detected && currentFTP && detected > currentFTP + 2),
-  };
-}
-
 function detectMaxHR(activities) {
   let maxHR = 0, maxDate = null, maxName = null;
   for (const a of activities) {
@@ -209,7 +181,8 @@ function fmtDate(dateStr) {
   } catch { return null; }
 }
 
-export default function Dashboard({ wellness, activities, athlete, loading, powerCurve }) {
+export default function Dashboard({ wellness, activities, athlete, loading, powerCurve, onUpdateFtp }) {
+  const [ftpMsg, setFtpMsg] = React.useState(null);
   const latest = wellness?.[wellness.length - 1];
   // Today's row is often empty until the watch syncs: use the latest measured value.
   const restingHr = getWellnessRestingHr([...(wellness || [])].reverse().find(w => getWellnessRestingHr(w) != null));
@@ -224,7 +197,6 @@ export default function Dashboard({ wellness, activities, athlete, loading, powe
   const wkgValue = (ftpValue && weightValue) ? (ftpValue / weightValue) : null;
 
   const powerPRs = useMemo(() => computePowerPRs(powerCurve, activities || []), [powerCurve, activities]);
-  const ftpDetection = useMemo(() => detectFTP(powerCurve, activities || [], ftpValue), [powerCurve, activities, ftpValue]);
   const maxHRDetection = useMemo(() => detectMaxHR(activities || []), [activities]);
 
   const efTrend = useMemo(() => analytics.computeEFTrend(activities, 14), [activities]);
@@ -318,6 +290,8 @@ export default function Dashboard({ wellness, activities, athlete, loading, powe
   };
 
   const form = formStatus(tsb);
+  const recentFtp = estimateFtp({ athlete, activities: activities || [] });
+  const ftpChange = ftpSuggestion(ftpValue, recentFtp);
   const ago14 = evolutionData[evolutionData.length - 15] || null;
   const delta = (k) => (ago14 && evolutionData.length ? (evolutionData[evolutionData.length - 1][k] ?? 0) - (ago14[k] ?? 0) : null);
   const weeks = weeklyTotals(activities || [], 8);
@@ -427,12 +401,18 @@ export default function Dashboard({ wellness, activities, athlete, loading, powe
         <h3>Records</h3>
         <div className="db-records">
           <div className="wl-tile">
-            <div className="wl-tile-label">FTP estimée</div>
-            <div className="wl-tile-value">{ftpDetection?.detected ?? '—'} <small>W</small></div>
+            <div className="wl-tile-label">FTP estimée (6 dernières semaines)</div>
+            <div className="wl-tile-value">{recentFtp?.watts ?? '—'} <small>W</small></div>
             <div className="wl-tile-sub">
-              {ftpValue ? `Réglée : ${ftpValue} W` : 'FTP non réglée'}
-              {ftpDetection?.isNew && ftpDetection.detected > (ftpValue || 0) ? ` · +${ftpDetection.detected - (ftpValue || 0)} W à valider` : ''}
+              {ftpValue ? `Réglée : ${ftpValue} W` : 'FTP non réglée'}{recentFtp?.source ? ` · ${recentFtp.source}` : ''}
             </div>
+            {ftpChange && onUpdateFtp && !ftpMsg && (
+              <button type="button" className="btn btn-primary db-ftp-btn" onClick={async () => {
+                const r = await onUpdateFtp(ftpChange.watts);
+                setFtpMsg(r.synced ? 'Mise à jour ici et sur Intervals.icu.' : 'Mise à jour dans l’app.');
+              }}>Passer à {ftpChange.watts} W</button>
+            )}
+            {ftpMsg && <div className="wl-tile-sub">{ftpMsg}</div>}
           </div>
           <div className="wl-tile">
             <div className="wl-tile-label">FC max relevée</div>

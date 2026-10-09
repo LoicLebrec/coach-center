@@ -31,6 +31,7 @@ import './styles/app.css';
 import { asNumber } from './services/number';
 import Logo from './components/Logo';
 import Picto from './components/Pictos';
+import { loadFtpOverride, saveFtpOverride } from './services/ftp';
 import SeasonLandscape from './components/SeasonLandscape';
 import { seasonOf } from './services/periodization';
 
@@ -200,6 +201,19 @@ export default function App() {
   const [wellness, setWellness] = useState([]);
   const [activities, setActivities] = useState([]);
   const [athlete, setAthlete] = useState(null);
+  // FTP set in the app (accepted estimate or test result) beats the synced one.
+  const [ftpOverride, setFtpOverride] = useState(null);
+  useEffect(() => { loadFtpOverride().then(setFtpOverride); }, []);
+  const effectiveAthlete = React.useMemo(() => {
+    if (!athlete || !ftpOverride?.watts) return athlete;
+    return { ...athlete, icu_ftp: ftpOverride.watts, ftp: ftpOverride.watts, syncedFtp: athlete.icu_ftp ?? athlete.ftp ?? null, ftpSetAt: ftpOverride.setAt };
+  }, [athlete, ftpOverride]);
+  const handleUpdateFtp = async (watts) => {
+    const value = await saveFtpOverride(watts, athlete?.icu_ftp ?? null);
+    setFtpOverride(value);
+    if (!intervalsService.isConfigured()) return { synced: false };
+    try { await intervalsService.updateFtp(watts); return { synced: true }; } catch (err) { return { synced: false, error: err.message }; }
+  };
   const [events, setEvents] = useState([]);
   const [plannedEvents, setPlannedEvents] = useState([]);
   const [customWorkoutLibrary, setCustomWorkoutLibrary] = useState([]);
@@ -907,11 +921,12 @@ export default function App() {
           <Today
             wellness={wellness}
             activities={activities}
-            athlete={athlete}
+            athlete={effectiveAthlete}
             events={events}
             plannedEvents={plannedEvents}
             powerCurve={powerCurve}
             loading={loading}
+            onUpdateFtp={handleUpdateFtp}
             onAddPlannedEvent={handleAddPlannedEvent}
             onRemovePlannedEvent={handleRemovePlannedEvent}
             onExportToZwift={handleExportToZwift}
@@ -924,7 +939,7 @@ export default function App() {
           <CoachChat
             wellness={wellness}
             activities={activities}
-            athlete={athlete}
+            athlete={effectiveAthlete}
             events={events}
             plannedEvents={plannedEvents}
             powerCurve={powerCurve}
@@ -937,7 +952,7 @@ export default function App() {
       case VIEWS.WORKOUT_BUILDER:
         return (
           <SmartWorkoutWizard
-            athlete={athlete}
+            athlete={effectiveAthlete}
             events={events}
             plannedEvents={plannedEvents}
             onAddToCalendar={handleAddPlannedEvent}
@@ -945,7 +960,7 @@ export default function App() {
           />
         );
       case VIEWS.ATHLETE_PROFILE:
-        return <AthleteProfile wellness={wellness} athlete={athlete} events={events} activities={activities} loading={loading} powerCurve={powerCurve} />;
+        return <AthleteProfile wellness={wellness} athlete={effectiveAthlete} events={events} activities={activities} loading={loading} powerCurve={powerCurve} />;
       case VIEWS.GPX_BUILDER:
         return (
           <div>
@@ -954,7 +969,7 @@ export default function App() {
               <div className="page-subtitle">Un parcours calé sur ta séance, à envoyer sur Garmin ou COROS</div>
             </div>
             <GpxRouteBuilder
-              athlete={athlete}
+              athlete={effectiveAthlete}
               events={events}
               plannedEvents={plannedEvents}
               workoutLibrary={[...LIBRARY_WORKOUTS, ...customWorkoutLibrary]}
@@ -973,20 +988,20 @@ export default function App() {
           </div>
         );
       case VIEWS.WORKOUT_ANALYSIS:
-        return <WorkoutAnalysis activities={activities} athlete={athlete} plannedEvents={plannedEvents} powerCurve={powerCurve} />;
+        return <WorkoutAnalysis activities={activities} athlete={effectiveAthlete} plannedEvents={plannedEvents} powerCurve={powerCurve} />;
       case VIEWS.NUTRITION:
-        return <NutritionCoach athlete={athlete} activities={activities} plannedEvents={plannedEvents} />;
+        return <NutritionCoach athlete={effectiveAthlete} activities={activities} plannedEvents={plannedEvents} />;
       case VIEWS.DASHBOARD:
-        return <Dashboard wellness={wellness} activities={activities} athlete={athlete} loading={loading} error={error} powerCurve={powerCurve} />;
+        return <Dashboard wellness={wellness} activities={activities} athlete={effectiveAthlete} loading={loading} powerCurve={powerCurve} onUpdateFtp={handleUpdateFtp} />;
       case VIEWS.PMC:
         return (
           <>
-            <PMCChart wellness={wellness} activities={activities} athlete={athlete} loading={loading} />
+            <PMCChart wellness={wellness} activities={activities} athlete={effectiveAthlete} loading={loading} />
             <FormPredictor wellness={wellness} plannedEvents={plannedEvents} />
           </>
         );
       case VIEWS.ACTIVITIES:
-        return <Activities activities={activities} athlete={athlete} loading={loading} />;
+        return <Activities activities={activities} athlete={effectiveAthlete} loading={loading} />;
       case VIEWS.WEEKLY:
         return <WeeklyLoad activities={activities} loading={loading} />;
       case VIEWS.CALENDAR:
@@ -996,7 +1011,7 @@ export default function App() {
             plannedEvents={plannedEvents}
             activities={activities}
             wellness={wellness}
-            athlete={athlete}
+            athlete={effectiveAthlete}
             loading={loading}
             onAddPlannedEvent={handleAddPlannedEvent}
             onRemovePlannedEvent={handleRemovePlannedEvent}

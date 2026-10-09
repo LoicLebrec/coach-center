@@ -14,6 +14,9 @@ import { reviewSession, activitiesOn } from '../services/sessionReview';
 import { fmtDose, STRENGTH_KINDS, STRENGTH_LABELS } from '../data/strengthLibrary';
 import ExerciseFigure from './ExerciseFigure';
 import SeasonLandscape from './SeasonLandscape';
+import RideFeedbackForm from './RideFeedbackForm';
+import { loadFeedback, typeFromRides } from '../services/rideFeedback';
+import { estimateFtp, ftpSuggestion, ftpTestDue } from '../services/ftp';
 import { loadAvailability, setAvailability, availabilityValue, availabilityLabel, AVAILABILITY_OPTIONS } from '../services/availability';
 import Picto from './Pictos';
 
@@ -321,10 +324,10 @@ function CycleCard({ cycle, pending, onApply, onCancelPending }) {
 }
 
 const EDIT_TYPES = ['recovery', 'endurance', 'durability', 'tempo', 'force', 'sweetspot', 'threshold', 'vo2',
-  'anaerobic', 'sprint', 'race_sim', 'openers'];
+  'anaerobic', 'sprint', 'race_sim', 'openers', 'test'];
 const TYPE_SHORT = {
   recovery: 'Réc', endurance: 'End', durability: 'Dur', tempo: 'Tmp', force: 'For', sweetspot: 'SS',
-  threshold: 'Seuil', vo2: 'VO2', anaerobic: 'Ana', sprint: 'Spr', race_sim: 'Sim', openers: 'Débl', race: 'Course',
+  threshold: 'Seuil', vo2: 'VO2', anaerobic: 'Ana', sprint: 'Spr', race_sim: 'Sim', openers: 'Débl', race: 'Course', test: 'Test',
 };
 const SOURCE_LABELS = { override: 'modifié', planned: 'calendrier', plan: 'plan', race: 'course', moved: 'déplacée', availability: 'pas dispo' };
 
@@ -652,7 +655,7 @@ function DataCard({ analysis }) {
 
 export default function Today({
   wellness = [], activities = [], athlete, events = [], plannedEvents = [], powerCurve = null, loading,
-  onAddPlannedEvent, onRemovePlannedEvent, onExportToZwift, onSendToWahoo, onOpenCalendar,
+  onAddPlannedEvent, onRemovePlannedEvent, onExportToZwift, onSendToWahoo, onOpenCalendar, onUpdateFtp,
 }) {
   const today = localDayKey();
   const [checkin, setCheckin] = useState(DEFAULT_CHECKIN);
@@ -714,17 +717,26 @@ export default function Today({
     return () => window.removeEventListener('availability-changed', onChange);
   }, []);
 
+  // How past rides felt (services/rideFeedback): tomorrow's readiness, next levels.
+  const [feedback, setFeedback] = useState({});
+  useEffect(() => {
+    loadFeedback().then(setFeedback);
+    const onChange = (e) => setFeedback(e.detail || {});
+    window.addEventListener('ride-feedback-changed', onChange);
+    return () => window.removeEventListener('ride-feedback-changed', onChange);
+  }, []);
+
   const day = useMemo(() => computeDay({
     wellness, activities, athlete, events, plannedEvents, powerCurve,
-    season, profileWeaknesses: profile.weaknesses || [], checkin, today, responder, availability,
-  }), [wellness, activities, athlete, events, plannedEvents, powerCurve, season, profile.weaknesses, checkin, today, responder, availability]);
+    season, profileWeaknesses: profile.weaknesses || [], checkin, today, responder, availability, feedback,
+  }), [wellness, activities, athlete, events, plannedEvents, powerCurve, season, profile.weaknesses, checkin, today, responder, availability, feedback]);
   const {
     physio, cal, seasonState, analysis, readiness, base, adapted, strength, cycle, changes, form, phaseInfo,
     level: lvl,
   } = day;
   const outlook = useMemo(() => buildOutlook({
-    season, plannedEvents, events, weaknesses: day.weaknesses, today, weeks: 4, responder, availability,
-  }), [season, plannedEvents, events, day.weaknesses, today, responder, availability]);
+    season, plannedEvents, events, weaknesses: day.weaknesses, today, weeks: 4, responder, availability, feedback,
+  }), [season, plannedEvents, events, day.weaknesses, today, responder, availability, feedback]);
 
   // Keep what was prescribed today so the session analysis can compare the ride to it.
   // The prescription is built from the start-of-day state, so it stays put once ridden.
@@ -732,7 +744,10 @@ export default function Today({
     if (loading) return;
     const rx = cal.race ? { type: 'race', title: cal.race.name || cal.race.title || 'Course' }
       : base.rest || readiness.level === 'rest' || !adapted ? { type: 'rest' }
-      : { type: adapted.trainingType, title: adapted.title, objective: adapted.objective, blocks: adapted.blocks, minutes: adapted.minutes };
+      : {
+        type: adapted.trainingType, title: adapted.title, objective: adapted.objective, blocks: adapted.blocks, minutes: adapted.minutes,
+        ...(base.family && adapted.trainingType === base.trainingType ? { family: base.family, familyLabel: base.familyLabel, level: base.level } : {}),
+      };
     persistence.savePref(`prescription-${today}`, { ...rx, date: today, strength: strength ? strength.title : null }).catch(() => { });
   }, [loading, today, cal.race, base.rest, readiness.level, adapted, strength]);
 
@@ -768,11 +783,12 @@ export default function Today({
         plannedEvents: plannedEvents.filter(e => dayOf(e) >= today && dayOf(e) <= horizon),
         athlete: { icu_ftp: ftp, icu_weight: num(athlete?.icu_weight) || num(athlete?.weight) || null },
         availability: Object.fromEntries(Object.entries(availability).filter(([k]) => k <= horizon)),
+        feedback: Object.fromEntries(Object.entries(feedback).filter(([k]) => k >= localDayKey(new Date(Date.now() - 42 * 86400000)))),
         tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
     }, 2000);
     return () => clearTimeout(timer);
-  }, [loading, day, ftp, athlete, season, profile.weaknesses, checkin, plannedEvents, today, responder, availability]);
+  }, [loading, day, ftp, athlete, season, profile.weaknesses, checkin, plannedEvents, today, responder, availability, feedback]);
 
   const handleSave = async () => {
     if (!adapted || !onAddPlannedEvent) return;
@@ -803,6 +819,38 @@ export default function Today({
   };
   const noSession = cal.race || base.rest;
 
+  // Feedback: today's ride once done, yesterday's if it was never rated.
+  const todayPlanForFeedback = adapted && todayReview?.verdict !== 'extra' ? {
+    type: adapted.trainingType,
+    ...(base.family && adapted.trainingType === base.trainingType ? { family: base.family, familyLabel: base.familyLabel, level: base.level } : {}),
+  } : { type: typeFromRides(doneToday.rides) };
+  const yesterdayKey = localDayKey(new Date(Date.now() - 86400000));
+  const yesterdayRides = activitiesOn(activities, yesterdayKey).rides;
+  const [yesterdayPlan, setYesterdayPlan] = useState(null);
+  useEffect(() => {
+    persistence.getPref(`prescription-${yesterdayKey}`, null).then(setYesterdayPlan).catch(() => { });
+  }, [yesterdayKey]);
+
+  // FTP: recent estimate vs the FTP in use; test reminder 8 weeks after the last change.
+  const ftpEstimate = useMemo(() => estimateFtp({ athlete, activities }), [athlete, activities]);
+  const [ftpDismissed, setFtpDismissed] = useState(null);
+  const [ftpMsg, setFtpMsg] = useState(null);
+  useEffect(() => { persistence.getPref('ftp-dismissed', null).then(setFtpDismissed).catch(() => { }); }, []);
+  const ftpProposal = onUpdateFtp ? ftpSuggestion(ftp, ftpEstimate, ftpDismissed) : null;
+  const testDue = !ftpProposal && ftpTestDue(athlete?.ftpSetAt, seasonState.phase);
+  const nextTestDay = useMemo(() => outlook.flatMap(w => w.days)
+    .find(d => d.date > today && d.date <= localDayKey(new Date(Date.now() + 10 * 86400000))
+      && ['threshold', 'sweetspot', 'vo2'].includes(d.type) && !d.unavailable), [outlook, today]);
+  const acceptFtp = async () => {
+    const res = await onUpdateFtp(ftpProposal.watts);
+    setFtpMsg(res.synced ? `FTP passée à ${ftpProposal.watts} W, ici et sur Intervals.icu.`
+      : `FTP passée à ${ftpProposal.watts} W dans l’app.${res.error ? ' Intervals.icu n’a pas pu être mis à jour : fais-le dans ses réglages.' : ''}`);
+  };
+  const dismissFtp = () => {
+    setFtpDismissed(ftpEstimate.watts);
+    persistence.savePref('ftp-dismissed', ftpEstimate.watts).catch(() => { });
+  };
+
   return (
     <div className="today">
       <header className="today-header today-hero">
@@ -831,6 +879,9 @@ export default function Today({
             ✓ Fait : {doneToday.rides.map(a => `${a.name || a.type}${a.icu_training_load ? ` (${Math.round(a.icu_training_load)} TSS)` : ''}`).join(', ')}
             <Review review={todayReview} strengthPlanned={null} strengthDone={[]} />
           </div>
+        )}
+        {doneToday.rides.length > 0 && (
+          <RideFeedbackForm date={today} plan={todayPlanForFeedback} entry={feedback[today]} onSaved={setFeedback} />
         )}
 
         {cal.race ? (
@@ -983,6 +1034,48 @@ export default function Today({
         </div>
       </section>
 
+
+      {yesterdayRides.length > 0 && !feedback[yesterdayKey] && (
+        <section className="today-card">
+          <div className="today-card-head"><h2>Ta sortie d’hier</h2></div>
+          <p className="today-hint">{yesterdayRides.map(a => a.name || 'Sortie').join(', ')} : dis comment c’était, le plan s’en sert pour la suite.</p>
+          <RideFeedbackForm date={yesterdayKey} plan={yesterdayPlan?.blocks?.length ? yesterdayPlan : { type: typeFromRides(yesterdayRides) }} entry={null} onSaved={setFeedback} compact />
+        </section>
+      )}
+
+      {(ftpProposal || ftpMsg) && (
+        <section className="today-card ftp-card">
+          <div className="today-card-head"><h2>{ftpMsg ? 'FTP mise à jour' : ftpProposal.delta > 0 ? 'Ta FTP a progressé' : 'Ta FTP a baissé'}</h2></div>
+          {ftpMsg ? <p className="today-hint">{ftpMsg} Zones, intensité et charge sont recalculées.</p> : (
+            <>
+              <p className="today-hint">
+                Estimée à <strong>{ftpProposal.watts} W</strong> ({ftpProposal.source}{ftpProposal.date ? `, ${fmtDay(ftpProposal.date)}` : ''}),
+                {' '}réglée à {ftpProposal.current} W ({ftpProposal.delta > 0 ? '+' : ''}{ftpProposal.pct} %).
+                {' '}Avec une FTP à jour, tes zones et tes séances tombent juste.
+              </p>
+              <div className="today-actions">
+                <button type="button" className="btn btn-primary" onClick={acceptFtp}>Passer à {ftpProposal.watts} W</button>
+                <button type="button" className="btn" onClick={dismissFtp}>Pas maintenant</button>
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {testDue && (
+        <section className="today-card ftp-card">
+          <div className="today-card-head"><h2>Un test FTP ?</h2></div>
+          <p className="today-hint">
+            Ta FTP n’a pas bougé depuis plus de 8 semaines. Un test de 20 min recale tes zones.
+            {nextTestDay ? ` Il peut remplacer ta séance ${TYPE_LABELS[nextTestDay.type].toLowerCase()} du ${fmtDay(nextTestDay.date)}.` : ''}
+          </p>
+          {nextTestDay && (
+            <button type="button" className="btn btn-primary" onClick={() => editDays({ [nextTestDay.date]: { type: 'test', minutes: 75 } })}>
+              Programmer le test le {fmtDay(nextTestDay.date)}
+            </button>
+          )}
+        </section>
+      )}
 
       {strength && (
         <section className="today-card">

@@ -52,7 +52,7 @@ const actDay = (a) => String(a?.start_date_local || a?.date || '').slice(0, 10);
 
 // ── Session typing ────────────────────────────────────────────────────────────
 
-export const HARD_TYPES = ['vo2', 'threshold', 'sweetspot', 'anaerobic', 'sprint', 'race_sim', 'race', 'force'];
+export const HARD_TYPES = ['vo2', 'threshold', 'sweetspot', 'anaerobic', 'sprint', 'race_sim', 'race', 'force', 'test'];
 // "Moderate" sessions: count as grey-zone load, not as a hard day.
 export const MODERATE_TYPES = ['tempo', 'durability'];
 

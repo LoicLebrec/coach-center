@@ -15,6 +15,8 @@ import workoutAnalyzer from '../services/workout-analyzer';
 import Picto from './Pictos';
 import RideInsights from './RideInsights';
 import SessionFeedback, { RecentRides, feedbackFor } from './SessionFeedback';
+import RideFeedbackForm from './RideFeedbackForm';
+import { loadFeedback, typeFromRides } from '../services/rideFeedback';
 import persistence from '../services/persistence';
 
 // Convert Strava laps array → format expected by workoutAnalyzer.parseIntervals()
@@ -873,6 +875,14 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents, po
     return () => { alive = false; };
   }, [recent]);
 
+  const [rideFeelings, setRideFeelings] = useState({});
+  useEffect(() => {
+    loadFeedback().then(setRideFeelings);
+    const onChange = (e) => setRideFeelings(e.detail || {});
+    window.addEventListener('ride-feedback-changed', onChange);
+    return () => window.removeEventListener('ride-feedback-changed', onChange);
+  }, []);
+
   // Open the latest ride straight away.
   useEffect(() => {
     if (selectedId == null && recent.length) handleSelect(recent[0].id);
@@ -900,7 +910,12 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents, po
         <>
           <RecentRides rides={recent} selectedId={selectedId} onSelect={handleSelect} toneOf={toneOf} />
 
-          {feedback && <SessionFeedback date={selectedDate} plan={feedback.plan} review={feedback.review} />}
+          {feedback && (
+            <SessionFeedback date={selectedDate} plan={feedback.plan} review={feedback.review}>
+              <RideFeedbackForm date={selectedDate} plan={feedback.plan?.blocks?.length ? feedback.plan : { type: typeFromRides(feedback.rides) }}
+                entry={rideFeelings[selectedDate]} onSaved={setRideFeelings} />
+            </SessionFeedback>
+          )}
 
           {!ftp && (
             <p className="ride-note">FTP non renseignée : l’intensité et la charge ne peuvent pas être calculées.</p>

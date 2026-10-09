@@ -82,6 +82,7 @@ async function refreshUser(userId, { force = false } = {}) {
       profileWeaknesses: context.profileWeaknesses || [],
       responder: context.responder || null,
       availability: context.availability || {},
+      feedback: context.feedback || {},
       checkin,
       today,
     });

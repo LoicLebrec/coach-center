@@ -83,6 +83,15 @@ function family(meta, levels) {
 
 const SINGLES = [
     ride({
+        id: 'ftp-test-20', title: 'Test FTP 20 min', trainingType: 'test', phases: ALL,
+        objective: '20 min à fond : FTP ≈ 95 % de la puissance moyenne',
+        notes: 'Frais (pas de séance dure la veille). Pars légèrement sous ton objectif les 5 premières minutes, accélère sur les 5 dernières. Même parcours ou home trainer d’un test à l’autre.',
+        ref: 'Allen & Coggan',
+        blocks: [wu(20), { label: 'Accélération #1', durationMin: 1, zone: 'Z5' }, easy(1), { label: 'Accélération #2', durationMin: 1, zone: 'Z5' }, easy(1),
+            { label: 'Accélération #3', durationMin: 1, zone: 'Z5' }, easy(5), { label: 'Vidage 5 min', durationMin: 5, zone: 'Z5' }, easy(10),
+            { label: 'Test 20 min à fond', durationMin: 20, zone: 'Z4' }, cd(10)],
+    }),
+    ride({
         id: 'rec-45', title: 'Recovery Spin 45′', trainingType: 'recovery', phases: ALL,
         objective: 'Absorb load, flush fatigue', notes: 'Very easy, high cadence, no efforts.',
         blocks: [easy(40, 'Easy Spin'), cd(5)],
