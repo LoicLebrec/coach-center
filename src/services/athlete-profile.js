@@ -10,14 +10,14 @@ export const RACE_TYPES = {
 };
 
 export const WEAKNESSES = {
-  sprint:      { label: 'Sprint / Finish', icon: '⚡', training: 'intervals', focus: 'neuromuscular power, <30s efforts' },
-  climbing:    { label: 'Grimpeur / Cols', icon: '⛰️', training: 'threshold', focus: 'sustained power at threshold, VAM' },
-  threshold:   { label: 'Seuil / Tempo', icon: '🔥', training: 'threshold', focus: '20-40min FTP intervals' },
-  vo2max:      { label: 'VO2max / 5min', icon: '💨', training: 'intervals', focus: '3-8min efforts at 110-120% FTP' },
-  endurance:   { label: 'Endurance / Base aérobie', icon: '🫀', training: 'endurance', focus: 'long Z2, fat oxidation' },
-  punch:       { label: 'Explosivité / Relances', icon: '💥', training: 'intervals', focus: 'short hard efforts after tempo' },
-  recovery:    { label: 'Récupération / Répétition', icon: '🔁', training: 'endurance', focus: 'aerobic efficiency, low HR training' },
-  descending:  { label: 'Descente / Technique', icon: '🏔️', training: 'skills', focus: 'bike handling, confidence' },
+  sprint:      { label: 'Sprint / Finish', icon: 'bolt', training: 'intervals', focus: 'neuromuscular power, <30s efforts' },
+  climbing:    { label: 'Grimpeur / Cols', icon: 'mountain', training: 'threshold', focus: 'sustained power at threshold, VAM' },
+  threshold:   { label: 'Seuil / Tempo', icon: 'fire', training: 'threshold', focus: '20-40min FTP intervals' },
+  vo2max:      { label: 'VO2max / 5min', icon: 'wind', training: 'intervals', focus: '3-8min efforts at 110-120% FTP' },
+  endurance:   { label: 'Endurance / Base aérobie', icon: 'heart', training: 'endurance', focus: 'long Z2, fat oxidation' },
+  punch:       { label: 'Explosivité / Relances', icon: 'burst', training: 'intervals', focus: 'short hard efforts after tempo' },
+  recovery:    { label: 'Récupération / Répétition', icon: 'recover', training: 'endurance', focus: 'aerobic efficiency, low HR training' },
+  descending:  { label: 'Descente / Technique', icon: 'mountain', training: 'skills', focus: 'bike handling, confidence' },
 };
 
 export const SEASON_PHASES = {
@@ -84,41 +84,41 @@ export function buildWeekPlan({ profile, ctl, atl, tsb, avgWeeklyTss, activities
 
   if (isWeeklyRacer && hasRaceThisWeek) {
     weekType = 'race_week';
-    reasons.push(`🏁 Course cette semaine → prépa spécifique : activation + récup post-course`);
-    reasons.push(`🔄 En tant que ${RACE_TYPES[raceType].label}, les courses FONT partie de l'entraînement`);
+    reasons.push(`Course cette semaine → prépa spécifique : activation + récup post-course`);
+    reasons.push(`En tant que ${RACE_TYPES[raceType].label}, les courses FONT partie de l'entraînement`);
   } else if (daysToRace !== null && daysToRace <= 7) {
     weekType = 'taper';
-    reasons.push(`🏁 Course "${upcomingRace?.title}" dans ${daysToRace}j → affûtage : -40% volume, garder l'intensité`);
+    reasons.push(`Course "${upcomingRace?.title}" dans ${daysToRace}j → affûtage : -40% volume, garder l'intensité`);
   } else if (daysToRace !== null && daysToRace <= 14) {
     weekType = 'pre_race';
-    reasons.push(`🏁 Course dans ${daysToRace}j → semaine de consolidation avant affûtage`);
+    reasons.push(`Course dans ${daysToRace}j → semaine de consolidation avant affûtage`);
   } else if (tsb < -25 || consecutiveHard >= 3) {
     weekType = 'recovery';
-    if (tsb < -25) reasons.push(`😓 TSB = ${tsb} (très fatigué) → récupération obligatoire`);
-    if (consecutiveHard >= 3) reasons.push(`📉 ${consecutiveHard} semaines de charge élevée → semaine de récupération planifiée`);
+    if (tsb < -25) reasons.push(`TSB = ${tsb} (très fatigué) → récupération obligatoire`);
+    if (consecutiveHard >= 3) reasons.push(`${consecutiveHard} semaines de charge élevée → semaine de récupération planifiée`);
   } else if (tsb < -10) {
     weekType = 'maintain';
-    reasons.push(`😮‍💨 TSB = ${tsb} → charge maintenue, pas d'augmentation`);
+    reasons.push(`TSB = ${tsb} → charge maintenue, pas d'augmentation`);
   } else if (phase === 'base') {
     weekType = 'base';
-    reasons.push(`🌱 Phase de base → priorité volume Z2, développement aérobie`);
+    reasons.push(`Phase de base → priorité volume Z2, développement aérobie`);
   } else if (tsb > 5) {
     weekType = 'build';
-    reasons.push(`💪 TSB = +${tsb} → tu es frais, moment idéal pour une semaine de charge`);
+    reasons.push(`TSB = +${tsb} → tu es frais, moment idéal pour une semaine de charge`);
   } else {
     weekType = 'build';
-    reasons.push(`📈 TSB = ${tsb}, progression régulière → +8% vs charge moyenne`);
+    reasons.push(`TSB = ${tsb}, progression régulière → +8% vs charge moyenne`);
   }
 
   // ── Weakness-based session priorities ──
   const weaknessSessions = weaknesses.slice(0, 2).map(w => WEAKNESSES[w]);
   if (weaknesses.length > 0) {
     const wLabels = weaknesses.map(w => WEAKNESSES[w]?.label).filter(Boolean).join(', ');
-    reasons.push(`🎯 Faiblesses ciblées : ${wLabels} → séances spécifiques incluses`);
+    reasons.push(`Faiblesses ciblées : ${wLabels} → séances spécifiques incluses`);
   }
 
-  reasons.push(`📊 Charge 4 semaines : ${avgWeeklyTss} TSS/sem · CTL ${ctl} · ATL ${atl}`);
-  if (phase) reasons.push(`📅 Phase actuelle : ${SEASON_PHASES[phase]?.label}`);
+  reasons.push(`Charge 4 semaines : ${avgWeeklyTss} TSS/sem · CTL ${ctl} · ATL ${atl}`);
+  if (phase) reasons.push(`Phase actuelle : ${SEASON_PHASES[phase]?.label}`);
 
   // ── Build the 7-day session plan ──
   const sessionsByType = buildSessionPlan(weekType, raceType, weaknesses, phase, hasRaceThisWeek, daysToRace, weekDates, plannedEvents, hoursAvailable);
@@ -204,9 +204,9 @@ function buildSessionPlan(weekType, raceType, weaknesses, phase, hasRaceThisWeek
     // Weakness-specific justification
     let reason = session.reason + hoursNote;
     if (sessionType === 'intervals' && weakPrimary && WEAKNESSES[weakPrimary]?.training === 'intervals') {
-      reason = `🎯 Ciblé faiblesse "${WEAKNESSES[weakPrimary]?.label}" — ${WEAKNESSES[weakPrimary]?.focus}${hoursNote}`;
+      reason = `Ciblé faiblesse "${WEAKNESSES[weakPrimary]?.label}" — ${WEAKNESSES[weakPrimary]?.focus}${hoursNote}`;
     } else if (sessionType === 'threshold' && weakPrimary === 'threshold') {
-      reason = `🎯 Ciblé faiblesse "Seuil" — efforts 20-40min à 90-95% FTP${hoursNote}`;
+      reason = `Ciblé faiblesse "Seuil" — efforts 20-40min à 90-95% FTP${hoursNote}`;
     }
 
     // Adjust session type if not enough time (e.g. long needs 3h+, intervals needs 1h min)

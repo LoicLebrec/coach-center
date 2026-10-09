@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { calcDailyNeeds } from '../data/nutritionRecipes';
 import { getFrenchSlotRecipes, buildFrenchWeekShoppingList } from '../data/frenchRecipes';
+import Picto from './Pictos';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const DIET_OPTIONS = [
-  { key: 'omnivore',   label: 'Omnivore',   icon: '🥩' },
-  { key: 'vegetarian', label: 'Végétarien', icon: '🥚' },
-  { key: 'vegan',      label: 'Vegan',      icon: '🌱' },
+  { key: 'omnivore',   label: 'Omnivore',   icon: 'plate' },
+  { key: 'vegetarian', label: 'Végétarien', icon: 'egg' },
+  { key: 'vegan',      label: 'Vegan',      icon: 'leaf' },
 ];
 
 const DIFFICULTY_OPTIONS = [
@@ -17,13 +18,13 @@ const DIFFICULTY_OPTIONS = [
 ];
 
 const MEAL_META = {
-  breakfast: { label: 'Petit-déjeuner',    icon: '☀️',  color: '#f59e0b' },
-  pre:       { label: 'Avant la sortie',   icon: '⚡',   color: '#f97316' },
-  during:    { label: 'Pendant la sortie', icon: '🚴',   color: '#f97316' },
-  post:      { label: 'Récupération',      icon: '💪',   color: '#22c55e' },
-  lunch:     { label: 'Déjeuner',          icon: '🍽️',  color: '#a78bfa' },
-  snack:     { label: 'Collation',         icon: '🍌',   color: '#fb923c' },
-  dinner:    { label: 'Dîner',             icon: '🌙',   color: '#7dd3fc' },
+  breakfast: { label: 'Petit-déjeuner',    icon: 'sun',  color: '#f59e0b' },
+  pre:       { label: 'Avant la sortie',   icon: 'bolt',   color: '#f97316' },
+  during:    { label: 'Pendant la sortie', icon: 'bike',   color: '#f97316' },
+  post:      { label: 'Récupération',      icon: 'recover',   color: '#22c55e' },
+  lunch:     { label: 'Déjeuner',          icon: 'plate',  color: '#a78bfa' },
+  snack:     { label: 'Collation',         icon: 'apple',   color: '#fb923c' },
+  dinner:    { label: 'Dîner',             icon: 'moon',   color: '#7dd3fc' },
 };
 
 const LOAD_COLORS = { rest: '#64748b', easy: '#22c55e', moderate: '#f59e0b', hard: '#f97316', long: '#ef4444' };
@@ -119,7 +120,7 @@ function RecipeCard({ recipe, expanded, onToggle, onShuffle, poolSize, poolIdx }
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <DifficultyBadge difficulty={difficulty} />
-            <span style={{ fontSize: 12, color: 'var(--text-4)' }}>⏱ {time} min</span>
+            <span style={{ fontSize: 12, color: 'var(--text-4)' }}>{time} min</span>
             <span style={{ ...monoVal('#f59e0b'), fontSize: 12 }}>{macros.cal} kcal{macrosEstimated ? '*' : ''}</span>
             <span style={{ ...monoVal('#f97316'), fontSize: 12 }}>G {macros.carbs}g</span>
             <span style={{ ...monoVal('#22c55e'), fontSize: 12 }}>P {macros.protein}g</span>
@@ -130,7 +131,7 @@ function RecipeCard({ recipe, expanded, onToggle, onShuffle, poolSize, poolIdx }
         <div style={{ display: 'flex', borderLeft: '1px solid var(--border)' }}>
           <button onClick={e => { e.stopPropagation(); onShuffle(); }} title="Autre recette"
             style={{ padding: '0 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text-3)' }}>
-            🔀
+            <Picto name="shuffle" size={18} />
           </button>
           <button onClick={onToggle} style={{
             padding: '0 12px', background: 'none', border: 'none', borderLeft: '1px solid var(--border)',
@@ -165,7 +166,7 @@ function RecipeCard({ recipe, expanded, onToggle, onShuffle, poolSize, poolIdx }
           </p>
           {note && (
             <div style={{ padding: '9px 13px', borderRadius: 8, background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.18)', fontSize: 13, color: 'var(--accent-orange)', lineHeight: 1.6 }}>
-              💡 {note}
+              {note}
             </div>
           )}
         </div>
@@ -197,7 +198,7 @@ function MealSlot({ slotKey, diet, weightKg, difficulty, staticRecipes = null })
   return (
     <div style={{ marginBottom: 18 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 14 }}>{icon}</span>
+        <Picto name={icon} size={18} />
         <span style={{ fontSize: 13, fontWeight: 600, color }}>{label}</span>
       </div>
       {!current ? (
@@ -253,7 +254,7 @@ function ShoppingList({ diet, weightKg, difficulty }) {
       `\n${cat.category}`,
       ...cat.items.map(item => {
         const measures = [...new Set(item.measures)].join(', ');
-        return `☐ ${item.name}${measures ? ' — ' + measures : ''}`;
+        return `- ${item.name}${measures ? ' — ' + measures : ''}`;
       }),
     ]);
     navigator.clipboard?.writeText(lines.join('\n')).catch(() => {});
@@ -264,7 +265,7 @@ function ShoppingList({ diet, weightKg, difficulty }) {
 
   if (state === 'idle') return (
     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-      <div style={{ fontSize: 44, marginBottom: 16 }}>🛒</div>
+      <div style={{ marginBottom: 16 }}><Picto name="cart" size={48} /></div>
       <div style={{ fontSize: 15, color: 'var(--text-2)', marginBottom: 6, lineHeight: 1.6 }}>
         Génère un plan repas pour une semaine type et la liste d'ingrédients agrégée.
       </div>
@@ -306,11 +307,11 @@ function ShoppingList({ diet, weightKg, difficulty }) {
           <button onClick={copyList} style={{
             padding: '7px 14px', borderRadius: 8, background: 'var(--bg-3)', border: '1px solid var(--border)',
             color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-          }}>📋 Copier</button>
+          }}>Copier</button>
           <button onClick={generate} style={{
             padding: '7px 14px', borderRadius: 8, background: 'var(--bg-3)', border: '1px solid var(--border)',
             color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-          }}>🔄 Régénérer</button>
+          }}>Régénérer</button>
         </div>
       </div>
 
@@ -379,7 +380,7 @@ function ShoppingList({ diet, weightKg, difficulty }) {
                       if (!meta) return null;
                       return (
                         <div key={slot} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <span style={{ fontSize: 13 }}>{meta.icon}</span>
+                          <Picto name={meta.icon} size={16} />
                           <span style={{ fontSize: 12, color: meta.color, minWidth: 120 }}>{meta.label}</span>
                           <span style={{ fontSize: 13, color: recipe ? 'var(--text-2)' : 'var(--text-4)', fontStyle: recipe ? 'normal' : 'italic' }}>
                             {recipe ? recipe.name : '—'}
@@ -608,9 +609,9 @@ export default function NutritionCoach({ athlete, activities = [], plannedEvents
   const rightSlots = ['snack', ...(showPost ? ['post'] : []), 'dinner'];
 
   const tabs = [
-    { key: 'menu',    label: 'Menu du jour',     icon: '🍽️' },
-    { key: 'courses', label: 'Liste de courses', icon: '🛒' },
-    { key: 'journal', label: 'Mon journal',      icon: '📔' },
+    { key: 'menu',    label: 'Menu du jour',     icon: 'plate' },
+    { key: 'courses', label: 'Liste de courses', icon: 'cart' },
+    { key: 'journal', label: 'Mon journal',      icon: 'book' },
   ];
 
   return (
@@ -635,7 +636,7 @@ export default function NutritionCoach({ athlete, activities = [], plannedEvents
                 color: diet === opt.key ? 'var(--accent-orange)' : 'var(--text-3)',
                 transition: 'all 0.15s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
               }}>
-                <span style={{ fontSize: 20 }}>{opt.icon}</span>
+                <Picto name={opt.icon} size={26} />
                 <span style={{ fontSize: 12, fontWeight: 600 }}>{opt.label}</span>
               </button>
             ))}
@@ -662,7 +663,7 @@ export default function NutritionCoach({ athlete, activities = [], plannedEvents
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <span style={tag(LOAD_COLORS[needs.loadLevel])}>{needs.loadLabel}</span>
             {needs.preloading && (
-              <span style={tag('#7c3aed')}>Charge glucidique 🔋</span>
+              <span style={tag('#7c3aed')}>Charge glucidique</span>
             )}
             {needs.durationH > 0 && (
               <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
@@ -727,7 +728,7 @@ export default function NutritionCoach({ athlete, activities = [], plannedEvents
             fontSize: 13, fontWeight: activeTab === tab.key ? 600 : 400,
             cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit',
           }}>
-            <span style={{ fontSize: 14 }}>{tab.icon}</span>
+            <Picto name={tab.icon} size={17} />
             {tab.label}
           </button>
         ))}
@@ -757,7 +758,7 @@ export default function NutritionCoach({ athlete, activities = [], plannedEvents
             ))}
 
             <div style={{ padding: '13px 16px', borderRadius: 10, background: 'rgba(77,127,232,0.07)', border: '1px solid rgba(77,127,232,0.18)', marginTop: 6 }}>
-              <div style={{ ...sectionLabel, color: '#f97316', marginBottom: 6 }}>💧 Hydratation</div>
+              <div style={{ ...sectionLabel, color: '#f97316', marginBottom: 6 }}>Hydratation</div>
               <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, lineHeight: 1.7 }}>
                 {needs.loadLevel === 'long'
                   ? `≥ ${Math.round(weight * 0.05)} L. Pendant : 500–700 ml/h avec électrolytes si > 2h.`
@@ -769,7 +770,7 @@ export default function NutritionCoach({ athlete, activities = [], plannedEvents
 
             {needs.loadLevel !== 'rest' && (
               <div style={{ padding: '13px 16px', borderRadius: 10, background: 'rgba(34,211,238,0.05)', border: '1px solid rgba(34,211,238,0.14)', marginTop: 10 }}>
-                <div style={{ ...sectionLabel, color: 'var(--accent-orange)', marginBottom: 6 }}>⏱ Timing nutritionnel</div>
+                <div style={{ ...sectionLabel, color: 'var(--accent-orange)', marginBottom: 6 }}>Timing nutritionnel</div>
                 <ul style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, paddingLeft: 18, lineHeight: 2 }}>
                   <li>Repas pré-séance : <strong>2–3h avant</strong> ou collation 45 min</li>
                   {needs.loadLevel === 'long' && <li>Pendant : <strong>60–90 g glucides/h</strong> dès 45 min</li>}

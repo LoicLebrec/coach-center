@@ -13,6 +13,8 @@ import { profileFromData, weekRanges, TRAIT_TEXT } from '../services/responderPr
 import { reviewSession, activitiesOn } from '../services/sessionReview';
 import { fmtDose, STRENGTH_KINDS, STRENGTH_LABELS } from '../data/strengthLibrary';
 import ExerciseFigure from './ExerciseFigure';
+import SeasonLandscape from './SeasonLandscape';
+import Picto from './Pictos';
 
 /* ───────────────────────── helpers ───────────────────────── */
 
@@ -322,7 +324,7 @@ const EDIT_TYPES = ['recovery', 'endurance', 'durability', 'tempo', 'force', 'sw
 const EDIT_MINUTES = [30, 45, 60, 75, 90, 105, 120, 150, 180, 210, 240];
 const TYPE_SHORT = {
   recovery: 'Réc', endurance: 'End', durability: 'Dur', tempo: 'Tmp', force: 'For', sweetspot: 'SS',
-  threshold: 'Seuil', vo2: 'VO2', anaerobic: 'Ana', sprint: 'Spr', race_sim: 'Sim', openers: 'Débl', race: '🏁',
+  threshold: 'Seuil', vo2: 'VO2', anaerobic: 'Ana', sprint: 'Spr', race_sim: 'Sim', openers: 'Débl', race: 'Course',
 };
 const SOURCE_LABELS = { override: 'modifié', planned: 'calendrier', plan: 'plan', race: 'course' };
 
@@ -408,7 +410,7 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit }) {
             <div>
               <div className="today-metric-label">{fmtDay(day.date)} · {SOURCE_LABELS[day.source]}</div>
               <div className="today-session-title" style={{ fontSize: 17 }}>
-                {day.type === 'rest' ? 'Repos' : day.type === 'race' ? `🏁 ${day.title}` : day.title || TYPE_LABELS[day.type]}
+                {day.type === 'rest' ? 'Repos' : day.type === 'race' ? <><Picto name="flag" size={18} className="picto-inline" /> {day.title}</> : day.title || TYPE_LABELS[day.type]}
               </div>
             </div>
           </div>
@@ -436,36 +438,39 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit }) {
 
           {editable && (
             <div className="today-plan-edit">
-              <label>
-                Séance
-                <select value={day.type} onChange={e => setDay(e.target.value === 'rest' ? { type: 'rest', minutes: 0 } : { type: e.target.value })}>
-                  <option value="rest">Repos</option>
-                  {EDIT_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
-                </select>
-              </label>
-              {day.type !== 'rest' && (
+              <div className="today-plan-edit-title">Modifier ce jour</div>
+              <div className="today-plan-edit-fields">
                 <label>
-                  Durée
-                  <select value={EDIT_MINUTES.includes(day.minutes) ? day.minutes : ''} onChange={e => setDay({ minutes: Number(e.target.value) })}>
-                    {!EDIT_MINUTES.includes(day.minutes) && <option value="">{Math.round(day.minutes || 0)} min</option>}
+                  <span>Vélo</span>
+                  <select value={day.type} onChange={e => setDay(e.target.value === 'rest' ? { type: 'rest', minutes: 0 } : { type: e.target.value })}>
+                    <option value="rest">Repos</option>
+                    {EDIT_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>Durée</span>
+                  <select disabled={day.type === 'rest'} value={day.type === 'rest' ? '' : EDIT_MINUTES.includes(day.minutes) ? day.minutes : ''}
+                    onChange={e => setDay({ minutes: Number(e.target.value) })}>
+                    {day.type === 'rest' && <option value="">—</option>}
+                    {day.type !== 'rest' && !EDIT_MINUTES.includes(day.minutes) && <option value="">{Math.round(day.minutes || 0)} min</option>}
                     {EDIT_MINUTES.map(m => <option key={m} value={m}>{fmtDur(m)}</option>)}
                   </select>
                 </label>
-              )}
-              <div className="today-inline">
-                <button type="button" className="btn" disabled={!canSwap(idx - 1)} onClick={() => swap(idx - 1)}>← Veille</button>
-                <button type="button" className="btn" disabled={!canSwap(idx + 1)} onClick={() => swap(idx + 1)}>Lendemain →</button>
+                <label>
+                  <span>Renfo</span>
+                  <select value={day.strength ? day.strength.kind : 'none'} onChange={e => setStrength(e.target.value === 'none' ? false : e.target.value)}>
+                    <option value="none">Aucun</option>
+                    {STRENGTH_KINDS.map(k => <option key={k} value={k}>{STRENGTH_LABELS[k]}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="today-plan-edit-actions">
+                <button type="button" className="btn" disabled={!canSwap(idx - 1)} onClick={() => swap(idx - 1)}>Échanger avec la veille</button>
+                <button type="button" className="btn" disabled={!canSwap(idx + 1)} onClick={() => swap(idx + 1)}>Échanger avec le lendemain</button>
                 {overrides[day.date] && (
                   <button type="button" className="today-link" onClick={() => onEdit({ [day.date]: null })}>Revenir au plan</button>
                 )}
               </div>
-              <label>
-                Renfo poids du corps
-                <select value={day.strength ? day.strength.kind : 'none'} onChange={e => setStrength(e.target.value === 'none' ? false : e.target.value)}>
-                  <option value="none">Aucun</option>
-                  {STRENGTH_KINDS.map(k => <option key={k} value={k}>{STRENGTH_LABELS[k]}</option>)}
-                </select>
-              </label>
             </div>
           )}
         </div>
@@ -754,10 +759,12 @@ export default function Today({
 
   return (
     <div className="today">
-      <header className="today-header">
+      <header className="today-header today-hero">
+        <SeasonLandscape phase={seasonState.phase} className="today-hero-art" />
         <div>
           <div className="today-date">{dateLabel}</div>
           <h1 className="today-title">Aujourd’hui</h1>
+          <div className="today-hero-phase">{phaseInfo.label}, {phaseInfo.season.toLowerCase()}</div>
         </div>
         {cal.nextRaceDays != null && (
           <div className="today-race-chip">
@@ -766,76 +773,116 @@ export default function Today({
         )}
       </header>
 
-      {/* ── 0. Season ── */}
-      <section className="today-card">
+      {/* ── 3. Today's session ── */}
+      <section className={`today-card today-session tone-border-${lvl.tone}`}>
         <div className="today-card-head">
-          <h2>Saison : {phaseInfo.label} <span className="today-muted">· {phaseInfo.season}</span></h2>
-          <span className={`today-pill tone-${seasonState.isRecoveryWeek ? 'blue' : 'muted'}`}>
-            {seasonState.isRecoveryWeek
-              ? 'Semaine de récup'
-              : `Semaine ${seasonState.weekInCycle}/${seasonState.cycleLen} · charge`}
-          </span>
+          <h2>Séance du jour</h2>
+          {!noSession && <span className={`today-pill tone-${lvl.tone}`}>{lvl.title}</span>}
         </div>
-        <p className="today-hint">{phaseInfo.desc} <span className="today-muted">({seasonState.reason})</span></p>
-        <div className="today-inline">
-          <button type="button" className="today-link" onClick={() => { setShowNewCycle(v => !v); setShowSeasonSettings(false); }}>
-            + Nouveau cycle
-          </button>
-          <button type="button" className="today-link" onClick={() => { setShowSeasonSettings(v => !v); setShowNewCycle(false); }}>
-            {showSeasonSettings ? 'Fermer' : 'Régler la saison'}
-          </button>
-          {season.cycleStart && (
-            <span className="today-muted">
-              Cycle depuis le {new Date(`${season.cycleStart}T00:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-              {season.cycleFocus && season.cycleFocus !== 'auto' ? ` · priorité ${CYCLE_FOCUS[season.cycleFocus].toLowerCase()}` : ''}
-            </span>
-          )}
-        </div>
-        {showNewCycle && <NewCycleForm config={season} onChange={updateSeason} onDone={() => setShowNewCycle(false)} />}
-        {showSeasonSettings && <SeasonSettings config={season} onChange={updateSeason} />}
+
+        {todayReview && (
+          <div className="today-done">
+            ✓ Fait : {doneToday.rides.map(a => `${a.name || a.type}${a.icu_training_load ? ` (${Math.round(a.icu_training_load)} TSS)` : ''}`).join(', ')}
+            <Review review={todayReview} strengthPlanned={null} strengthDone={[]} />
+          </div>
+        )}
+
+        {cal.race ? (
+          <div>
+            <div className="today-session-title"><Picto name="flag" size={22} className="picto-inline" /> {cal.race.name || cal.race.title || 'Course'}</div>
+            <p className="today-hint">
+              Jour de course. Échauffement 20–30 min avec 2–3 accélérations, mange 2–3 h avant, bois régulièrement.
+              {physio.tsb != null && physio.tsb < -10 && ' Ta forme est basse : pars prudemment et reste abrité.'}
+            </p>
+          </div>
+        ) : base.rest ? (
+          <div>
+            <div className="today-session-title">Jour de repos</div>
+            <p className="today-hint">
+              {base.source === 'season' ? `Repos prévu par ta phase ${phaseInfo.label.toLowerCase()}.` : 'Repos prévu au calendrier.'}
+              {' '}Mobilité légère ou marche si tu veux bouger.
+            </p>
+          </div>
+        ) : readiness.level === 'rest' ? (
+          <div>
+            <div className="today-session-title">Repos conseillé</div>
+            <p className="today-hint">{lvl.text}</p>
+          </div>
+        ) : adapted && (
+          <>
+            <div className="today-session-title">{adapted.title}</div>
+            <p className="today-hint">{fmtDur(adapted.minutes)} · {adapted.objective}</p>
+            {readiness.level !== 'go' && <p className="today-verdict-short">{lvl.text}</p>}
+            <ZoneBar blocks={adapted.blocks} />
+            <BlockList blocks={adapted.blocks} ftp={ftp} />
+            {base.notes && adapted.trainingType === base.trainingType && <p className="today-note">{base.notes}</p>}
+
+            <div className="today-actions">
+              {onAddPlannedEvent && (
+                <button className="btn btn-primary" onClick={handleSave} disabled={busy}>
+                  {cal.planned?._local ? 'Remplacer dans le calendrier' : 'Ajouter au calendrier'}
+                </button>
+              )}
+              {onExportToZwift && (
+                <button className="btn" onClick={() => onExportToZwift(workoutForExport)}>Export Zwift</button>
+              )}
+              {onSendToWahoo && (
+                <button className="btn" onClick={() => onSendToWahoo(workoutForExport).then(() => setSaved('Envoyé à Wahoo')).catch(e => setSaved(`Erreur : ${e.message}`))}>
+                  Envoyer à Wahoo
+                </button>
+              )}
+            </div>
+            {saved && <div className="today-saved">{saved}</div>}
+
+            <details className="today-why">
+              <summary>Pourquoi cette séance ?</summary>
+              <div className="today-plan-line">
+                {base.source === 'planned' && <>Prévu : <strong>{base.title}</strong> · {Math.round(blocksMinutes(base.blocks))} min</>}
+                {base.source === 'planned-matched' && <>Prévu : <strong>{base.plannedName}</strong> — structure tirée de la bibliothèque</>}
+                {base.source === 'season' && <>Rien au calendrier — séance du plan <strong>{phaseInfo.label}</strong> : {TYPE_LABELS[base.trainingType]}</>}
+              </div>
+              {base.dataChanges?.length > 0 && (
+                <div className="today-changes">
+                  {base.dataChanges.map(c => (
+                    <span key={c.text} className="today-change is-data" title={c.ref}>{c.text}</span>
+                  ))}
+                </div>
+              )}
+
+              {readiness.reasons.length > 0 && readiness.level !== 'go' && (
+                <p className="today-hint">Ta forme du jour : {readiness.reasons.join(', ')}.</p>
+              )}
+
+              {changes.length > 0 && (
+                <div className="today-changes">
+                  {changes.map(c => <span key={c} className="today-change">{c}</span>)}
+                </div>
+              )}
+
+              {base.family && adapted.trainingType === base.trainingType && (
+                <div className="today-progress">
+                  <span className="today-progress-label">{base.familyLabel}</span>
+                  <span className="today-progress-steps">
+                    {Array.from({ length: base.levelCount }, (_, i) => (
+                      <span key={i} className={i < base.level ? 'on' : ''} />
+                    ))}
+                  </span>
+                  <span>Niveau {base.level}/{base.levelCount}</span>
+                  {nextLevelOf(base) && <span className="today-muted">· ensuite : {nextLevelOf(base).title}</span>}
+                </div>
+              )}
+              <p className="today-hint">~{estimateTss(adapted.blocks)} TSS prévus.</p>
+              {base.ref && <p className="today-ref">Réf. : {base.ref}</p>}
+            </details>
+          </>
+        )}
       </section>
 
-      <PlanAhead weeks={outlook} today={today} ftp={ftp} activities={activities} overrides={season.dayOverrides || {}} onEdit={editDays} />
-
-      <CycleCard
-        cycle={cycle}
-        pending={season.pendingCycle}
-        onApply={(c) => updateSeason(c.start <= today ? { ...c.config, pendingCycle: null } : { pendingCycle: { ...c.config, phase: c.phase } })}
-        onCancelPending={() => updateSeason({ pendingCycle: null })}
-      />
-
-      {/* ── 1. Form ── */}
-      <section className="today-card">
-        <div className="today-card-head">
-          <h2>Ta forme</h2>
-          <span className={`today-pill tone-${form.tone}`}>{form.label}</span>
-        </div>
-        <p className="today-hint">{loading && physio.ctl == null ? 'Chargement…' : form.hint}</p>
-        <div className="today-metrics">
-          <Metric label="Forme (TSB)" value={physio.tsb != null ? Math.round(physio.tsb) : null} tone={form.tone} />
-          <Metric label="Condition (CTL)" value={physio.ctl != null ? Math.round(physio.ctl) : null} />
-          <Metric label="Fatigue (ATL)" value={physio.atl != null ? Math.round(physio.atl) : null} />
-          {physio.hrv != null && (
-            <Metric label="VFC" value={Math.round(physio.hrv)}
-              sub={physio.hrvRatio ? `${physio.hrvRatio >= 1 ? '+' : ''}${Math.round((physio.hrvRatio - 1) * 100)}% vs 7 j` : null}
-              tone={physio.hrvRatio && physio.hrvRatio < 0.9 ? 'red' : 'default'} />
-          )}
-          {physio.rhr != null && (
-            <Metric label="FC repos" value={Math.round(physio.rhr)}
-              sub={physio.rhrDelta != null ? `${physio.rhrDelta >= 0 ? '+' : ''}${Math.round(physio.rhrDelta)} vs 7 j` : null}
-              tone={physio.rhrDelta != null && physio.rhrDelta >= 5 ? 'red' : 'default'} />
-          )}
-        </div>
-      </section>
-
-      <DataCard analysis={analysis} />
-
-      <ResponderCard state={responderState} enabled={useResponder} onToggle={v => updateSeason({ useResponder: v })} />
 
       {/* ── 2. Check-in → readiness ── */}
       <section className="today-card">
         <div className="today-card-head">
-          <h2>Comment tu te sens ?</h2>
+          <h2>Comment tu te sens ce matin ?</h2>
         </div>
         <div className="today-checkin">
           {CHECKIN_QUESTIONS.map(q => (
@@ -883,108 +930,6 @@ export default function Today({
         </div>
       </section>
 
-      {/* ── 3. Today's session ── */}
-      <section className={`today-card today-session tone-border-${lvl.tone}`}>
-        <div className="today-card-head">
-          <h2>Séance du jour</h2>
-          {!noSession && <span className={`today-pill tone-${lvl.tone}`}>{lvl.title}</span>}
-        </div>
-
-        {todayReview && (
-          <div className="today-done">
-            ✓ Fait : {doneToday.rides.map(a => `${a.name || a.type}${a.icu_training_load ? ` (${Math.round(a.icu_training_load)} TSS)` : ''}`).join(', ')}
-            <Review review={todayReview} strengthPlanned={null} strengthDone={[]} />
-          </div>
-        )}
-
-        {cal.race ? (
-          <div>
-            <div className="today-session-title">🏁 {cal.race.name || cal.race.title || 'Course'}</div>
-            <p className="today-hint">
-              Jour de course. Échauffement 20–30 min avec 2–3 accélérations, mange 2–3 h avant, bois régulièrement.
-              {physio.tsb != null && physio.tsb < -10 && ' Ta forme est basse : pars prudemment et reste abrité.'}
-            </p>
-          </div>
-        ) : base.rest ? (
-          <div>
-            <div className="today-session-title">Jour de repos</div>
-            <p className="today-hint">
-              {base.source === 'season' ? `Repos prévu par ta phase ${phaseInfo.label.toLowerCase()}.` : 'Repos prévu au calendrier.'}
-              {' '}Mobilité légère ou marche si tu veux bouger.
-            </p>
-          </div>
-        ) : readiness.level === 'rest' ? (
-          <div>
-            <div className="today-session-title">Repos conseillé</div>
-            <p className="today-hint">{lvl.text}</p>
-          </div>
-        ) : adapted && (
-          <>
-            <div className="today-plan-line">
-              {base.source === 'planned' && <>Prévu : <strong>{base.title}</strong> · {Math.round(blocksMinutes(base.blocks))} min</>}
-              {base.source === 'planned-matched' && <>Prévu : <strong>{base.plannedName}</strong> — structure tirée de la bibliothèque</>}
-              {base.source === 'season' && <>Rien au calendrier — séance du plan <strong>{phaseInfo.label}</strong> : {TYPE_LABELS[base.trainingType]}</>}
-            </div>
-
-            {base.dataChanges?.length > 0 && (
-              <div className="today-changes">
-                {base.dataChanges.map(c => (
-                  <span key={c.text} className="today-change is-data" title={c.ref}>{c.text}</span>
-                ))}
-              </div>
-            )}
-
-            <div className="today-verdict">
-              <strong>{lvl.text}</strong>
-              {readiness.reasons.length > 0 && readiness.level !== 'go' && (
-                <span> Pourquoi : {readiness.reasons.join(' · ')}.</span>
-              )}
-            </div>
-
-            {changes.length > 0 && (
-              <div className="today-changes">
-                {changes.map(c => <span key={c} className="today-change">{c}</span>)}
-              </div>
-            )}
-
-            <div className="today-session-title">{adapted.title}</div>
-            <p className="today-hint">{adapted.objective} · {adapted.minutes} min · ~{estimateTss(adapted.blocks)} TSS</p>
-            {base.family && adapted.trainingType === base.trainingType && (
-              <div className="today-progress">
-                <span className="today-progress-label">{base.familyLabel}</span>
-                <span className="today-progress-steps">
-                  {Array.from({ length: base.levelCount }, (_, i) => (
-                    <span key={i} className={i < base.level ? 'on' : ''} />
-                  ))}
-                </span>
-                <span>Niveau {base.level}/{base.levelCount}</span>
-                {nextLevelOf(base) && <span className="today-muted">· ensuite : {nextLevelOf(base).title}</span>}
-              </div>
-            )}
-            {base.notes && adapted.trainingType === base.trainingType && <p className="today-note">{base.notes}</p>}
-            {base.ref && <p className="today-ref">Réf. : {base.ref}</p>}
-            <ZoneBar blocks={adapted.blocks} />
-            <BlockList blocks={adapted.blocks} ftp={ftp} />
-
-            <div className="today-actions">
-              {onAddPlannedEvent && (
-                <button className="btn btn-primary" onClick={handleSave} disabled={busy}>
-                  {cal.planned?._local ? 'Remplacer dans le calendrier' : 'Ajouter au calendrier'}
-                </button>
-              )}
-              {onExportToZwift && (
-                <button className="btn" onClick={() => onExportToZwift(workoutForExport)}>Export Zwift</button>
-              )}
-              {onSendToWahoo && (
-                <button className="btn" onClick={() => onSendToWahoo(workoutForExport).then(() => setSaved('Envoyé à Wahoo')).catch(e => setSaved(`Erreur : ${e.message}`))}>
-                  Envoyer à Wahoo
-                </button>
-              )}
-            </div>
-            {saved && <div className="today-saved">{saved}</div>}
-          </>
-        )}
-      </section>
 
       {strength && (
         <section className="today-card">
@@ -1002,6 +947,83 @@ export default function Today({
           <p className="today-ref">Réf. : {strength.ref}</p>
         </section>
       )}
+
+
+      <PlanAhead weeks={outlook} today={today} ftp={ftp} activities={activities} overrides={season.dayOverrides || {}} onEdit={editDays} />
+
+      <details className="today-more">
+        <summary>
+          <span className="today-more-title">Comprendre ma forme et mon plan</span>
+          <span className="today-more-sub">Forme, charge, saison, cycle, profil</span>
+        </summary>
+        <div className="today-more-body">
+        {/* ── 1. Form ── */}
+        <section className="today-card">
+          <div className="today-card-head">
+            <h2>Ta forme</h2>
+            <span className={`today-pill tone-${form.tone}`}>{form.label}</span>
+          </div>
+          <p className="today-hint">{loading && physio.ctl == null ? 'Chargement…' : form.hint}</p>
+          <div className="today-metrics">
+            <Metric label="Forme (TSB)" value={physio.tsb != null ? Math.round(physio.tsb) : null} tone={form.tone} />
+            <Metric label="Condition (CTL)" value={physio.ctl != null ? Math.round(physio.ctl) : null} />
+            <Metric label="Fatigue (ATL)" value={physio.atl != null ? Math.round(physio.atl) : null} />
+            {physio.hrv != null && (
+              <Metric label="VFC" value={Math.round(physio.hrv)}
+                sub={physio.hrvRatio ? `${physio.hrvRatio >= 1 ? '+' : ''}${Math.round((physio.hrvRatio - 1) * 100)}% vs 7 j` : null}
+                tone={physio.hrvRatio && physio.hrvRatio < 0.9 ? 'red' : 'default'} />
+            )}
+            {physio.rhr != null && (
+              <Metric label="FC repos" value={Math.round(physio.rhr)}
+                sub={physio.rhrDelta != null ? `${physio.rhrDelta >= 0 ? '+' : ''}${Math.round(physio.rhrDelta)} vs 7 j` : null}
+                tone={physio.rhrDelta != null && physio.rhrDelta >= 5 ? 'red' : 'default'} />
+            )}
+          </div>
+        </section>
+
+
+        <DataCard analysis={analysis} />
+
+        <ResponderCard state={responderState} enabled={useResponder} onToggle={v => updateSeason({ useResponder: v })} />
+
+        {/* ── 0. Season ── */}
+        <section className="today-card">
+          <div className="today-card-head">
+            <h2>Saison : {phaseInfo.label} <span className="today-muted">· {phaseInfo.season}</span></h2>
+            <span className={`today-pill tone-${seasonState.isRecoveryWeek ? 'blue' : 'muted'}`}>
+              {seasonState.isRecoveryWeek
+                ? 'Semaine de récup'
+                : `Semaine ${seasonState.weekInCycle}/${seasonState.cycleLen} · charge`}
+            </span>
+          </div>
+          <p className="today-hint">{phaseInfo.desc} <span className="today-muted">({seasonState.reason})</span></p>
+          <div className="today-inline">
+            <button type="button" className="today-link" onClick={() => { setShowNewCycle(v => !v); setShowSeasonSettings(false); }}>
+              + Nouveau cycle
+            </button>
+            <button type="button" className="today-link" onClick={() => { setShowSeasonSettings(v => !v); setShowNewCycle(false); }}>
+              {showSeasonSettings ? 'Fermer' : 'Régler la saison'}
+            </button>
+            {season.cycleStart && (
+              <span className="today-muted">
+                Cycle depuis le {new Date(`${season.cycleStart}T00:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                {season.cycleFocus && season.cycleFocus !== 'auto' ? ` · priorité ${CYCLE_FOCUS[season.cycleFocus].toLowerCase()}` : ''}
+              </span>
+            )}
+          </div>
+          {showNewCycle && <NewCycleForm config={season} onChange={updateSeason} onDone={() => setShowNewCycle(false)} />}
+          {showSeasonSettings && <SeasonSettings config={season} onChange={updateSeason} />}
+        </section>
+
+        <CycleCard
+          cycle={cycle}
+          pending={season.pendingCycle}
+          onApply={(c) => updateSeason(c.start <= today ? { ...c.config, pendingCycle: null } : { pendingCycle: { ...c.config, phase: c.phase } })}
+          onCancelPending={() => updateSeason({ pendingCycle: null })}
+        />
+
+        </div>
+      </details>
 
       <div className="today-footer">
         {onOpenCalendar && <button className="btn" onClick={onOpenCalendar}>Voir le calendrier</button>}

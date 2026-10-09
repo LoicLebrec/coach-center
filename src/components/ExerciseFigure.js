@@ -1,9 +1,23 @@
 import React from 'react';
 import { figureFor, GROUND } from '../data/exerciseFigures';
 
-const FAR = [['s', 'e2', 'e'], ['e2', 'w2', 'w'], ['p', 'k2', 'k1'], ['k2', 'f2', 'f1']];
-const NEAR = [['s', 'p'], ['s', 'e'], ['e', 'w'], ['p', 'k1'], ['k1', 'f1']];
+// Flat illustration: jersey, bib shorts, skin, shoes. Far limbs a shade darker, drawn first.
+const C = {
+  skin: '#f1c39d', skinFar: '#d9a47c', jersey: '#f0663a', jerseyFar: '#c9502a',
+  shorts: '#24402e', shortsFar: '#3d5c43', shoe: '#1b2e22', hair: '#4a3324',
+};
 const FALLBACK = { e2: 'e', w2: 'w', k2: 'k1', f2: 'f1' };
+
+// [from, to, width, colour] or [joint, radius, colour, dx, dy] for dots; drawn in order.
+const PARTS = [
+  ['p', 'k2', 10, C.shortsFar], ['k2', 'f2', 7.5, C.skinFar], ['f2', 4.2, C.shoe],
+  ['s', 'e2', 7, C.jerseyFar], ['e2', 'w2', 5.5, C.skinFar], ['w2', 3.2, C.skinFar],
+  ['s', 'h', 5, C.skin],
+  ['s', 'p', 15, C.jersey], ['p', 3, C.shorts],
+  ['p', 'k1', 10.5, C.shorts], ['k1', 'f1', 7.5, C.skin], ['f1', 4.4, C.shoe],
+  ['s', 'e', 7.5, C.jersey], ['e', 'w', 5.5, C.skin], ['w', 3.4, C.skin],
+  ['h', 7.6, C.hair, -0.8, -1.4], ['h', 6.6, C.skin],
+];
 
 const joint = (pose, k) => pose[k] || pose[FALLBACK[k]];
 
@@ -20,11 +34,24 @@ function Anim({ attr, from, to, dur }) {
   );
 }
 
-function Bone({ a, b, pa, pb, still, dur, className }) {
-  const A = joint(pa, a); const B = joint(pa, b);
-  const A2 = joint(pb, a); const B2 = joint(pb, b);
+function Part({ part, a, b, still, dur }) {
+  if (typeof part[1] === 'number') {
+    const [k, r, fill, dx = 0, dy = 0] = part;
+    const A = joint(a, k); const B = joint(b, k);
+    return (
+      <circle cx={A[0] + dx} cy={A[1] + dy} r={r} fill={fill}>
+        {!still && <>
+          <Anim attr="cx" from={A[0] + dx} to={B[0] + dx} dur={dur} />
+          <Anim attr="cy" from={A[1] + dy} to={B[1] + dy} dur={dur} />
+        </>}
+      </circle>
+    );
+  }
+  const [p, q, w, stroke] = part;
+  const A = joint(a, p); const B = joint(a, q);
+  const A2 = joint(b, p); const B2 = joint(b, q);
   return (
-    <line x1={A[0]} y1={A[1]} x2={B[0]} y2={B[1]} className={className}>
+    <line x1={A[0]} y1={A[1]} x2={B[0]} y2={B[1]} stroke={stroke} strokeWidth={w} strokeLinecap="round">
       {!still && <>
         <Anim attr="x1" from={A[0]} to={A2[0]} dur={dur} />
         <Anim attr="y1" from={A[1]} to={A2[1]} dur={dur} />
@@ -35,32 +62,24 @@ function Bone({ a, b, pa, pb, still, dur, className }) {
   );
 }
 
-/** Animated stick figure for a bodyweight exercise (null when none is drawn). */
-export default function ExerciseFigure({ name, size = 96 }) {
+/** Animated illustration of a bodyweight exercise (null when none is drawn). */
+export default function ExerciseFigure({ name, size = 104 }) {
   const fig = figureFor(name);
   if (!fig) return null;
   const a = fig.a;
   const b = fig.b || fig.a;
   const still = !fig.b || reducedMotion();
-  const dur = (fig.speed || 2.6);
+  const dur = fig.speed || 2.6;
+  const xs = [...Object.values(a), ...Object.values(b)].map(p => p[0]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
   return (
-    <svg className="exfig" viewBox="0 -10 120 106" width={size} height={size * 106 / 120} role="img" aria-label={name}>
-      <line x1="0" y1={GROUND} x2="120" y2={GROUND} className="exfig-ground" />
+    <svg className="exfig" viewBox="0 -12 120 110" width={size} height={size * 110 / 120} role="img" aria-label={name}>
+      <circle cx="60" cy="50" r="50" className="exfig-disc" />
+      <ellipse cx={cx} cy={GROUND + 1.5} rx="34" ry="3.5" className="exfig-shadow" />
       {(fig.props || []).map(([x, y, w, h]) => (
-        <rect key={`${x}-${y}`} x={x} y={y} width={w} height={h} rx="1.5" className="exfig-prop" />
+        <rect key={`${x}-${y}`} x={x} y={y} width={w} height={h} rx="2.5" className="exfig-prop" />
       ))}
-      {FAR.map(([p, q]) => (
-        <Bone key={`f${q}`} a={p} b={q} pa={a} pb={b} still={still} dur={dur} className="exfig-far" />
-      ))}
-      {NEAR.map(([p, q]) => (
-        <Bone key={`n${p}${q}`} a={p} b={q} pa={a} pb={b} still={still} dur={dur} className="exfig-near" />
-      ))}
-      <circle cx={a.h[0]} cy={a.h[1]} r="6" className="exfig-head">
-        {!still && <>
-          <Anim attr="cx" from={a.h[0]} to={b.h[0]} dur={dur} />
-          <Anim attr="cy" from={a.h[1]} to={b.h[1]} dur={dur} />
-        </>}
-      </circle>
+      {PARTS.map((part, i) => <Part key={i} part={part} a={a} b={b} still={still} dur={dur} />)}
     </svg>
   );
 }

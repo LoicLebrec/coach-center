@@ -5,6 +5,7 @@ import { format, parseISO, addDays, startOfToday, startOfWeek, differenceInDays 
 import { fr } from 'date-fns/locale';
 import { fetchRaces, enrichGpsDataAsync } from '../services/racesService';
 import HelpPopup from './HelpPopup';
+import Picto from './Pictos';
 
 // ── GeoJSON ────────────────────────────────────────────────────────────────
 const GEOJSON_URL =
@@ -501,7 +502,7 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
             color: taperEnabled ? 'var(--accent-orange)' : 'var(--text-4)',
             transition: 'all 0.15s',
           }}>
-            {taperEnabled ? '⚡ Affûtage auto ON' : '⚡ Affûtage auto OFF'}
+            {taperEnabled ? 'Affûtage auto activé' : 'Affûtage auto désactivé'}
           </button>
         </div>
       </div>
@@ -809,7 +810,7 @@ export default function RaceCalendar({ onAddToCalendar, plannedEvents = [] }) {
 
             {!loading && !error && filteredRaces.length === 0 && (
               <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-4)' }}>
-                <div style={{ fontSize: 26, marginBottom: 8 }}>🚴</div>
+                <div style={{ marginBottom: 8 }}><Picto name="flag" size={34} /></div>
                 <div style={{ fontSize: 13 }}>
                   {selectedDate || selectedDept ? 'Aucune course pour cette sélection.' : 'Aucune course chargée.'}
                 </div>

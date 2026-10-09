@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import { exportWorkoutFitFromBlocks } from '../services/workout-exporter';
 import { buildRuleBasedWorkout as _buildRuleBasedWorkout } from '../services/workout-rules';
+import Picto from './Pictos';
 
 const ZONE_COLORS = {
     Z1: '#475569', Z2: '#22c55e', Z3: '#eab308',
@@ -17,12 +18,12 @@ const ZONE_PCT = {
 };
 
 const TRAINING_TYPES = [
-    { id: 'vo2', label: 'VO2 Max', icon: '⚡', desc: 'High intensity repeats. Push your ceiling.', zone: 'Z5', color: '#ef4444' },
-    { id: 'threshold', label: 'Threshold', icon: '🔥', desc: 'Sustained hard effort. Raise your FTP.', zone: 'Z4', color: '#f97316' },
-    { id: 'sweetspot', label: 'Sweet Spot', icon: '🎯', desc: 'Best bang for buck. High aerobic stress.', zone: 'Z3', color: '#eab308' },
-    { id: 'endurance', label: 'Z2 Endurance', icon: '🌊', desc: 'Aerobic base. Long and steady fat burning.', zone: 'Z2', color: '#22c55e' },
-    { id: 'openers', label: 'Openers', icon: '💥', desc: 'Pre-race activation. Short and sharp.', zone: 'Z4', color: '#06b6d4' },
-    { id: 'recovery', label: 'Recovery', icon: '💤', desc: 'Easy flush. Protect your legs.', zone: 'Z1', color: '#475569' },
+    { id: 'vo2', label: 'VO2 Max', icon: 'bolt', desc: 'High intensity repeats. Push your ceiling.', zone: 'Z5', color: '#ef4444' },
+    { id: 'threshold', label: 'Threshold', icon: 'fire', desc: 'Sustained hard effort. Raise your FTP.', zone: 'Z4', color: '#f97316' },
+    { id: 'sweetspot', label: 'Sweet Spot', icon: 'target', desc: 'Best bang for buck. High aerobic stress.', zone: 'Z3', color: '#eab308' },
+    { id: 'endurance', label: 'Z2 Endurance', icon: 'wave', desc: 'Aerobic base. Long and steady fat burning.', zone: 'Z2', color: '#22c55e' },
+    { id: 'openers', label: 'Openers', icon: 'burst', desc: 'Pre-race activation. Short and sharp.', zone: 'Z4', color: '#06b6d4' },
+    { id: 'recovery', label: 'Recovery', icon: 'moon', desc: 'Easy flush. Protect your legs.', zone: 'Z1', color: '#475569' },
 ];
 
 const TIME_OPTIONS = [
@@ -37,9 +38,9 @@ const TIME_OPTIONS = [
 ];
 
 const FEEL_OPTIONS = [
-    { id: 'fresh', label: 'Fresh', desc: 'Ready to push hard', icon: '🟢' },
-    { id: 'normal', label: 'Normal', desc: 'Standard training day', icon: '🟡' },
-    { id: 'tired', label: 'Tired', desc: 'Carrying fatigue, stay smart', icon: '🔴' },
+    { id: 'fresh', label: 'Fresh', desc: 'Ready to push hard', icon: 'fresh' },
+    { id: 'normal', label: 'Normal', desc: 'Standard training day', icon: 'normal' },
+    { id: 'tired', label: 'Tired', desc: 'Carrying fatigue, stay smart', icon: 'tired' },
 ];
 
 function buildRuleBasedWorkout(type, minutes, feel, ftp, nextRaceDays) {
@@ -463,7 +464,7 @@ export default function SmartWorkoutWizard({ athlete, events, plannedEvents, onA
                                     style={selCardStyle(trainingType === t.id, t.color)}
                                     onClick={() => { setTrainingType(t.id); setStep(1); }}
                                 >
-                                    <div style={{ fontSize: 20, marginBottom: 6 }}>{t.icon}</div>
+                                    <div style={{ marginBottom: 6 }}><Picto name={t.icon} size={26} /></div>
                                     <div style={{ fontSize: 14, fontWeight: 700, color: trainingType === t.id ? t.color : 'var(--text-0)', marginBottom: 4 }}>
                                         {t.label}
                                     </div>
@@ -530,7 +531,7 @@ export default function SmartWorkoutWizard({ athlete, events, plannedEvents, onA
                                         style={selCardStyle(feel === opt.id)}
                                         onClick={() => setFeel(opt.id)}
                                     >
-                                        <div style={{ fontSize: 18, marginBottom: 6 }}>{opt.icon}</div>
+                                        <div style={{ marginBottom: 6 }}><Picto name={opt.icon} size={20} /></div>
                                         <div style={{ fontSize: 14, fontWeight: 600, color: feel === opt.id ? 'var(--accent-cyan)' : 'var(--text-0)', marginBottom: 2 }}>{opt.label}</div>
                                         <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{opt.desc}</div>
                                     </button>
@@ -542,12 +543,12 @@ export default function SmartWorkoutWizard({ athlete, events, plannedEvents, onA
                             <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 10, fontWeight: 600 }}>Environment</div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                                 <button style={selCardStyle(indoor)} onClick={() => setIndoor(true)}>
-                                    <div style={{ fontSize: 20, marginBottom: 4 }}>🏠</div>
+                                    <div style={{ marginBottom: 4 }}><Picto name="house" size={24} /></div>
                                     <div style={{ fontSize: 14, fontWeight: 600, color: indoor ? 'var(--accent-cyan)' : 'var(--text-0)' }}>Indoor</div>
                                     <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Trainer / Zwift</div>
                                 </button>
                                 <button style={selCardStyle(!indoor)} onClick={() => setIndoor(false)}>
-                                    <div style={{ fontSize: 20, marginBottom: 4 }}>🚴</div>
+                                    <div style={{ marginBottom: 4 }}><Picto name="bike" size={24} /></div>
                                     <div style={{ fontSize: 14, fontWeight: 600, color: !indoor ? 'var(--accent-cyan)' : 'var(--text-0)' }}>Outdoor</div>
                                     <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Road / Gravel</div>
                                 </button>
@@ -583,7 +584,7 @@ export default function SmartWorkoutWizard({ athlete, events, plannedEvents, onA
                                 background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
                                 fontSize: 12, color: '#ef4444',
                             }}>
-                                ⚠ {raceWarning}
+                                <Picto name="warning" size={15} className="picto-inline" /> {raceWarning}
                             </div>
                         )}
 
@@ -620,7 +621,7 @@ export default function SmartWorkoutWizard({ athlete, events, plannedEvents, onA
                                 </div>
                                 {generatedWorkout._aiGenerated && (
                                     <div style={{ marginTop: 6, fontSize: 11, color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)' }}>
-                                        ✦ AI GENERATED
+                                        Généré
                                     </div>
                                 )}
                             </div>
@@ -635,7 +636,7 @@ export default function SmartWorkoutWizard({ athlete, events, plannedEvents, onA
                                 background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
                                 fontSize: 12, color: '#ef4444',
                             }}>
-                                ⚠ {raceWarning}
+                                <Picto name="warning" size={15} className="picto-inline" /> {raceWarning}
                             </div>
                         )}
 

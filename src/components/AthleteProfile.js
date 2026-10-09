@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import HelpPopup from './HelpPopup';
 import persistence from '../services/persistence';
 import { asNumber } from '../services/number';
+import Picto from './Pictos';
 
 function clamp(v, min, max) {
     return Math.max(min, Math.min(max, v));
@@ -376,11 +377,11 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
         const isModVolume = /8-12/.test(hours);
         const w = Number(wkg);
         if (!w) return null;
-        if (w >= 4.5 && isHighVolume) return { label: 'GC / Climber', icon: '⛰', desc: 'High volume, strong W/kg. Built for hills and general classification.' };
-        if (w >= 4.0 && !isHighVolume) return { label: 'Time Trialist', icon: '⏱', desc: 'High power output relative to volume. Strong solo effort capacity.' };
-        if (w >= 3.8 && isModVolume) return { label: 'Breakaway Specialist', icon: '💨', desc: 'Sustained power with race IQ. Made for the right move at the right time.' };
-        if (isHighVolume) return { label: 'Endurance / Diesel', icon: '🔋', desc: 'Built on volume. Gets stronger as races get longer.' };
-        return { label: 'All-Rounder', icon: '⚡', desc: 'Balanced profile. Develop a speciality or keep diversifying.' };
+        if (w >= 4.5 && isHighVolume) return { label: 'GC / Climber', icon: 'mountain', desc: 'High volume, strong W/kg. Built for hills and general classification.' };
+        if (w >= 4.0 && !isHighVolume) return { label: 'Time Trialist', icon: 'target', desc: 'High power output relative to volume. Strong solo effort capacity.' };
+        if (w >= 3.8 && isModVolume) return { label: 'Breakaway Specialist', icon: 'wind', desc: 'Sustained power with race IQ. Made for the right move at the right time.' };
+        if (isHighVolume) return { label: 'Endurance / Diesel', icon: 'battery', desc: 'Built on volume. Gets stronger as races get longer.' };
+        return { label: 'All-Rounder', icon: 'bolt', desc: 'Balanced profile. Develop a speciality or keep diversifying.' };
     })();
 
     // ── Performance insights ────────────────────────────────────
@@ -517,7 +518,7 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
 
                     {riderArchetype ? (
                         <div style={{ marginBottom: 16, padding: '16px', background: 'var(--bg-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                            <div style={{ fontSize: 28, marginBottom: 8 }}>{riderArchetype.icon}</div>
+                            <div style={{ marginBottom: 8 }}><Picto name={riderArchetype.icon} size={36} /></div>
                             <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-0)', marginBottom: 6 }}>{riderArchetype.label}</div>
                             <div style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6 }}>{riderArchetype.desc}</div>
                         </div>
@@ -657,12 +658,12 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
 
                     <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         {[
-                            { label: profile.primarySport || 'Road Cycling', icon: '🚴' },
-                            { label: profile.weeklyHours || '—', icon: '⏱' },
-                            { label: profile.isRacing === 'yes' ? 'Race mode' : 'Build mode', icon: '📍' },
+                            { label: profile.primarySport || 'Road Cycling', icon: 'bike' },
+                            { label: profile.weeklyHours || '—', icon: 'recover' },
+                            { label: profile.isRacing === 'yes' ? 'Race mode' : 'Build mode', icon: 'pin' },
                         ].map(tag => (
                             <span key={tag.label} style={{ padding: '4px 10px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 11, color: 'var(--text-2)' }}>
-                                {tag.icon} {tag.label}
+                                <Picto name={tag.icon} size={13} className="picto-inline" /> {tag.label}
                             </span>
                         ))}
                     </div>

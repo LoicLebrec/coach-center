@@ -34,6 +34,8 @@ import FormPredictor from './components/FormPredictor';
 import { LIBRARY_WORKOUTS } from './data/workoutLibrary';
 import './styles/app.css';
 import { asNumber } from './services/number';
+import Logo from './components/Logo';
+import SeasonLandscape from './components/SeasonLandscape';
 
 function extractJsonBlock(text) {
   if (!text) return null;
@@ -887,18 +889,17 @@ export default function App() {
   const renderView = () => {
     if (!connections.intervals && !connections.strava && view !== VIEWS.SETTINGS) {
       return (
-        <div className="loading-state">
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: 'var(--accent-cyan)', letterSpacing: '0.1em', marginBottom: 16 }}>&gt;&gt;</div>
-          <p style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Connect a data source to get started</p>
-          <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 8, maxWidth: 420, textAlign: 'center' }}>
-            Connect <strong>Intervals.icu</strong> for full PMC analytics, power curves, wellness tracking, and Garmin sync.
-          </p>
-          <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 20, maxWidth: 420, textAlign: 'center' }}>
-            Connect <strong>Strava</strong> for activity import with estimated TSS and form tracking.
-          </p>
-          <button className="btn btn-primary" onClick={() => setView(VIEWS.SETTINGS)}>
-            Open Settings
-          </button>
+        <div className="welcome">
+          <SeasonLandscape phase="build" className="welcome-art" />
+          <div className="welcome-body">
+            <h1 className="welcome-title">Bienvenue</h1>
+            <p>Connecte tes sorties pour recevoir ta séance du jour, adaptée à ta forme.</p>
+            <ul className="welcome-sources">
+              <li><strong>Intervals.icu</strong> : puissance, forme, VFC et envoi des séances vers Garmin.</li>
+              <li><strong>Strava</strong> : import des sorties, charge estimée.</li>
+            </ul>
+            <button className="btn btn-primary" onClick={() => setView(VIEWS.SETTINGS)}>Connecter mes données</button>
+          </div>
         </div>
       );
     }
@@ -1027,20 +1028,32 @@ export default function App() {
     }
   };
 
-  const MORE_NAV = [
-    [VIEWS.DASHBOARD, DashboardIcon, 'Dashboard'],
-    [VIEWS.PMC, TrendingUpIcon, 'PMC / Forme'],
-    [VIEWS.ACTIVITIES, BikeIcon, 'Activités'],
-    [VIEWS.WORKOUT_ANALYSIS, BarChartIcon, 'Analyse séance'],
-    [VIEWS.WEEKLY, ActivityIcon, 'Charge hebdo'],
-    [VIEWS.WORKOUT_BUILDER, DumbbellIcon, 'Créer une séance'],
-    [VIEWS.GPX_BUILDER, MapIcon, 'Parcours GPX'],
-    [VIEWS.RACE_CALENDAR, TrophyIcon, 'Calendrier courses'],
-    [VIEWS.NUTRITION, SaladIcon, 'Nutrition'],
-    [VIEWS.ATHLETE_PROFILE, UserIcon, 'Profil athlète'],
-    [VIEWS.COACH, ZapIcon, 'Coach APEX (IA)'],
+  const MAIN_NAV = [
+    [VIEWS.TODAY, HomeIcon, 'Aujourd\'hui'],
+    [VIEWS.CALENDAR, CalendarIcon, 'Calendrier'],
   ];
-  const showMore = moreOpen || MORE_NAV.some(([id]) => id === view);
+  const NAV_GROUPS = [
+    ['Analyser', [
+      [VIEWS.ACTIVITIES, BikeIcon, 'Activités'],
+      [VIEWS.WORKOUT_ANALYSIS, BarChartIcon, 'Analyse séance'],
+      [VIEWS.PMC, TrendingUpIcon, 'Forme (PMC)'],
+      [VIEWS.WEEKLY, ActivityIcon, 'Charge hebdo'],
+      [VIEWS.DASHBOARD, DashboardIcon, 'Tableau de bord'],
+    ]],
+    ['Préparer', [
+      [VIEWS.WORKOUT_BUILDER, DumbbellIcon, 'Créer une séance'],
+      [VIEWS.GPX_BUILDER, MapIcon, 'Parcours GPX'],
+      [VIEWS.RACE_CALENDAR, TrophyIcon, 'Courses'],
+      [VIEWS.NUTRITION, SaladIcon, 'Nutrition'],
+    ]],
+    ['Toi', [
+      [VIEWS.ATHLETE_PROFILE, UserIcon, 'Profil athlète'],
+      [VIEWS.COACH, ZapIcon, 'Coach APEX'],
+    ]],
+  ];
+  // Mobile tab bar: the two main views, the two most used tools, then "Plus".
+  const TAB_NAV = [...MAIN_NAV, [VIEWS.ACTIVITIES, BikeIcon, 'Activités'], [VIEWS.COACH, ZapIcon, 'Coach']];
+  const go = (id) => { setView(id); setMoreOpen(false); };
 
   if (!authed) {
     return <LoginPage onSuccess={async () => {
@@ -1056,11 +1069,7 @@ export default function App() {
         {/* ── Logo ── */}
         <div className="sidebar-header">
           <div className="sidebar-logo">
-            <svg className="sidebar-logo-mark" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="36" height="36" rx="9" fill="#ff6b2b" />
-              <polyline points="5,21 10,21 14,12 18,26 22,15 27,15 31,15"
-                stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            </svg>
+            <Logo className="sidebar-logo-mark" size={36} />
             <span className="sidebar-logo-wordmark">
               <span className="sidebar-logo-title">CoachCenter</span>
             </span>
@@ -1069,29 +1078,23 @@ export default function App() {
 
         {/* ── Navigation ── */}
         <nav className="sidebar-nav">
-          {[
-            [VIEWS.TODAY, HomeIcon, 'Aujourd\'hui'],
-            [VIEWS.CALENDAR, CalendarIcon, 'Calendrier'],
-          ].map(([id, Ico, label]) => (
-            <button key={id} className={`nav-item nav-item-main ${view === id ? 'active' : ''}`} onClick={() => setView(id)}>
-              <Ico className="nav-icon" size={17} />
+          {MAIN_NAV.map(([id, Ico, label]) => (
+            <button key={id} className={`nav-item nav-item-main ${view === id ? 'active' : ''}`} onClick={() => go(id)}>
+              <Ico className="nav-icon" size={18} />
               <span>{label}</span>
             </button>
           ))}
 
-          <button
-            className={`nav-section-toggle ${showMore ? 'open' : ''}`}
-            onClick={() => setMoreOpen(o => !o)}
-          >
-            <span>Plus d'outils</span>
-            <ChevronIcon size={13} className="nav-section-chevron" />
-          </button>
-
-          {showMore && MORE_NAV.map(([id, Ico, label]) => (
-            <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => setView(id)}>
-              <Ico className="nav-icon" size={15} />
-              <span>{label}</span>
-            </button>
+          {NAV_GROUPS.map(([title, items]) => (
+            <div key={title} className="nav-group">
+              <div className="nav-group-title">{title}</div>
+              {items.map(([id, Ico, label]) => (
+                <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => go(id)}>
+                  <Ico className="nav-icon" size={16} />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -1117,7 +1120,7 @@ export default function App() {
 
           <button className={`nav-item sidebar-settings-btn ${view === VIEWS.SETTINGS ? 'active' : ''}`} onClick={() => setView(VIEWS.SETTINGS)}>
             <SettingsIcon className="nav-icon" size={14} />
-            <span>Settings</span>
+            <span>Réglages</span>
           </button>
 
           {requiresAuth && (
@@ -1128,6 +1131,48 @@ export default function App() {
           )}
         </div>
       </aside>
+
+      {/* ── Mobile tab bar ── */}
+      <nav className="tabbar" aria-label="Navigation">
+        {TAB_NAV.map(([id, Ico, label]) => (
+          <button key={id} className={`tabbar-item ${view === id && !moreOpen ? 'active' : ''}`} onClick={() => go(id)}>
+            <Ico size={21} />
+            <span>{label}</span>
+          </button>
+        ))}
+        <button className={`tabbar-item ${moreOpen || (!TAB_NAV.some(([id]) => id === view)) ? 'active' : ''}`}
+          onClick={() => setMoreOpen(o => !o)} aria-expanded={moreOpen}>
+          <ChevronIcon size={21} className={`tabbar-more-icon${moreOpen ? ' open' : ''}`} />
+          <span>Plus</span>
+        </button>
+      </nav>
+      {moreOpen && (
+        <div className="tabbar-sheet-backdrop" onClick={() => setMoreOpen(false)}>
+          <div className="tabbar-sheet" onClick={e => e.stopPropagation()}>
+            {NAV_GROUPS.map(([title, items]) => (
+              <div key={title} className="tabbar-sheet-group">
+                <div className="nav-group-title">{title}</div>
+                <div className="tabbar-sheet-grid">
+                  {items.map(([id, Ico, label]) => (
+                    <button key={id} className={`tabbar-tile ${view === id ? 'active' : ''}`} onClick={() => go(id)}>
+                      <Ico size={20} />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="tabbar-sheet-foot">
+              <button className="btn" onClick={() => go(VIEWS.SETTINGS)}><SettingsIcon size={15} /> Réglages</button>
+              {requiresAuth && (
+                <button className="btn" onClick={() => { backendService.logout(); setAuthed(false); setCurrentUser(null); }}>
+                  <LogOutIcon size={15} /> Se déconnecter
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className={`main-content${view === VIEWS.COACH ? ' coach-active' : ''}${view === VIEWS.GPX_BUILDER ? ' gpx-active' : ''}`}>
         {error && view !== VIEWS.COACH && <div className="error-banner"><span className="error-tag">[ERR]</span> {error}</div>}

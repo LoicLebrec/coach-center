@@ -1,63 +1,68 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap');
 
 /* ═══════════════════════════════════════════════════════════
    COACH CENTER — Design System
-   Aesthetic: Athletic performance platform. Clean, professional.
-   Inspired by TrainingPeaks / Zwift / Whoop.
+   Aesthetic: outdoor map. Meadow background with contour lines,
+   paper cards, pine ink, moss green, sun orange.
    ═══════════════════════════════════════════════════════════ */
 
 :root {
-  /* ─── Surfaces — warm neutral ─── */
-  --bg-0: #f5f6f7;
-  --bg-1: #ffffff;
-  --bg-2: #f1f2f4;
-  --bg-3: #e6e8eb;
-  --bg-hover: #ebedf0;
+  /* ─── Surfaces — meadow & paper ─── */
+  --bg-0: #e8edc8;
+  --bg-1: #fbfcf3;
+  --bg-2: #f1f4dd;
+  --bg-3: #e2e8c2;
+  --bg-hover: #edf1d4;
 
-  /* ─── Borders ─── */
-  --border: #e5e7ea;
-  --border-accent: #d0d4d9;
+  /* ─── Borders — moss lines ─── */
+  --border: #d6deb0;
+  --border-accent: #bcc98c;
 
-  /* ─── Text — warm neutral, no blue tint ─── */
-  --text-0: #0c0d0f;
-  --text-1: #2e3338;
-  --text-2: #6b7280;
-  --text-3: #9ca3af;
-  --text-4: #c8cdd4;
+  /* ─── Text — pine ink ─── */
+  --text-0: #1b2e22;
+  --text-1: #22382a;
+  --text-2: #4f6352;
+  --text-3: #7b8b74;
+  --text-4: #a9b597;
 
-  /* ─── Zone / chart colors — slightly deeper for light bg ─── */
-  --accent-blue: #2563eb;
-  --accent-cyan: #0891b2;
-  --accent-green: #16a34a;
-  --accent-yellow: #d97706;
-  --accent-orange: #ea580c;
-  --accent-red: #dc2626;
-  --accent-purple: #7c3aed;
+  /* ─── Zone / chart colors ─── */
+  --accent-blue: #2f6fb0;
+  --accent-cyan: #2a8f8a;
+  --accent-green: #4e8a26;
+  --accent-yellow: #c98a12;
+  --accent-orange: #e35d2c;
+  --accent-red: #c8372d;
+  --accent-purple: #7c6ee6;
 
-  /* ─── Brand ─── */
-  --brand: #ff6b2b;
-  --brand-hover: #f05a18;
-  --brand-dim: rgba(255, 107, 43, 0.08);
-  --brand-glow: rgba(255, 107, 43, 0.18);
+  /* ─── Brand — moss green, sun orange, lilac ─── */
+  --brand: #5c8a2e;
+  --brand-hover: #4b7524;
+  --brand-dim: rgba(92, 138, 46, 0.12);
+  --brand-glow: rgba(92, 138, 46, 0.22);
+  --pine: #24402e;
+  --sun: #f0663a;
+  --lilac: #8f80f0;
+  --topo: #d3dba8;
 
   /* ─── PMC Colors (Coggan) ─── */
-  --ctl-color: #2563eb;
-  --atl-color: #ea580c;
-  --tsb-color: #16a34a;
-  --tsb-negative: #dc2626;
+  --ctl-color: #2f6fb0;
+  --atl-color: #e35d2c;
+  --tsb-color: #4e8a26;
+  --tsb-negative: #c8372d;
 
   /* ─── Typography ─── */
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Instrument Sans', -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Instrument Sans', sans-serif;
 
-  /* ─── Elevation shadows ─── */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.09);
-  --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.11);
+  /* ─── Elevation — flat, a moss underline instead of grey blur ─── */
+  --shadow-sm: 0 2px 0 rgba(36, 64, 46, 0.07);
+  --shadow-md: 0 3px 0 rgba(36, 64, 46, 0.09), 0 8px 24px rgba(36, 64, 46, 0.08);
+  --shadow-lg: 0 4px 0 rgba(36, 64, 46, 0.1), 0 16px 40px rgba(36, 64, 46, 0.12);
 
   /* ─── Radii ─── */
-  --radius: 8px;
-  --radius-lg: 12px;
+  --radius: 10px;
+  --radius-lg: 18px;
 }
 
 * {
@@ -119,7 +124,7 @@ body,
   height: 34px;
   flex-shrink: 0;
   border-radius: 9px;
-  box-shadow: 0 3px 10px rgba(255, 107, 43, 0.22);
+  box-shadow: 0 3px 10px rgba(92, 138, 46, 0.22);
   display: block;
 }
 
@@ -703,8 +708,8 @@ body,
 }
 
 .info-banner {
-  background: rgba(255, 107, 43, 0.06);
-  border: 1px solid rgba(255, 107, 43, 0.25);
+  background: rgba(92, 138, 46, 0.06);
+  border: 1px solid rgba(92, 138, 46, 0.25);
   border-radius: var(--radius);
   padding: 13px 16px;
   color: var(--text-1);
@@ -743,11 +748,11 @@ body,
 
 .calendar-weekday {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  
+  
   padding: 0 4px;
 }
 
@@ -810,8 +815,8 @@ body,
 
 .calendar-day-today {
   border-color: var(--brand) !important;
-  background: rgba(255, 107, 43, 0.03);
-  box-shadow: 0 0 0 1px rgba(255, 107, 43, 0.15), var(--shadow-sm);
+  background: rgba(92, 138, 46, 0.03);
+  box-shadow: 0 0 0 1px rgba(92, 138, 46, 0.15), var(--shadow-sm);
 }
 
 .calendar-day-today .calendar-day-num > span:first-child {
@@ -1367,27 +1372,6 @@ body,
 
 /* ─── Responsive ─────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .sidebar {
-    width: 60px;
-    min-width: 60px;
-    box-shadow: none;
-  }
-
-  .sidebar-logo,
-  .sidebar-version,
-  .nav-section-label,
-  .nav-item span:not(.nav-icon) {
-    display: none;
-  }
-
-  .nav-item {
-    justify-content: center;
-    padding: 10px;
-  }
-
-  .main-content {
-    padding: 16px;
-  }
 
   .metrics-row {
     grid-template-columns: repeat(2, 1fr);
@@ -1652,7 +1636,7 @@ body,
   color: #fff;
   white-space: pre-wrap;
   line-height: 1.65;
-  box-shadow: 0 2px 8px rgba(255, 107, 43, 0.25);
+  box-shadow: 0 2px 8px rgba(92, 138, 46, 0.25);
 }
 
 .coach-msg.assistant .msg-content {
@@ -2773,3 +2757,251 @@ button.today-week-day { font-family: var(--font-sans); cursor: pointer; color: i
 .exfig-head { fill: none; stroke: currentColor; stroke-width: 3.5; }
 .exfig-ground { stroke: var(--text-4, #999); stroke-width: 1; }
 .exfig-prop { fill: var(--brand-dim, rgba(127, 127, 127, 0.15)); stroke: var(--brand); stroke-width: 1; }
+
+/* ═══════════════════════════════════════════════════════════
+   Outdoor theme — map paper, contour lines, display type
+   ═══════════════════════════════════════════════════════════ */
+
+.main-content {
+  background-color: var(--bg-0);
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='480'%3E%3Cg fill='none' stroke='%23dbe2b6' stroke-width='1.2' stroke-linejoin='round'%3E%3Cpath d='M152 150 L153 152 L153 155 L152 157 L150 159 L148 161 L146 163 L143 164 L140 164 L138 165 L135 165 L132 165 L130 165 L128 165 L125 164 L123 164 L121 163 L119 162 L117 160 L115 159 L114 157 L113 156 L112 154 L111 152 L111 150 L110 148 L110 146 L110 143 L110 141 L112 139 L113 137 L115 135 L118 134 L121 133 L124 133 L127 133 L130 134 L132 136 L134 137 L136 138 L138 139 L139 140 L141 141 L143 142 L145 143 L147 144 L149 146 L151 148Z M171 150 L172 154 L171 159 L169 163 L166 167 L163 170 L158 173 L153 174 L149 176 L144 177 L139 177 L134 177 L130 177 L126 177 L121 176 L117 175 L113 173 L110 171 L107 169 L104 166 L102 163 L100 160 L98 157 L97 154 L95 150 L94 146 L93 142 L93 138 L94 134 L96 129 L99 126 L104 123 L109 120 L114 119 L120 119 L125 120 L130 122 L134 124 L138 127 L141 129 L144 131 L147 133 L150 134 L153 136 L157 137 L161 140 L165 142 L168 146Z M189 150 L190 156 L189 163 L186 169 L182 174 L177 179 L170 182 L164 185 L157 187 L150 188 L143 189 L137 190 L130 190 L124 189 L117 188 L111 186 L106 183 L101 180 L97 177 L93 173 L90 169 L87 164 L84 160 L82 155 L80 150 L78 145 L77 139 L77 132 L78 126 L81 120 L86 114 L92 110 L99 107 L107 106 L115 106 L123 108 L130 110 L136 113 L141 117 L146 120 L150 122 L154 125 L159 127 L164 129 L170 131 L176 135 L181 139 L186 144Z M207 150 L208 158 L207 166 L203 174 L197 181 L190 187 L182 192 L174 196 L165 198 L156 201 L147 202 L139 202 L130 202 L122 201 L113 200 L106 197 L99 193 L92 189 L87 184 L82 179 L78 174 L74 168 L71 163 L67 157 L64 150 L62 143 L60 135 L60 127 L61 118 L65 110 L72 103 L80 98 L90 94 L100 93 L111 93 L121 95 L130 99 L138 103 L144 107 L150 111 L156 114 L162 117 L168 119 L176 122 L183 125 L191 130 L198 136 L203 142Z M224 150 L226 160 L224 170 L219 180 L212 188 L204 195 L194 201 L184 206 L173 210 L163 213 L152 215 L141 216 L130 216 L119 214 L109 212 L100 208 L91 204 L84 198 L77 192 L72 186 L67 179 L62 173 L57 166 L53 158 L48 150 L45 141 L42 131 L42 121 L44 110 L49 101 L57 92 L68 85 L80 81 L93 79 L107 80 L119 83 L130 87 L139 92 L148 97 L155 102 L162 105 L170 109 L178 112 L187 115 L196 119 L206 125 L214 132 L220 140Z M242 150 L243 162 L241 174 L235 185 L227 195 L217 204 L206 211 L194 217 L182 222 L169 225 L156 228 L143 229 L130 229 L117 227 L105 224 L94 219 L84 214 L76 207 L68 199 L62 192 L56 184 L50 177 L44 168 L38 160 L33 150 L28 139 L25 127 L24 115 L27 102 L33 91 L43 81 L56 73 L71 68 L87 67 L102 68 L117 71 L130 76 L141 82 L151 88 L160 92 L169 97 L178 100 L188 104 L199 108 L210 113 L221 120 L230 128 L238 139Z M259 150 L260 164 L257 177 L251 190 L242 202 L231 212 L218 221 L205 228 L190 234 L176 238 L161 241 L145 243 L130 242 L115 240 L101 236 L88 230 L77 223 L67 215 L59 207 L52 198 L45 189 L38 181 L31 171 L23 161 L16 150 L10 137 L7 124 L6 109 L9 94 L17 81 L29 69 L44 61 L62 56 L80 54 L98 56 L115 60 L130 66 L143 72 L154 78 L165 83 L175 88 L186 91 L198 95 L211 100 L224 107 L236 115 L247 125 L255 137Z M384 340 L383 342 L381 345 L379 346 L377 348 L375 349 L373 350 L371 351 L369 352 L367 353 L364 353 L362 354 L360 355 L358 355 L355 355 L353 354 L350 354 L348 353 L346 351 L344 350 L342 348 L341 346 L339 344 L338 342 L338 340 L338 338 L338 335 L339 333 L340 331 L343 329 L345 328 L348 327 L351 327 L353 327 L356 327 L358 327 L360 328 L362 328 L364 328 L366 328 L369 328 L372 328 L375 328 L378 329 L380 331 L382 333 L384 335 L384 337Z M403 340 L401 344 L398 348 L395 352 L391 354 L387 357 L383 358 L379 360 L376 362 L372 363 L368 364 L364 366 L360 366 L356 367 L351 366 L347 366 L342 364 L338 362 L335 360 L331 358 L328 355 L325 352 L323 348 L321 344 L320 340 L319 336 L320 331 L322 327 L325 324 L329 321 L333 319 L338 317 L343 317 L348 317 L352 317 L356 318 L360 318 L364 318 L367 318 L372 318 L376 317 L381 318 L387 319 L392 320 L396 323 L400 327 L403 331 L403 335Z M421 340 L419 346 L415 352 L410 356 L404 360 L399 364 L393 367 L388 369 L383 372 L378 374 L372 376 L366 377 L360 378 L354 378 L347 378 L341 377 L335 375 L329 372 L324 369 L319 365 L314 361 L310 357 L306 352 L303 346 L301 340 L300 334 L301 327 L304 322 L309 316 L315 312 L321 309 L329 307 L336 307 L343 307 L349 307 L355 308 L360 308 L365 308 L371 308 L377 307 L384 307 L391 307 L399 309 L406 312 L413 316 L418 321 L421 327 L422 333Z M440 340 L436 348 L431 355 L425 361 L418 367 L411 371 L404 375 L397 379 L390 382 L383 385 L376 387 L368 389 L360 390 L352 390 L344 389 L335 387 L328 385 L320 381 L313 377 L306 373 L300 368 L294 362 L289 355 L285 348 L282 340 L281 332 L283 323 L287 316 L293 309 L301 304 L310 300 L319 298 L329 297 L338 297 L346 298 L353 298 L360 299 L367 298 L374 297 L382 297 L392 296 L401 297 L411 299 L421 303 L429 308 L436 315 L440 323 L441 331Z M457 340 L453 350 L447 359 L439 366 L431 373 L423 379 L415 384 L406 388 L398 393 L389 396 L380 399 L370 401 L360 402 L350 402 L340 400 L330 398 L321 395 L312 391 L303 386 L294 380 L286 374 L278 367 L271 359 L266 350 L263 340 L262 330 L264 319 L269 310 L277 302 L287 295 L298 291 L310 288 L322 287 L333 288 L343 288 L352 289 L360 289 L369 288 L378 287 L388 286 L399 285 L412 286 L424 289 L436 294 L446 300 L453 309 L458 319 L459 330Z M475 340 L470 352 L463 362 L454 371 L445 379 L436 386 L426 393 L416 398 L406 403 L395 408 L384 411 L372 413 L360 414 L348 413 L336 411 L325 408 L314 404 L303 399 L292 394 L282 388 L272 381 L262 372 L254 363 L247 352 L243 340 L242 328 L245 315 L251 304 L261 294 L274 287 L287 282 L302 279 L315 278 L328 279 L340 279 L350 279 L360 279 L370 278 L381 276 L394 275 L408 274 L422 275 L437 279 L450 285 L462 293 L470 303 L475 315 L477 328Z M423 90 L423 92 L422 95 L420 97 L418 98 L416 100 L413 100 L411 101 L408 101 L406 101 L404 102 L402 102 L400 103 L398 104 L395 104 L392 105 L389 105 L386 104 L383 103 L381 102 L379 100 L378 97 L377 95 L377 92 L378 90 L379 88 L381 86 L383 84 L384 83 L386 81 L387 80 L389 79 L391 78 L393 77 L395 76 L398 75 L400 75 L402 75 L405 75 L407 76 L410 76 L412 77 L414 79 L417 80 L419 81 L421 83 L422 85 L423 88Z M443 90 L442 94 L440 99 L437 102 L433 105 L428 107 L423 109 L419 109 L414 110 L411 111 L407 111 L404 112 L400 113 L396 115 L391 116 L386 117 L381 117 L375 116 L370 114 L366 111 L362 107 L360 103 L359 99 L360 94 L361 90 L363 86 L366 83 L368 80 L371 77 L374 74 L377 72 L380 69 L384 67 L387 66 L391 64 L396 64 L400 63 L404 63 L409 64 L413 65 L417 66 L422 67 L426 69 L430 72 L434 74 L437 78 L440 81 L442 86Z M462 90 L461 96 L458 102 L453 107 L447 112 L440 115 L433 116 L427 118 L421 119 L415 119 L410 121 L405 122 L400 124 L394 126 L387 128 L380 129 L372 129 L364 127 L357 125 L351 120 L346 115 L343 109 L342 102 L343 96 L344 90 L347 84 L351 79 L354 75 L358 71 L362 67 L367 63 L371 60 L376 57 L382 55 L388 53 L394 52 L400 52 L406 52 L413 53 L419 54 L425 56 L431 58 L437 60 L443 63 L449 67 L454 72 L458 77 L461 84Z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 480px 480px;
+}
+
+.sidebar { background: var(--bg-1); box-shadow: none; border-right: 1.5px solid var(--border); }
+.sidebar-logo-text, .page-title, .today-title, .today-card-head h2, .today-session-title, .card h2, .card h3 {
+  font-family: var(--font-display);
+}
+.page-title { font-weight: 800; letter-spacing: -0.02em; }
+
+.nav-item { border-radius: 999px; }
+.nav-item.active { background: var(--pine); color: #f3f6e4; }
+.nav-item.active .nav-icon { color: #c9e08f; }
+
+.card, .today-card {
+  background: var(--bg-1);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.card-title { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text-2); }
+
+.btn { border-radius: 999px; border-width: 1.5px; background: var(--bg-1); }
+.btn:hover { background: var(--bg-2); }
+.btn-primary { background: var(--pine); border-color: var(--pine); color: #f3f6e4; }
+.btn-primary:hover { background: #1a3022; border-color: #1a3022; }
+.btn:focus-visible, .nav-item:focus-visible, .today-link:focus-visible, .today-week-day:focus-visible {
+  outline: 2.5px solid var(--sun); outline-offset: 2px;
+}
+
+.today-card-head h2 { font-size: 18px; font-weight: 700; letter-spacing: -0.015em; }
+.today-session-title { font-weight: 800; letter-spacing: -0.02em; }
+.today-race-chip { background: var(--sun); color: #fff; }
+.today-week-day { background: var(--bg-2); border-radius: 12px; }
+.today-week-day.is-today { border-color: var(--pine); background: #f6f9e6; }
+.today-week-day.t-race { box-shadow: inset 0 -3px 0 var(--sun); }
+.today-exercises li { background: var(--bg-2); border: 1px solid var(--border); border-radius: 14px; }
+.exfig-disc { fill: #e3eac0; }
+.exfig-shadow { fill: rgba(36, 64, 46, 0.14); }
+.exfig-prop { fill: #c79a62; stroke: #9c7444; stroke-width: 1.2; }
+
+/* ── Today hero: season landscape ── */
+.today-hero {
+  position: relative;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1.5px solid var(--border);
+  min-height: 190px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 22px;
+}
+.today-hero-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+.today-hero > :not(.today-hero-art) { position: relative; }
+.today-hero .today-date { color: var(--pine); font-weight: 600; }
+.today-hero .today-title { font-size: 38px; color: var(--pine); }
+.today-hero-phase { margin-top: 2px; font-size: 13.5px; color: var(--pine); opacity: 0.8; }
+@media (max-width: 768px) {
+  .today-hero { min-height: 160px; padding: 16px; }
+  .today-hero .today-title { font-size: 30px; }
+}
+
+/* ── Sidebar: pine panel, ridge at the foot ── */
+.sidebar {
+  background: var(--pine);
+  border-right: none;
+  color: #e9efd2;
+}
+.sidebar-header { border-bottom: none; padding: 22px 18px 14px; }
+.sidebar-logo-mark { box-shadow: 0 0 0 2px rgba(232, 237, 200, 0.28); border-radius: 12px; }
+.sidebar-logo-title { font-family: var(--font-display); font-size: 19px; font-weight: 800; letter-spacing: -0.02em; color: #f3f6e4; }
+.sidebar-nav { padding: 8px 12px; gap: 3px; }
+.sidebar .nav-item { color: #c4d1b4; font-weight: 500; padding: 9px 14px; }
+.sidebar .nav-item .nav-icon { color: #9fb58c; }
+.sidebar .nav-item:hover { background: rgba(232, 237, 200, 0.08); color: #f3f6e4; }
+.sidebar .nav-item.active { background: var(--bg-0); color: var(--pine); font-weight: 700; }
+.sidebar .nav-item.active .nav-icon { color: var(--brand); }
+.sidebar .nav-item-main { font-size: 15px; }
+.sidebar .nav-section-toggle {
+  text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 600;
+  color: #9fb58c; padding: 14px 14px 6px;
+}
+.sidebar .nav-section-toggle:hover { color: #f3f6e4; }
+.sidebar-footer {
+  border-top: none;
+  padding: 72px 12px 16px;
+  background: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 90' preserveAspectRatio='none'%3E%3Cpath d='M0 50 L28 30 L52 44 L84 14 L112 40 L140 26 L170 46 L204 20 L240 40 V90 H0Z' fill='%23305239'/%3E%3Cpath d='M0 66 C40 52 80 70 120 60 S200 50 240 62 V90 H0Z' fill='%233b6243'/%3E%3C/svg%3E") top center / 100% 90px no-repeat,
+    linear-gradient(#3b6243, #3b6243) 0 89px / 100% 100% no-repeat;
+}
+.sidebar-footer > * { position: relative; }
+.sidebar-conn-label { text-transform: none; letter-spacing: 0; font-size: 11.5px; color: #c4d1b4; }
+.sidebar-conn-dot { background: rgba(232, 237, 200, 0.25); }
+.sidebar-conn-dot.on { background: #a9d36a; }
+.sidebar-conn-dot.on-yellow { background: #f6c445; }
+.sidebar-user-name { color: #e9efd2; }
+.sidebar-user-initials { background: var(--sun); color: #fff; }
+.sidebar .sidebar-logout-btn { color: #9fb58c; }
+.sidebar .sidebar-logout-btn:hover { color: #ffb59c; background: rgba(240, 102, 58, 0.14); }
+.sidebar .nav-item:focus-visible { outline-color: var(--sun); }
+
+.login-page {
+  background-color: var(--bg-0);
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='480'%3E%3Cg fill='none' stroke='%23dbe2b6' stroke-width='1.2' stroke-linejoin='round'%3E%3Cpath d='M152 150 L153 152 L153 155 L152 157 L150 159 L148 161 L146 163 L143 164 L140 164 L138 165 L135 165 L132 165 L130 165 L128 165 L125 164 L123 164 L121 163 L119 162 L117 160 L115 159 L114 157 L113 156 L112 154 L111 152 L111 150 L110 148 L110 146 L110 143 L110 141 L112 139 L113 137 L115 135 L118 134 L121 133 L124 133 L127 133 L130 134 L132 136 L134 137 L136 138 L138 139 L139 140 L141 141 L143 142 L145 143 L147 144 L149 146 L151 148Z M171 150 L172 154 L171 159 L169 163 L166 167 L163 170 L158 173 L153 174 L149 176 L144 177 L139 177 L134 177 L130 177 L126 177 L121 176 L117 175 L113 173 L110 171 L107 169 L104 166 L102 163 L100 160 L98 157 L97 154 L95 150 L94 146 L93 142 L93 138 L94 134 L96 129 L99 126 L104 123 L109 120 L114 119 L120 119 L125 120 L130 122 L134 124 L138 127 L141 129 L144 131 L147 133 L150 134 L153 136 L157 137 L161 140 L165 142 L168 146Z M189 150 L190 156 L189 163 L186 169 L182 174 L177 179 L170 182 L164 185 L157 187 L150 188 L143 189 L137 190 L130 190 L124 189 L117 188 L111 186 L106 183 L101 180 L97 177 L93 173 L90 169 L87 164 L84 160 L82 155 L80 150 L78 145 L77 139 L77 132 L78 126 L81 120 L86 114 L92 110 L99 107 L107 106 L115 106 L123 108 L130 110 L136 113 L141 117 L146 120 L150 122 L154 125 L159 127 L164 129 L170 131 L176 135 L181 139 L186 144Z M207 150 L208 158 L207 166 L203 174 L197 181 L190 187 L182 192 L174 196 L165 198 L156 201 L147 202 L139 202 L130 202 L122 201 L113 200 L106 197 L99 193 L92 189 L87 184 L82 179 L78 174 L74 168 L71 163 L67 157 L64 150 L62 143 L60 135 L60 127 L61 118 L65 110 L72 103 L80 98 L90 94 L100 93 L111 93 L121 95 L130 99 L138 103 L144 107 L150 111 L156 114 L162 117 L168 119 L176 122 L183 125 L191 130 L198 136 L203 142Z M224 150 L226 160 L224 170 L219 180 L212 188 L204 195 L194 201 L184 206 L173 210 L163 213 L152 215 L141 216 L130 216 L119 214 L109 212 L100 208 L91 204 L84 198 L77 192 L72 186 L67 179 L62 173 L57 166 L53 158 L48 150 L45 141 L42 131 L42 121 L44 110 L49 101 L57 92 L68 85 L80 81 L93 79 L107 80 L119 83 L130 87 L139 92 L148 97 L155 102 L162 105 L170 109 L178 112 L187 115 L196 119 L206 125 L214 132 L220 140Z M242 150 L243 162 L241 174 L235 185 L227 195 L217 204 L206 211 L194 217 L182 222 L169 225 L156 228 L143 229 L130 229 L117 227 L105 224 L94 219 L84 214 L76 207 L68 199 L62 192 L56 184 L50 177 L44 168 L38 160 L33 150 L28 139 L25 127 L24 115 L27 102 L33 91 L43 81 L56 73 L71 68 L87 67 L102 68 L117 71 L130 76 L141 82 L151 88 L160 92 L169 97 L178 100 L188 104 L199 108 L210 113 L221 120 L230 128 L238 139Z M259 150 L260 164 L257 177 L251 190 L242 202 L231 212 L218 221 L205 228 L190 234 L176 238 L161 241 L145 243 L130 242 L115 240 L101 236 L88 230 L77 223 L67 215 L59 207 L52 198 L45 189 L38 181 L31 171 L23 161 L16 150 L10 137 L7 124 L6 109 L9 94 L17 81 L29 69 L44 61 L62 56 L80 54 L98 56 L115 60 L130 66 L143 72 L154 78 L165 83 L175 88 L186 91 L198 95 L211 100 L224 107 L236 115 L247 125 L255 137Z M384 340 L383 342 L381 345 L379 346 L377 348 L375 349 L373 350 L371 351 L369 352 L367 353 L364 353 L362 354 L360 355 L358 355 L355 355 L353 354 L350 354 L348 353 L346 351 L344 350 L342 348 L341 346 L339 344 L338 342 L338 340 L338 338 L338 335 L339 333 L340 331 L343 329 L345 328 L348 327 L351 327 L353 327 L356 327 L358 327 L360 328 L362 328 L364 328 L366 328 L369 328 L372 328 L375 328 L378 329 L380 331 L382 333 L384 335 L384 337Z M403 340 L401 344 L398 348 L395 352 L391 354 L387 357 L383 358 L379 360 L376 362 L372 363 L368 364 L364 366 L360 366 L356 367 L351 366 L347 366 L342 364 L338 362 L335 360 L331 358 L328 355 L325 352 L323 348 L321 344 L320 340 L319 336 L320 331 L322 327 L325 324 L329 321 L333 319 L338 317 L343 317 L348 317 L352 317 L356 318 L360 318 L364 318 L367 318 L372 318 L376 317 L381 318 L387 319 L392 320 L396 323 L400 327 L403 331 L403 335Z M421 340 L419 346 L415 352 L410 356 L404 360 L399 364 L393 367 L388 369 L383 372 L378 374 L372 376 L366 377 L360 378 L354 378 L347 378 L341 377 L335 375 L329 372 L324 369 L319 365 L314 361 L310 357 L306 352 L303 346 L301 340 L300 334 L301 327 L304 322 L309 316 L315 312 L321 309 L329 307 L336 307 L343 307 L349 307 L355 308 L360 308 L365 308 L371 308 L377 307 L384 307 L391 307 L399 309 L406 312 L413 316 L418 321 L421 327 L422 333Z M440 340 L436 348 L431 355 L425 361 L418 367 L411 371 L404 375 L397 379 L390 382 L383 385 L376 387 L368 389 L360 390 L352 390 L344 389 L335 387 L328 385 L320 381 L313 377 L306 373 L300 368 L294 362 L289 355 L285 348 L282 340 L281 332 L283 323 L287 316 L293 309 L301 304 L310 300 L319 298 L329 297 L338 297 L346 298 L353 298 L360 299 L367 298 L374 297 L382 297 L392 296 L401 297 L411 299 L421 303 L429 308 L436 315 L440 323 L441 331Z M457 340 L453 350 L447 359 L439 366 L431 373 L423 379 L415 384 L406 388 L398 393 L389 396 L380 399 L370 401 L360 402 L350 402 L340 400 L330 398 L321 395 L312 391 L303 386 L294 380 L286 374 L278 367 L271 359 L266 350 L263 340 L262 330 L264 319 L269 310 L277 302 L287 295 L298 291 L310 288 L322 287 L333 288 L343 288 L352 289 L360 289 L369 288 L378 287 L388 286 L399 285 L412 286 L424 289 L436 294 L446 300 L453 309 L458 319 L459 330Z M475 340 L470 352 L463 362 L454 371 L445 379 L436 386 L426 393 L416 398 L406 403 L395 408 L384 411 L372 413 L360 414 L348 413 L336 411 L325 408 L314 404 L303 399 L292 394 L282 388 L272 381 L262 372 L254 363 L247 352 L243 340 L242 328 L245 315 L251 304 L261 294 L274 287 L287 282 L302 279 L315 278 L328 279 L340 279 L350 279 L360 279 L370 278 L381 276 L394 275 L408 274 L422 275 L437 279 L450 285 L462 293 L470 303 L475 315 L477 328Z M423 90 L423 92 L422 95 L420 97 L418 98 L416 100 L413 100 L411 101 L408 101 L406 101 L404 102 L402 102 L400 103 L398 104 L395 104 L392 105 L389 105 L386 104 L383 103 L381 102 L379 100 L378 97 L377 95 L377 92 L378 90 L379 88 L381 86 L383 84 L384 83 L386 81 L387 80 L389 79 L391 78 L393 77 L395 76 L398 75 L400 75 L402 75 L405 75 L407 76 L410 76 L412 77 L414 79 L417 80 L419 81 L421 83 L422 85 L423 88Z M443 90 L442 94 L440 99 L437 102 L433 105 L428 107 L423 109 L419 109 L414 110 L411 111 L407 111 L404 112 L400 113 L396 115 L391 116 L386 117 L381 117 L375 116 L370 114 L366 111 L362 107 L360 103 L359 99 L360 94 L361 90 L363 86 L366 83 L368 80 L371 77 L374 74 L377 72 L380 69 L384 67 L387 66 L391 64 L396 64 L400 63 L404 63 L409 64 L413 65 L417 66 L422 67 L426 69 L430 72 L434 74 L437 78 L440 81 L442 86Z M462 90 L461 96 L458 102 L453 107 L447 112 L440 115 L433 116 L427 118 L421 119 L415 119 L410 121 L405 122 L400 124 L394 126 L387 128 L380 129 L372 129 L364 127 L357 125 L351 120 L346 115 L343 109 L342 102 L343 96 L344 90 L347 84 L351 79 L354 75 L358 71 L362 67 L367 63 L371 60 L376 57 L382 55 L388 53 L394 52 L400 52 L406 52 L413 53 L419 54 L425 56 L431 58 L437 60 L443 63 L449 67 L454 72 L458 77 L461 84Z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 480px 480px;
+}
+.login-logo { display: inline-block; }
+
+
+/* ── Nav groups ── */
+.nav-group { margin-top: 6px; }
+.nav-group-title { font-size: 11.5px; font-weight: 600; color: #8ea67a; padding: 8px 14px 3px; }
+.sidebar .nav-item { font-size: 14px; }
+
+/* ── Mobile: bottom tab bar instead of the side rail ── */
+.tabbar, .tabbar-sheet-backdrop { display: none; }
+@media (max-width: 768px) {
+  .app { flex-direction: column; }
+  .app > .sidebar { display: none; }
+  .main-content { padding: 16px 16px calc(84px + env(safe-area-inset-bottom)); }
+  .tabbar {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    position: fixed; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 50;
+    background: var(--pine); border-radius: 22px; padding: 6px;
+    box-shadow: 0 10px 30px rgba(36, 64, 46, 0.3);
+  }
+  .tabbar-item {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: none; border: none; color: #b8c8a6; font: 600 10.5px var(--font-sans);
+    padding: 7px 2px; border-radius: 16px; cursor: pointer; min-width: 0;
+  }
+  .tabbar-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .tabbar-item.active { background: var(--bg-0); color: var(--pine); }
+  .tabbar-item:focus-visible { outline: 2.5px solid var(--sun); outline-offset: 1px; }
+  .tabbar-more-icon { transform: rotate(180deg); transition: transform 0.2s; }
+  .tabbar-more-icon.open { transform: rotate(0deg); }
+  .tabbar-sheet-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 40; background: rgba(27, 46, 34, 0.35);
+  }
+  .tabbar-sheet {
+    position: absolute; left: 10px; right: 10px; bottom: calc(86px + env(safe-area-inset-bottom));
+    background: var(--bg-1); border-radius: 22px; padding: 10px 12px 14px;
+    max-height: 70vh; overflow-y: auto; box-shadow: var(--shadow-lg);
+  }
+  .tabbar-sheet .nav-group-title { color: var(--text-3); padding: 8px 4px 6px; }
+  .tabbar-sheet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tabbar-tile {
+    display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+    background: var(--bg-2); border: 1.5px solid transparent; border-radius: 14px;
+    padding: 12px 4px; color: var(--pine); font: 600 12px var(--font-sans); cursor: pointer;
+  }
+  .tabbar-tile.active { border-color: var(--pine); background: var(--bg-0); }
+  .tabbar-sheet-foot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+}
+@media (max-width: 768px) and (prefers-reduced-motion: reduce) {
+  .tabbar-more-icon { transition: none; }
+}
+@media (max-width: 768px) {
+  .main-content.coach-active, .main-content.gpx-active { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+}
+.today-exercises { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.today-hero .today-date::first-letter { text-transform: uppercase; }
+.today-hero .today-date { text-transform: none; }
+
+/* ── Calm Today: details folded away ── */
+.today-verdict-short { font-size: 14px; font-weight: 600; color: var(--text-1); margin-bottom: 10px; }
+.today-why { margin-top: 14px; border-top: 1px dashed var(--border-accent); padding-top: 10px; }
+.today-why summary, .today-more summary { cursor: pointer; list-style: none; }
+.today-why summary::-webkit-details-marker, .today-more summary::-webkit-details-marker { display: none; }
+.today-why summary { font-size: 13.5px; font-weight: 600; color: var(--brand); }
+.today-why summary::after, .today-more summary::after { content: ' +'; }
+.today-why[open] summary::after, .today-more[open] summary::after { content: ' −'; }
+.today-why[open] summary { margin-bottom: 10px; }
+.today-more {
+  background: rgba(251, 252, 243, 0.6); border: 1.5px dashed var(--border-accent); border-radius: var(--radius-lg);
+  padding: 14px 18px;
+}
+.today-more summary { display: flex; flex-direction: column; gap: 2px; }
+.today-more summary::after { position: absolute; }
+.today-more { position: relative; }
+.today-more summary::after { right: 18px; top: 14px; font-size: 20px; font-weight: 600; color: var(--pine); }
+.today-more-title { font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--pine); }
+.today-more-sub { font-size: 13px; color: var(--text-3); }
+.today-more-body { display: flex; flex-direction: column; gap: 16px; margin-top: 14px; }
+
+/* ── Calendar: calmer type ── */
+.calendar-layout { font-size: 14px; }
+.calendar-layout h2, .calendar-layout h3, .calendar-year-title { font-family: var(--font-display); letter-spacing: -0.01em; }
+.calendar-day { border-radius: 12px; }
+.calendar-day-today { border-color: var(--pine); }
+.calendar-pill { border-radius: 8px; font-size: 12.5px; }
+.calendar-week-tone { text-transform: none; letter-spacing: 0; }
+
+/* ── Pictos ── */
+.picto { display: inline-block; flex: none; vertical-align: middle; }
+.picto-inline { vertical-align: -0.2em; margin-right: 2px; }
+
+/* ── Day editor ── */
+.today-plan-edit {
+  display: block; margin-top: 16px; padding: 14px 16px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 14px;
+}
+.today-plan-edit-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--pine); margin-bottom: 10px; }
+.today-plan-edit-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.today-plan-edit-fields label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--text-2); min-width: 0; }
+.today-plan-edit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.today-plan-edit-actions .btn { font-size: 13px; padding: 7px 14px; }
+.today-plan-edit-actions .btn:disabled { opacity: 0.45; cursor: default; }
+@media (max-width: 560px) {
+  .today-plan-edit-fields { grid-template-columns: 1fr 1fr; }
+  .today-plan-edit-fields label:last-child { grid-column: 1 / -1; }
+}
+
+/* Selects across the app: paper pill with a pine chevron */
+.today select, .today input[type="date"], .today input[type="text"], .form-input {
+  appearance: none; -webkit-appearance: none;
+  font: 500 14px var(--font-sans); color: var(--text-0);
+  background-color: var(--bg-1); border: 1.5px solid var(--border-accent); border-radius: 10px;
+  padding: 8px 12px; min-height: 38px; width: 100%;
+}
+.today select, select.form-input {
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%2324402e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+.today select:disabled { opacity: 0.5; }
+.today select:focus-visible, .today input:focus-visible, .form-input:focus-visible { outline: none; border-color: var(--pine); box-shadow: 0 0 0 3px var(--brand-dim); }
+.today-inline input { width: auto; }
+
+/* ── Welcome (no data source yet) ── */
+.welcome {
+  max-width: 560px; margin: 24px auto; background: var(--bg-1);
+  border: 1.5px solid var(--border); border-radius: 22px; overflow: hidden;
+}
+.welcome-art { display: block; width: 100%; height: 170px; }
+.welcome-body { padding: 22px 24px 26px; }
+.welcome-title { font-family: var(--font-display); font-size: 30px; font-weight: 800; color: var(--pine); letter-spacing: -0.02em; margin-bottom: 6px; }
+.welcome-body p { font-size: 15px; color: var(--text-1); margin-bottom: 12px; }
+.welcome-sources { margin: 0 0 18px 18px; font-size: 14px; color: var(--text-2); }
+.welcome-sources li { margin-bottom: 4px; }

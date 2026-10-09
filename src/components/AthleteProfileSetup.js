@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { RACE_TYPES, WEAKNESSES, SEASON_PHASES, saveProfile } from '../services/athlete-profile';
+import Picto from './Pictos';
 
 export default function AthleteProfileSetup({ onComplete, initialProfile = null }) {
   const [step, setStep] = useState(1);
@@ -101,7 +102,7 @@ export default function AthleteProfileSetup({ onComplete, initialProfile = null 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
               {Object.entries(WEAKNESSES).map(([key, w]) => (
                 <button key={key} onClick={() => toggleItem(weaknesses, setWeaknesses, key)} style={badgeStyle(weaknesses.includes(key))}>
-                  {w.icon} {w.label}
+                  <Picto name={w.icon} size={16} className="picto-inline" /> {w.label}
                 </button>
               ))}
             </div>
@@ -110,7 +111,7 @@ export default function AthleteProfileSetup({ onComplete, initialProfile = null 
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-orange)', marginBottom: 8 }}>FOCUS ENTRAÎNEMENT</div>
                 {weaknesses.map(w => (
                   <div key={w} style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 4 }}>
-                    <strong style={{ color: 'var(--text-1)' }}>{WEAKNESSES[w]?.icon} {WEAKNESSES[w]?.label}</strong> → {WEAKNESSES[w]?.focus}
+                    <strong style={{ color: 'var(--text-1)' }}><Picto name={WEAKNESSES[w]?.icon} size={15} className="picto-inline" /> {WEAKNESSES[w]?.label}</strong> → {WEAKNESSES[w]?.focus}
                   </div>
                 ))}
               </div>

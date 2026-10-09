@@ -141,9 +141,9 @@ export const FIGURES = {
   },
 
   depthJump: {
-    a: shift(STAND, -36, -18),
-    b: shift(AIR, 22, 0),
-    props: [[10, 74, 24, 18]],
+    a: shift(STAND, -36, -12),
+    b: shift(AIR, 22, 2),
+    props: [[10, 80, 24, 12]],
     speed: 1.6,
   },
 

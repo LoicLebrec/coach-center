@@ -184,7 +184,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   nextLevelOf: () => (/* binding */ nextLevelOf),
 /* harmony export */   pickWorkout: () => (/* binding */ pickWorkout),
 /* harmony export */   progressionFor: () => (/* binding */ progressionFor),
-/* harmony export */   strengthForDay: () => (/* binding */ strengthForDay),
+/* harmony export */   strengthForWeek: () => (/* binding */ strengthForWeek),
 /* harmony export */   strengthLevel: () => (/* binding */ strengthLevel),
 /* harmony export */   templateForDay: () => (/* binding */ templateForDay),
 /* harmony export */   weekPlan: () => (/* binding */ weekPlan)
@@ -389,35 +389,49 @@ function progressionFor(state, responder = null) {
 }
 
 // ── Bodyweight strength (off the bike) ────────────────────────────────────────
-// Weekday index → session kind. Put on quality days so easy days stay easy
-// ("hard days hard"); 2/week to build, 1/week is enough to maintain in season
-// (Rønnestad 2010). None in the last week before the A-race.
-const STRENGTH_DAYS = {
-  transition: { 1: 'legs', 3: 'core' },
-  base: { 1: 'legs', 3: 'core' },
-  build: { 1: 'legs', 3: 'plyo' },
-  competition: { 1: 'plyo' },
-  peak: { 1: 'core' },
-  taper: {},
+// Sessions per week by phase: 2 to build strength, 1 is enough to maintain in
+// season (Rønnestad 2010), none in the last week before the A-race.
+// The first kind is the demanding one (legs / jumps), the second is core.
+const STRENGTH_PLAN = {
+  transition: ['legs', 'core'],
+  base: ['legs', 'core'],
+  build: ['legs', 'plyo'],
+  competition: ['plyo'],
+  peak: ['core'],
+  taper: [],
 };
 
+const HARD_OR_LONG = (d) => d && (['threshold', 'vo2', 'anaerobic', 'sprint', 'race_sim', 'race', 'force', 'sweetspot'].includes(d.type) || d.minutes >= 120);
+
 /**
- * Strength session kind for a day, or null.
- * opts: { type (the ride that day), hasRaceThatDay, hasRaceTomorrow, override: { strength } }
- * override.strength: true = add (kind from the phase, core by default), false = remove, a kind = that kind.
+ * Strength days for a week of templates ([{ type, minutes }], Monday first): the
+ * lowest-volume days — short rides first, then spare rest days — never two days in a
+ * row, never on or the day before a race. The demanding session goes where the
+ * next day is easiest; core goes before the hard or long day.
+ * Returns one kind (or null) per day.
  */
-function strengthForDay(state, date, opts = {}) {
-  if (opts.hasRaceThatDay || opts.hasRaceTomorrow) return null;
-  const idx = (date.getDay() + 6) % 7;
-  const plan = STRENGTH_DAYS[state.phase] || {};
-  let kind = plan[idx] || null;
-  // Recovery week: one short core session only.
-  if (state.isRecoveryWeek) kind = idx === Number(Object.keys(plan)[0]) ? 'core' : null;
-  const o = opts.override?.strength;
-  if (o === false) return null;
-  if (typeof o === 'string') return o;
-  if (o === true) return kind || 'core';
-  return kind;
+function strengthForWeek(state, days, raceFlags = []) {
+  let kinds = STRENGTH_PLAN[state.phase] || [];
+  if (state.isRecoveryWeek) kinds = kinds.length ? ['core'] : [];
+  // Rest days come last, and only when the week keeps another full day off.
+  const restDays = days.filter(d => d.type === 'rest').length;
+  const score = (d) => (d.type === 'rest' ? 1000 : d.minutes);
+  const order = days.map((d, i) => i)
+    .filter(i => !raceFlags[i]?.today && !raceFlags[i]?.tomorrow && days[i].type !== 'race')
+    .filter(i => days[i].type !== 'rest' || restDays >= 2)
+    .sort((a, b) => score(days[a]) - score(days[b]) || a - b);
+  const picks = [];
+  for (const i of order) {
+    if (picks.length >= kinds.length) break;
+    if (picks.some(j => Math.abs(j - i) < 2)) continue;
+    picks.push(i);
+  }
+  // Demanding kind on the pick followed by the easiest day.
+  const nextLoad = (i) => (HARD_OR_LONG(days[i + 1]) ? 2 : days[i + 1]?.type === 'rest' ? 0 : 1);
+  picks.sort((a, b) => nextLoad(a) - nextLoad(b) || a - b);
+  const out = days.map(() => null);
+  picks.forEach((i, n) => { out[i] = kinds[n]; });
+  return out;
 }
 
 /** Strength level: +1 per mesocycle in the phase, back to 1 on recovery weeks. */
@@ -428,7 +442,7 @@ function strengthLevel(state) {
 
 function weekPlan(state, fromDate = new Date(), opts = {}) {
   const monday = mondayOf(fromDate);
-  return Array.from({ length: 7 }, (_, i) => {
+  const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday); d.setDate(monday.getDate() + i);
     const key = dayKey(d);
     const next = new Date(d); next.setDate(d.getDate() + 1);
@@ -439,8 +453,14 @@ function weekPlan(state, fromDate = new Date(), opts = {}) {
       override: opts.overrides?.[key],
       responder: opts.responder,
     };
-    const tpl = templateForDay(state, d, ctx);
-    return { date: key, ...tpl, strength: strengthForDay(state, d, { ...ctx, type: tpl.type }) };
+    return { date: key, ...templateForDay(state, d, ctx), _race: { today: ctx.hasRaceThatDay, tomorrow: ctx.hasRaceTomorrow } };
+  });
+  const auto = strengthForWeek(state, days, days.map(d => d._race));
+  // A hand edit wins: false = none, a kind = that kind, true = the phase's kind (core by default).
+  return days.map(({ _race, ...d }, i) => {
+    const o = opts.overrides?.[d.date]?.strength;
+    const strength = o === false ? null : typeof o === 'string' ? o : o === true ? (auto[i] || 'core') : auto[i];
+    return { ...d, strength };
   });
 }
 

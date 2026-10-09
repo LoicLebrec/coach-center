@@ -12,6 +12,7 @@ import {
 import { intervalsService } from '../services/intervals';
 import { stravaService } from '../services/strava';
 import workoutAnalyzer from '../services/workout-analyzer';
+import Picto from './Pictos';
 
 // Convert Strava laps array → format expected by workoutAnalyzer.parseIntervals()
 function stravaLapsToIntervals(laps) {
@@ -912,7 +913,7 @@ function PowerSummarySection({ analysis, ftp, activity }) {
         {avgWatts > 0 && <StatBox label="MOY PUISSANCE" value={`${avgWatts}W`} sub={wkg ? `${wkg} W/kg` : null} />}
         {npWatts > 0 && <StatBox label="NP" value={`${npWatts}W`} sub={npWkg ? `${npWkg} W/kg` : null} color="var(--accent-orange)" />}
         {intensityFactor && <StatBox label="IF" value={intensityFactor} color={ifColor} sub={intensityFactor > 1 ? 'Au-dessus FTP' : 'Sous FTP'} />}
-        {tss != null && <StatBox label="TSS" value={Math.round(tss)} sub={tss > 150 ? '🔥 Charge haute' : tss > 80 ? 'Charge modérée' : 'Charge légère'} />}
+        {tss != null && <StatBox label="TSS" value={Math.round(tss)} sub={tss > 150 ? 'Charge haute' : tss > 80 ? 'Charge modérée' : 'Charge légère'} />}
         {maxWatts > 0 && <StatBox label="MAX" value={`${maxWatts}W`} />}
         {avgHR && <StatBox label="FC MOY" value={avgHR} sub={maxHR ? `max ${maxHR}` : null} />}
         {ef && <StatBox label="EF" value={ef} sub="NP/FC" />}
@@ -1174,7 +1175,7 @@ export default function WorkoutAnalysis({ activities, athlete, plannedEvents }) 
               {!activityAnalysis && !intervalAnalysis && !fatigueCurve && !raceAnalysis && (
                 <SectionCard>
                   <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
-                    <div style={{ fontSize: 28, marginBottom: 8 }}>📡</div>
+                    <div style={{ marginBottom: 8 }}><Picto name="signal" size={36} /></div>
                     <div style={{ fontWeight: 600, marginBottom: 4 }}>Pas de données de puissance</div>
                     <div style={{ fontSize: 12, color: 'var(--text-4)' }}>
                       Cette activité n'a pas de données de capteur de puissance ou les streams ne sont pas disponibles.

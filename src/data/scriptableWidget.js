@@ -116,7 +116,7 @@ function header(w, s, fresh) {
 
 function sessionBlock(w, sess, family, fresh) {
   if (!sess) { text(w, "Pas de séance", 15, C.text, true); return; }
-  const title = text(w, sess.kind === "race" ? "🏁 " + sess.title : sess.title, family === "small" ? 14 : 16, C.text, true);
+  const title = text(w, sess.kind === "race" ? "Course : " + sess.title : sess.title, family === "small" ? 14 : 16, C.text, true);
   title.lineLimit = 2;
   title.minimumScaleFactor = 0.7;
   w.addSpacer(2);

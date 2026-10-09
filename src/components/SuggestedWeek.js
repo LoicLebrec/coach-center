@@ -26,7 +26,7 @@ const SESSION_TYPE_ICON = {
   threshold: 'FTP',
   vo2: 'VO2',
   openers: '↑',
-  race: '⚑',
+  race: 'C',
 };
 
 const PHASE_BADGE_COLOR = {
@@ -122,7 +122,7 @@ function SignalChip({ signal }) {
         whiteSpace: 'nowrap',
       }}
     >
-      {signal.severity === 'critical' ? '⚠ ' : signal.severity === 'warning' ? '! ' : 'i '}
+      {signal.severity === 'critical' ? '! ' : signal.severity === 'warning' ? '! ' : 'i '}
       {signal.label}
     </span>
   );
@@ -475,7 +475,7 @@ export default function SuggestedWeek({
             cursor: 'pointer', fontFamily: 'var(--font-mono)',
           }}
         >
-          ⚙ Dispo
+          Dispo
         </button>
 
         {/* Add all button */}
@@ -583,7 +583,7 @@ export default function SuggestedWeek({
             gap: 6,
           }}
         >
-          <span>⚑</span>
+          <span>Course</span>
           <span>
             {nextRace.name} — {nextRace.daysAway === 0 ? "aujourd'hui" : `dans ${nextRace.daysAway} jour${nextRace.daysAway > 1 ? 's' : ''}`}
           </span>

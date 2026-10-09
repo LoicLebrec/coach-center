@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { backendService } from '../services/backend-api';
+import Logo from './Logo';
 
 // Google "G" logo SVG — no external dependency needed
 function GoogleIcon() {
@@ -48,26 +49,20 @@ export default function LoginPage({ onSuccess }) {
   };
 
   return (
-    <div style={{
+    <div className="login-page" style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'var(--bg-0)', padding: 20,
+      padding: 20,
     }}>
       <div style={{
         background: 'var(--bg-1)', border: '1px solid var(--border)',
         borderRadius: 16, padding: '36px 32px', width: '100%', maxWidth: 380,
-        boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+        boxShadow: 'var(--shadow-lg)',
       }}>
 
         {/* Logo */}
         <div style={{ marginBottom: 28, textAlign: 'center' }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 48, height: 48, borderRadius: 14,
-            background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.3)',
-            fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 18,
-            color: 'var(--accent-orange)', marginBottom: 14,
-          }}>CC</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-0)', marginBottom: 4 }}>
+          <Logo size={56} className="login-logo" />
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 800, color: 'var(--text-0)', margin: '12px 0 4px' }}>
             Coach Center
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-3)' }}>

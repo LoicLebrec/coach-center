@@ -7,6 +7,7 @@ import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import { LIBRARY_WORKOUTS as DEFAULT_LIBRARY_WORKOUTS } from '../data/workoutLibrary';
 import persistence from '../services/persistence';
+import Picto, { pictoSvg } from './Pictos';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow });
@@ -165,14 +166,14 @@ const ZONE_COLORS = {
 
 // ── POI categories ────────────────────────────────────────────
 const POI_CATEGORIES = [
-  { id: 'bicycle_shop', label: 'Bike Shops', icon: '🚲', color: '#4d7fe8', overpass: '"shop"="bicycle"' },
-  { id: 'cafe', label: 'Cafes', icon: '☕', color: '#f77f3a', overpass: '"amenity"="cafe"' },
-  { id: 'viewpoint', label: 'Viewpoints', icon: '🔭', color: '#3ecf6e', overpass: '"tourism"="viewpoint"' },
-  { id: 'peak', label: 'Peaks', icon: '⛰', color: '#e8a84d', overpass: '"natural"="peak"' },
+  { id: 'bicycle_shop', label: 'Bike Shops', icon: 'bike', color: '#4d7fe8', overpass: '"shop"="bicycle"' },
+  { id: 'cafe', label: 'Cafes', icon: 'coffee', color: '#f77f3a', overpass: '"amenity"="cafe"' },
+  { id: 'viewpoint', label: 'Viewpoints', icon: 'binoculars', color: '#3ecf6e', overpass: '"tourism"="viewpoint"' },
+  { id: 'peak', label: 'Peaks', icon: 'mountain', color: '#e8a84d', overpass: '"natural"="peak"' },
 ];
 
 function poiCategory(type) {
-  return POI_CATEGORIES.find(c => c.id === type) || { label: type, icon: '📍', color: '#888' };
+  return POI_CATEGORIES.find(c => c.id === type) || { label: type, icon: 'pin', color: '#888' };
 }
 
 function humanizeMapTag(value) {
@@ -282,7 +283,7 @@ function poiDivIcon(cat, isSelected) {
       cursor:pointer;
       pointer-events:auto;
       transition:all 0.15s;
-    ">${cat.icon}</div>`,
+    "><span style="display:flex;background:#fbfcf3;border-radius:50%;padding:2px">${pictoSvg(cat.icon, isSelected ? 16 : 14)}</span></div>`,
     className: '',
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
@@ -989,7 +990,7 @@ function PoiCard({ poi, thumb, onClose, currentLocation }) {
                 background: `${cat.color}22`, border: `2px solid ${cat.color}44`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', flexShrink: 0,
-              }}>{cat.icon}</div>
+              }}><Picto name={cat.icon} size={26} /></div>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-0)', lineHeight: 1.2 }}>{poi.name}</div>
                 <div style={{ fontSize: 13, color: cat.color, fontFamily: 'var(--font-mono)', marginTop: 2 }}>{cat.label}</div>
@@ -1010,7 +1011,7 @@ function PoiCard({ poi, thumb, onClose, currentLocation }) {
             background: `${cat.color}22`, border: `1px solid ${cat.color}55`,
             borderRadius: 20, padding: '5px 12px',
           }}>
-            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.06em' }}>{cat.icon}</span>
+            <Picto name={cat.icon} size={15} />
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: cat.color, fontWeight: 600 }}>{cat.label}</span>
           </div>
         )}
@@ -2703,7 +2704,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               {waypoints.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
                   <button onClick={() => removeWaypoint(waypoints.length - 1)} style={{ flex: 1, padding: '8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', background: 'none', color: 'var(--text-2)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                    ↩ Undo last
+                    Annuler le dernier point
                   </button>
                   <button onClick={clearDraw} style={{ flex: 1, padding: '8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', background: 'none', color: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
                     Clear all
@@ -2802,7 +2803,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
             display: 'flex', alignItems: 'center', gap: 9,
             width: '100%', textAlign: 'left', transition: 'all 0.18s',
           }}>
-            <span style={{ fontSize: 14, flexShrink: 0, minWidth: 22 }}>🔥</span>
+            <Picto name="fire" size={18} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>My Heatmap</div>
               {showHeatmap && (
@@ -2829,7 +2830,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               width: '100%', textAlign: 'left',
               transition: 'all 0.18s',
             }}>
-              <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', lineHeight: 1, flexShrink: 0, minWidth: 22 }}>{cat.icon}</span>
+              <Picto name={cat.icon} size={18} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.label}</div>
                 {isActive && count > 0 && (

@@ -10,11 +10,11 @@ import { METRICS } from '../data/metricDefs';
 import { asNumber } from '../services/number';
 
 const IMPRESSION_OPTIONS = [
-  { value: 'great', label: '✨ Great', color: '#22c55e' },
-  { value: 'good', label: '✓ Good', color: '#4ade80' },
-  { value: 'neutral', label: '◦ Neutral', color: '#facc15' },
-  { value: 'tired', label: '⬇ Tired', color: '#fb923c' },
-  { value: 'very-tired', label: '⬇⬇ Very Tired', color: '#ef4444' },
+  { value: 'great', label: 'Super', color: '#22c55e' },
+  { value: 'good', label: 'Bien', color: '#4ade80' },
+  { value: 'neutral', label: 'Neutre', color: '#facc15' },
+  { value: 'tired', label: 'Fatigué', color: '#fb923c' },
+  { value: 'very-tired', label: 'Très fatigué', color: '#ef4444' },
 ];
 
 // Helper to extract numeric value from various field names
@@ -345,17 +345,17 @@ export default function PMCChart({ wellness, activities, athlete, loading }) {
                 )}
                 {coverage.power > 0 && (
                   <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'rgba(96,148,240,0.12)', color: '#6094f0', border: '1px solid rgba(96,148,240,0.3)' }}>
-                    ⚡ {coverage.power} power
+                    {coverage.power} puissance
                   </span>
                 )}
                 {coverage.hr > 0 && (
                   <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'rgba(251,146,60,0.12)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.3)' }}>
-                    ♥ {coverage.hr} hrTSS
+                    {coverage.hr} hrTSS
                   </span>
                 )}
                 {coverage.duration > 0 && (
                   <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'rgba(148,163,184,0.1)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.2)' }}>
-                    ⏱ {coverage.duration} duration estimate
+                    {coverage.duration} estimés à la durée
                   </span>
                 )}
               </div>
