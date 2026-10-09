@@ -62,9 +62,9 @@ const FRENCH_MONTHS = {
   juillet: '07', juil: '07', 'juil.': '07',
   août: '08', aout: '08', 'août.': '08',
   septembre: '09', sept: '09', 'sept.': '09',
-  octobre: '10', oct: '10', 'oct.': '10',
-  novembre: '11', nov: '11', 'nov.': '11',
-  décembre: '12', decembre: '12', déc: '12', dec: '12', 'déc.': '12', 'dec.': '12',
+  octobre: '10', oct: '10', 'oct.': '10', octo: '10',
+  novembre: '11', nov: '11', 'nov.': '11', nove: '11',
+  décembre: '12', decembre: '12', déc: '12', dec: '12', 'déc.': '12', déce: '12', dece: '12', 'dec.': '12',
 };
 
 function parseFrenchDate(str) {
@@ -460,7 +460,7 @@ export async function fetchRaces({ date, department, fed, forceRefresh = false }
     }
   }
 
-  // ── 1. Try Vercel serverless function (production) ─────────────────────────
+  // ── 1. API server scraper (api/races.js) ──────────────────────────────────
   try {
     const params = new URLSearchParams();
     if (date) params.set('date', date);
@@ -468,7 +468,7 @@ export async function fetchRaces({ date, department, fed, forceRefresh = false }
     if (fed) params.set('fed', fed);
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), 12000);
-    const res = await fetch(`/api/races?${params}`, { signal: ctrl.signal });
+    const res = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/races?${params}`, { signal: ctrl.signal });
     clearTimeout(tid);
     if (res.ok) {
       const data = await res.json();

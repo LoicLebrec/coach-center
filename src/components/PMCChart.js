@@ -7,6 +7,7 @@ import persistence from '../services/persistence';
 import InfoTip from './InfoTip';
 import HelpPopup from './HelpPopup';
 import { METRICS } from '../data/metricDefs';
+import { asNumber } from '../services/number';
 
 const IMPRESSION_OPTIONS = [
   { value: 'great', label: '✨ Great', color: '#22c55e' },
@@ -17,14 +18,6 @@ const IMPRESSION_OPTIONS = [
 ];
 
 // Helper to extract numeric value from various field names
-function asNumber(...values) {
-  for (const v of values) {
-    const n = Number(v);
-    if (Number.isFinite(n)) return n;
-  }
-  return null;
-}
-
 // Helper to get resting HR from wellness record (handles different field names)
 function getWellnessRestingHr(w) {
   return asNumber(w?.restingHR, w?.resting_hr, w?.rhr, w?.hrRest);

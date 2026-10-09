@@ -8,6 +8,7 @@
 
 import { buildRuleBasedWorkout } from './workout-rules.js';
 import analytics from './analytics.js';
+import { asNumber } from './number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,14 +45,6 @@ function parseDate(d) {
   // 'YYYY-MM-DD' → local midnight
   const [y, m, day] = d.split('T')[0].split('-').map(Number);
   return new Date(y, m - 1, day);
-}
-
-function asNumber(...values) {
-  for (const v of values) {
-    const n = Number(v);
-    if (Number.isFinite(n)) return n;
-  }
-  return null;
 }
 
 function getWellnessDate(entry) {

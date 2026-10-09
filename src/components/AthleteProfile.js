@@ -1,17 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import HelpPopup from './HelpPopup';
 import persistence from '../services/persistence';
+import { asNumber } from '../services/number';
 
 function clamp(v, min, max) {
     return Math.max(min, Math.min(max, v));
-}
-
-function asNumber(...values) {
-    for (const v of values) {
-        const n = Number(v);
-        if (Number.isFinite(n)) return n;
-    }
-    return null;
 }
 
 function getAthleteFtp(athlete) {
@@ -248,7 +241,8 @@ export default function AthleteProfile({ wellness = [], athlete = null, events =
     const atl = latest?.icu_atl ?? latest?.atl ?? latest?.fatigue ?? null;
     const tsb = ctl != null && atl != null ? ctl - atl : null;
     const currentFtp = getAthleteFtp(athlete);
-    const restingHr = getWellnessRestingHr(latest);
+    // Today's row is often empty until the watch syncs: use the latest measured value.
+    const restingHr = getWellnessRestingHr([...(wellness || [])].reverse().find(w => getWellnessRestingHr(w) != null));
     const longTermDaysLeft = daysUntil(profile.longTermGoalDate || null);
 
     const report = useMemo(() => {

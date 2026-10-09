@@ -5,14 +5,7 @@ import analytics from '../services/analytics';
 import InfoTip from './InfoTip';
 import HelpPopup from './HelpPopup';
 import { METRICS } from '../data/metricDefs';
-
-function asNumber(...values) {
-  for (const v of values) {
-    const n = Number(v);
-    if (Number.isFinite(n)) return n;
-  }
-  return null;
-}
+import { asNumber } from '../services/number';
 
 function findNumericByKeyPattern(obj, pattern, depth = 0) {
   if (!obj || typeof obj !== 'object' || depth > 2) return null;
@@ -264,6 +257,8 @@ function fmtDate(dateStr) {
 
 export default function Dashboard({ wellness, activities, athlete, loading, error, powerCurve }) {
   const latest = wellness?.[wellness.length - 1];
+  // Today's row is often empty until the watch syncs: use the latest measured value.
+  const restingHr = getWellnessRestingHr([...(wellness || [])].reverse().find(w => getWellnessRestingHr(w) != null));
   const estimatedPMC = useMemo(() => estimatePMCFromActivities(activities), [activities]);
   const ctl = latest?.icu_ctl ?? estimatedPMC?.ctl ?? null;
   const atl = latest?.icu_atl ?? estimatedPMC?.atl ?? null;
@@ -599,7 +594,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         <div className="metric-tile">
           <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>Resting HR<InfoTip {...METRICS.RHR} /></div>
           <div className="metric-value">
-            {getWellnessRestingHr(latest) || '—'}<span className="metric-unit">bpm</span>
+            {restingHr ?? '—'}<span className="metric-unit">bpm</span>
           </div>
           {getWellnessWeight(latest) && (
             <div className="metric-delta neutral">

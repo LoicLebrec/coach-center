@@ -43,6 +43,10 @@ app.get('/api/health', (_req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 );
 
+// ── Races (public calendar scrape) ──────────────────────────────────────────────
+// vercel.json routes every /api/* here, so the scraper must be mounted on this app.
+app.get('/api/races', require('./races'));
+
 // ── Email / Password auth ─────────────────────────────────────────────────────
 
 app.post('/api/auth/register', async (req, res) => {

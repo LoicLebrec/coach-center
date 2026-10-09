@@ -1,4 +1,4 @@
-// Vercel serverless function — scrapes cyclisme-amateur.com race calendar
+// Race calendar scraper (cyclisme-amateur.com + FFC), mounted at /api/races in index.js
 // GET /api/races?date=2026-04-05&department=06&fed=FFC
 
 const FRENCH_MONTHS = {
@@ -11,9 +11,9 @@ const FRENCH_MONTHS = {
   juillet: '07', juil: '07', 'juil.': '07',
   août: '08', aout: '08',
   septembre: '09', sept: '09', 'sept.': '09',
-  octobre: '10', oct: '10', 'oct.': '10',
-  novembre: '11', nov: '11', 'nov.': '11',
-  décembre: '12', decembre: '12', déc: '12', dec: '12', 'déc.': '12',
+  octobre: '10', oct: '10', 'oct.': '10', octo: '10',
+  novembre: '11', nov: '11', 'nov.': '11', nove: '11',
+  décembre: '12', decembre: '12', déc: '12', dec: '12', 'déc.': '12', déce: '12', dece: '12',
 };
 
 function parseFrenchDate(str) {
@@ -318,7 +318,7 @@ function parseFfcRaces(html) {
   return races;
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   const { date, department, fed } = req.query || {};
@@ -337,7 +337,7 @@ export default async function handler(req, res) {
         });
         if (!response.ok) return;
         const buffer = await response.arrayBuffer();
-        const html = new TextDecoder('latin-1').decode(buffer);
+        const html = new TextDecoder('latin1').decode(buffer);
         allRaces.push(...parseRaces(html, federation));
       } catch { /* skip */ }
     }));
@@ -377,3 +377,5 @@ export default async function handler(req, res) {
     res.status(500).json({ error: err.message });
   }
 }
+
+module.exports = handler;

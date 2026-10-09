@@ -33,6 +33,7 @@ import NutritionCoach from './components/NutritionCoach';
 import FormPredictor from './components/FormPredictor';
 import { LIBRARY_WORKOUTS } from './data/workoutLibrary';
 import './styles/app.css';
+import { asNumber } from './services/number';
 
 function extractJsonBlock(text) {
   if (!text) return null;
@@ -65,14 +66,6 @@ const VIEWS = {
   CALENDAR: 'calendar',
   SETTINGS: 'settings',
 };
-
-function asNumber(...values) {
-  for (const v of values) {
-    const n = Number(v);
-    if (Number.isFinite(n)) return n;
-  }
-  return null;
-}
 
 function findNumericByKeyPattern(obj, pattern, depth = 0) {
   if (!obj || typeof obj !== 'object' || depth > 2) return null;
@@ -437,68 +430,6 @@ export default function App() {
     }
   }, []);
 
-  // Data completeness score used to prioritize enrichment for sparse activities.
-  const computeActivityCompleteness = useCallback((a) => {
-    const signals = [
-      a.name,
-      a.type || a.sport_type,
-      a.start_date_local,
-      a.moving_time || a.elapsed_time,
-      a.distance,
-      a.icu_training_load || a.training_load,
-      a.icu_average_watts || a.average_watts,
-      a.average_heartrate,
-      a.total_elevation_gain,
-    ];
-    return signals.filter(v => v != null && v !== 0 && v !== '').length;
-  }, []);
-
-  const enrichActivitiesProgressive = useCallback(async (activities, maxToEnrich) => {
-    if (!activities?.length) return [];
-
-    const prioritized = [...activities]
-      .sort((a, b) => {
-        // First enrich sparse records, then most recent.
-        const scoreDelta = computeActivityCompleteness(a) - computeActivityCompleteness(b);
-        if (scoreDelta !== 0) return scoreDelta;
-        return (b.start_date_local || '').localeCompare(a.start_date_local || '');
-      })
-      .slice(0, maxToEnrich);
-
-    const enrichedMap = {};
-    const batchSize = 10;
-
-    for (let i = 0; i < prioritized.length; i += batchSize) {
-      const batch = prioritized
-        .slice(i, i + batchSize)
-        .filter(a => a.id && !String(a.id).startsWith('__local_'));
-      if (batch.length === 0) continue;
-      const results = await Promise.allSettled(
-        batch.map(a => intervalsService.getActivity(a.id))
-      );
-
-      results.forEach(r => {
-        if (r.status === 'fulfilled' && r.value?.id) {
-          enrichedMap[r.value.id] = r.value;
-        }
-      });
-    }
-
-    return activities.map(a => {
-      const enriched = enrichedMap[a.id];
-      if (!enriched) return a;
-
-      const merged = { ...a };
-      for (const [key, val] of Object.entries(enriched)) {
-        // Merge only useful values to avoid degrading a previously complete record.
-        if (val !== null && val !== undefined && val !== '') {
-          merged[key] = val;
-        }
-      }
-      return merged;
-    });
-  }, [computeActivityCompleteness]);
-
   // Fetch data from Intervals.icu and/or Strava — whichever is connected
   const fetchData = useCallback(async (options = {}) => {
     const hasIcu = intervalsService.isConfigured();
@@ -532,6 +463,9 @@ export default function App() {
         ]);
         icuWellness = wellnessData.status === 'fulfilled' ? (wellnessData.value || []) : [];
         icuActivities = activitiesData.status === 'fulfilled' ? (activitiesData.value || []) : [];
+        // Intervals.icu lists Strava-synced rides as empty stubs ("not available via the API"):
+        // no type, no load. Kept, they show as blank activities and 404 on enrichment.
+        icuActivities = icuActivities.filter(a => !(a.source === 'STRAVA' && !a.type));
         icuAthlete = athleteData.status === 'fulfilled' ? normalizeAthleteProfile(athleteData.value || null) : null;
         icuEvents = eventsData.status === 'fulfilled' ? (eventsData.value || []) : [];
         icuPowerCurve = powerCurveData.status === 'fulfilled' ? (powerCurveData.value || null) : null;
@@ -564,17 +498,11 @@ export default function App() {
         return estimated != null ? { ...a, icu_training_load: estimated, _tssEstimated: true } : a;
       });
 
-      // Progressive enrichment from ICU per-activity endpoint
-      if (hasIcu && dedupedActivities.length > 0) {
-        const maxToEnrich = mode === 'repair'
-          ? dedupedActivities.length
-          : Math.min(dedupedActivities.length, 180);
-        dedupedActivities = await enrichActivitiesProgressive(dedupedActivities, maxToEnrich);
-      }
 
       // Wellness: use ICU if available, else compute synthetic from activity TSS
+      // Intervals.icu names them ctl/atl; the views read icu_ctl/icu_atl.
       const finalWellness = icuWellness.length > 0
-        ? icuWellness
+        ? icuWellness.map(w => ({ ...w, icu_ctl: w.icu_ctl ?? w.ctl ?? null, icu_atl: w.icu_atl ?? w.atl ?? null }))
         : computeSyntheticWellness(dedupedActivities);
 
       setWellness(finalWellness);
@@ -609,7 +537,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [deduplicateActivities, normalizeActivities, buildJournal, enrichActivitiesProgressive]);
+  }, [deduplicateActivities, normalizeActivities, buildJournal]);
 
   useEffect(() => {
     if (!connections.intervals && !connections.strava) return;
