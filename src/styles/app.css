@@ -3266,3 +3266,18 @@ button.today-week-day { font-family: var(--font-sans); cursor: pointer; color: i
 .feedback-table { font-size: 14px; margin: 6px 0 10px; }
 .feedback-note { font-size: 14.5px; color: var(--text-1); line-height: 1.6; margin: 4px 0 0; }
 .analysis-detail-title { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--pine); margin: 6px 0 10px; }
+
+/* ── Availability ── */
+.today-plan-edit-fields { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+@media (max-width: 560px) { .today-plan-edit-fields label:last-child { grid-column: auto; } }
+.today-week-avail { font-size: 10px; font-weight: 700; color: var(--accent-orange); }
+.today-week-day.is-off { background: repeating-linear-gradient(-45deg, var(--bg-2), var(--bg-2) 6px, var(--bg-3) 6px, var(--bg-3) 12px); }
+.today-avail-note { font-size: 14px; color: var(--text-1); background: var(--bg-2); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
+.cal-avail { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 700; color: var(--accent-orange); background: rgba(240, 102, 58, 0.1); border-radius: 999px; padding: 1px 7px; }
+.cal-avail.is-off { color: var(--text-2); background: var(--bg-3); }
+.cal-avail-picker { background: var(--bg-2); border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; }
+.cal-avail-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--pine); margin-bottom: 8px; }
+.cal-avail-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.cal-avail-options button { border: 1.5px solid var(--border); background: var(--bg-1); border-radius: 999px; padding: 6px 12px; font: 600 13px var(--font-sans); color: var(--text-1); cursor: pointer; }
+.cal-avail-options button.is-on { background: var(--pine); border-color: var(--pine); color: #f3f6e4; }
+.cal-avail-help { font-size: 12.5px; color: var(--text-3); margin: 8px 0 0; }

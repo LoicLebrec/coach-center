@@ -81,6 +81,7 @@ async function refreshUser(userId, { force = false } = {}) {
       season: context.season || {},
       profileWeaknesses: context.profileWeaknesses || [],
       responder: context.responder || null,
+      availability: context.availability || {},
       checkin,
       today,
     });

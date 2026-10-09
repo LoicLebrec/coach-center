@@ -174,6 +174,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   DEFAULT_SEASON_CONFIG: () => (/* binding */ DEFAULT_SEASON_CONFIG),
 /* harmony export */   PHASES: () => (/* binding */ PHASES),
 /* harmony export */   PHASE_ORDER: () => (/* binding */ PHASE_ORDER),
+/* harmony export */   applyAvailability: () => (/* binding */ applyAvailability),
 /* harmony export */   blocksMinutes: () => (/* binding */ blocksMinutes),
 /* harmony export */   countWork: () => (/* binding */ countWork),
 /* harmony export */   dropReps: () => (/* binding */ dropReps),
@@ -184,6 +185,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   nextLevelOf: () => (/* binding */ nextLevelOf),
 /* harmony export */   pickWorkout: () => (/* binding */ pickWorkout),
 /* harmony export */   progressionFor: () => (/* binding */ progressionFor),
+/* harmony export */   shrinkToFit: () => (/* binding */ shrinkToFit),
 /* harmony export */   strengthForWeek: () => (/* binding */ strengthForWeek),
 /* harmony export */   strengthLevel: () => (/* binding */ strengthLevel),
 /* harmony export */   templateForDay: () => (/* binding */ templateForDay),
@@ -414,10 +416,10 @@ function strengthForWeek(state, days, raceFlags = []) {
   let kinds = STRENGTH_PLAN[state.phase] || [];
   if (state.isRecoveryWeek) kinds = kinds.length ? ['core'] : [];
   // Rest days come last, and only when the week keeps another full day off.
-  const restDays = days.filter(d => d.type === 'rest').length;
+  const restDays = days.filter(d => d.type === 'rest' && !d.unavailable).length;
   const score = (d) => (d.type === 'rest' ? 1000 : d.minutes);
   const order = days.map((d, i) => i)
-    .filter(i => !raceFlags[i]?.today && !raceFlags[i]?.tomorrow && days[i].type !== 'race')
+    .filter(i => !raceFlags[i]?.today && !raceFlags[i]?.tomorrow && days[i].type !== 'race' && !days[i].unavailable)
     .filter(i => days[i].type !== 'rest' || restDays >= 2)
     .sort((a, b) => score(days[a]) - score(days[b]) || a - b);
   const picks = [];
@@ -440,6 +442,53 @@ function strengthLevel(state) {
   return Math.min(3, 1 + Math.floor((state.weekInPhase - 1) / state.cycleLen));
 }
 
+const QUALITY = ['threshold', 'vo2', 'sweetspot', 'anaerobic', 'sprint', 'race_sim', 'force', 'tempo', 'durability'];
+const HARD_DAY = (d) => d && (QUALITY.includes(d.type) || d.type === 'race');
+
+/**
+ * The athlete's availability: { 'YYYY-MM-DD': { off: true } | { minutes: 60 } }.
+ * A day off becomes rest; its quality session moves to another free day of the
+ * week (an easy or rest day, not next to another hard day, later days first,
+ * never in the past); with no such day it is dropped rather than stacked. A time
+ * limit caps the day's minutes. Races are never touched. Mutates `days`.
+ */
+function applyAvailability(days, availability = {}, today = null) {
+  if (!availability) return days;
+  const capOf = (d) => num0(availability[d.date]?.minutes);
+  days.forEach((d, i) => {
+    const a = availability[d.date];
+    if (!a?.off || d.type === 'race' || d._race?.today) return;
+    const moved = { type: d.type, minutes: d.minutes };
+    Object.assign(d, { type: 'rest', minutes: 0, unavailable: true });
+    if (!QUALITY.includes(moved.type)) return;
+    const order = days.map((_, j) => j).filter(j => j !== i)
+      .sort((x, y) => (x > i) === (y > i) ? Math.abs(x - i) - Math.abs(y - i) : (x > i ? -1 : 1));
+    const target = order.find(j => {
+      const t = days[j];
+      // An easy day or a rest day (the day off itself keeps the week's rest), never in the past.
+      if (t.unavailable || t._race?.today || t._race?.tomorrow || !['endurance', 'recovery', 'rest'].includes(t.type)) return false;
+      if (today && t.date < today) return false;
+      if (HARD_DAY(days[j - 1]) || HARD_DAY(days[j + 1])) return false;
+      const cap = capOf(t);
+      return !cap || cap >= 45;
+    });
+    if (target == null) { d.dropped = moved.type; return; }
+    const t = days[target];
+    Object.assign(t, { type: moved.type, minutes: moved.minutes, movedFrom: d.date });
+    d.movedTo = t.date;
+  });
+  days.forEach(d => {
+    const cap = capOf(d);
+    if (cap && !d.unavailable && d.type !== 'rest' && d.type !== 'race' && d.minutes > cap) Object.assign(d, { minutes: cap, capped: cap });
+  });
+  return days;
+}
+
+function num0(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function weekPlan(state, fromDate = new Date(), opts = {}) {
   const monday = mondayOf(fromDate);
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -455,6 +504,7 @@ function weekPlan(state, fromDate = new Date(), opts = {}) {
     };
     return { date: key, ...templateForDay(state, d, ctx), _race: { today: ctx.hasRaceThatDay, tomorrow: ctx.hasRaceTomorrow } };
   });
+  applyAvailability(days, opts.availability, opts.today);
   const auto = strengthForWeek(state, days, days.map(d => d._race));
   // A hand edit wins: false = none, a kind = that kind, true = the phase's kind (core by default).
   return days.map(({ _race, ...d }, i) => {
@@ -499,6 +549,29 @@ function fitToDuration(blocks, targetMin) {
   }
   // still too long → drop trailing work reps
   return diff < -3 ? dropReps(out, Math.round(-diff)) : out;
+}
+
+/**
+ * Hit the target duration: stretch/shrink Z1–Z2 fillers, then shorten warm-up
+ * (down to 10 min) and cool-down (down to 5 min), then drop trailing reps.
+ */
+function shrinkToFit(blocks, targetMin) {
+  let out = fitToDuration(blocks, targetMin);
+  let over = blocksMinutes(out) - targetMin;
+  // fitToDuration may already have dropped a long rep: top back up with Z2.
+  if (over < -3) return fitToDuration(out, targetMin);
+  if (over <= 3) return out;
+  out = out.map(b => {
+    if (over <= 0 || !isEdge(b)) return b;
+    const floor = /warm|échauff/i.test(b.label || '') ? 10 : 5;
+    const cut = Math.min(Math.max(0, (Number(b.durationMin) || 0) - floor), over);
+    over -= cut;
+    return { ...b, durationMin: Math.round((Number(b.durationMin) || 0) - cut) };
+  });
+  if (over <= 3) return out;
+  out = dropReps(out, Math.round(over));
+  // A long rep can take more than needed: top back up with Z2.
+  return blocksMinutes(out) < targetMin - 3 ? fitToDuration(out, targetMin) : out;
 }
 
 /** Remove work reps (and their recoveries) from the end of the main set. */
@@ -570,19 +643,22 @@ function pickWorkout(type, minutes, phase, { library = _data_workoutLibrary__WEB
   if (familyNames.length && !NO_FAMILY_ROTATION.includes(type)) {
     const fam = familyNames[Math.abs(rotation) % familyNames.length];
     const levels = pool.filter(w => w.family === fam).sort((a, b) => a.level - b.level);
-    const w = levels[Math.max(0, Math.min(levels.length - 1, level - 1))];
+    let idx = Math.max(0, Math.min(levels.length - 1, level - 1));
+    // The time available wins: step down to the highest level that fits.
+    if (minutes) while (idx > 0 && blocksMinutes(levels[idx].blocks) > minutes + 5) idx--;
+    const w = levels[idx];
     const natural = blocksMinutes(w.blocks);
-    return {
-      ...w,
-      blocks: minutes && minutes > natural + 5 ? fitToDuration(w.blocks, minutes) : w.blocks.map(b => ({ ...b })),
-    };
+    let blocks = w.blocks.map(b => ({ ...b }));
+    if (minutes && minutes > natural + 5) blocks = fitToDuration(w.blocks, minutes);
+    else if (minutes && natural > minutes + 5) blocks = shrinkToFit(w.blocks, minutes);
+    return { ...w, blocks, ...(idx !== level - 1 && level - 1 < levels.length ? { steppedDown: true } : {}) };
   }
 
   const ranked = [...pool].sort((a, b) =>
     Math.abs(blocksMinutes(a.blocks) - minutes) - Math.abs(blocksMinutes(b.blocks) - minutes));
   const top = ranked.slice(0, Math.min(3, ranked.length));
   const w = top[Math.abs(rotation) % top.length];
-  return { ...w, blocks: minutes ? fitToDuration(w.blocks, minutes) : w.blocks.map(b => ({ ...b })) };
+  return { ...w, blocks: minutes ? shrinkToFit(w.blocks, minutes) : w.blocks.map(b => ({ ...b })) };
 }
 
 /** Same family, next level — for a "next week" preview. */
@@ -1931,7 +2007,7 @@ function adaptWorkout(base, level, availableMin, phase) {
     type = 'recovery';
   }
 
-  if (availableMin && (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.blocksMinutes)(blocks) > availableMin) blocks = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.fitToDuration)(blocks, availableMin);
+  if (availableMin && (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.blocksMinutes)(blocks) > availableMin + 3) blocks = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.shrinkToFit)(blocks, availableMin);
 
   return { title, objective, trainingType: type, blocks, minutes: Math.round((0,_periodization__WEBPACK_IMPORTED_MODULE_1__.blocksMinutes)(blocks)) };
 }
@@ -2028,7 +2104,7 @@ function buildCalendar(plannedEvents, events, today) {
 }
 
 /** Base session: planned blocks > planned name matched to library > season template — then the data checks. */
-function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override = null, responder = null }) {
+function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override = null, responder = null, maxMinutes = null }) {
   // A day edited by hand in the plan beats whatever the calendar had.
   const planned = override ? null : cal.planned;
   if (planned) {
@@ -2037,17 +2113,19 @@ function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis,
     const plannedMin = sessionMinutes(planned) || 60;
     const d = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.decideSession)({ type, minutes: plannedMin }, analysis);
     if (planned.workoutBlocks?.length && d.type === type) {
+      let blocks = planned.workoutBlocks.map(b => ({ ...b, durationMin: Number(b.durationMin) || 0 }));
+      if (maxMinutes && (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.blocksMinutes)(blocks) > maxMinutes + 3) blocks = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.shrinkToFit)(blocks, maxMinutes);
       return {
         source: 'planned', title: planned.name || planned.title, objective: planned.notes || '',
-        trainingType: type, blocks: planned.workoutBlocks.map(b => ({ ...b, durationMin: Number(b.durationMin) || 0 })),
-        dataChanges: d.changes,
+        trainingType: type, blocks, dataChanges: d.changes,
       };
     }
-    const w = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(d.type, d.minutes, seasonState.phase, progression);
+    const w = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(d.type, maxMinutes ? Math.min(d.minutes, maxMinutes) : d.minutes, seasonState.phase, progression);
     return { ...w, source: 'planned-matched', plannedName: planned.name || planned.title, trainingType: d.type, dataChanges: d.changes };
   }
   const tpl = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.templateForDay)(seasonState, date, { weaknesses, hasRaceTomorrow: cal.raceTomorrow, override, responder });
   if (tpl.type === 'rest') return { rest: true, source: tpl.overridden ? 'override' : 'season' };
+  if (maxMinutes) tpl.minutes = Math.min(tpl.minutes, maxMinutes);
   const d = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.decideSession)(tpl, analysis);
   const w = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(d.type, d.minutes, seasonState.phase, progression);
   return { ...w, source: tpl.overridden ? 'override' : 'season', trainingType: d.type, plannedType: tpl.type, dataChanges: d.changes };
@@ -2061,6 +2139,7 @@ function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis,
 function computeDay({
   wellness = [], activities = [], athlete = null, events = [], plannedEvents = [], powerCurve = null,
   season, profileWeaknesses = [], checkin = DEFAULT_CHECKIN, today = localDayKey(), responder = null,
+  availability = {},
 }) {
   const date = dateOf(today);
   // A cycle scheduled from the suggestion takes over on its start date.
@@ -2076,13 +2155,27 @@ function computeDay({
     : (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.dataWeaknesses)(analysis, profileWeaknesses);
   const progression = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.progressionFor)(seasonState, responder);
   const overrides = season?.dayOverrides || {};
-  const week = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.weekPlan)(seasonState, date, { weaknesses, raceDays: cal.raceDays, overrides, responder });
+  const week = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.weekPlan)(seasonState, date, { weaknesses, raceDays: cal.raceDays, overrides, responder, availability, today });
+  const todayPlan = week.find(d => d.date === today) || {};
+  const avail = availability?.[today] || null;
   const readiness = computeReadiness({
     tsb: physio.tsb, hrvStatus: analysis.hrv?.status, hrvRatio: physio.hrvRatio,
     rhrDelta: analysis.rhr.delta ?? physio.rhrDelta, checkin,
   });
-  const base = buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override: overrides[today], responder });
-  const adapted = cal.race || base.rest ? null : adaptWorkout(base, readiness.level, checkin.minutes, seasonState.phase);
+  // A day off or a session moved here by the availability beats the calendar and the template.
+  const availOverride = todayPlan.unavailable || todayPlan.movedFrom ? { type: todayPlan.type, minutes: todayPlan.minutes } : null;
+  const base = {
+    ...buildBaseSession({
+      cal, seasonState, progression, weaknesses, analysis, date, override: overrides[today] || availOverride, responder,
+      maxMinutes: (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(avail?.minutes),
+    }),
+    ...(todayPlan.unavailable ? { unavailable: true } : {}),
+    ...(todayPlan.movedFrom ? { movedFrom: todayPlan.movedFrom } : {}),
+    ...(todayPlan.movedTo ? { movedTo: todayPlan.movedTo } : {}),
+    ...(todayPlan.dropped ? { dropped: todayPlan.dropped } : {}),
+  };
+  const timeCap = [checkin.minutes, (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(avail?.minutes)].filter(Boolean);
+  const adapted = cal.race || base.rest ? null : adaptWorkout(base, readiness.level, timeCap.length ? Math.min(...timeCap) : null, seasonState.phase);
   const strengthKind = week.find(d => d.date === today)?.strength || null;
   const strength = cal.race ? null : adaptStrength(strengthKind, (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.strengthLevel)(seasonState), readiness.level);
   const cycle = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.suggestCycle)({ analysis, seasonState, season, today, weaknesses: profileWeaknesses });
@@ -2100,7 +2193,7 @@ function computeDay({
  * would get. Precedence per day: race > hand-made override > calendar session > season template.
  * No readiness adaptation here — that only exists for today.
  */
-function buildOutlook({ season, plannedEvents = [], events = [], weaknesses = [], today = localDayKey(), weeks = 4, responder = null }) {
+function buildOutlook({ season, plannedEvents = [], events = [], weaknesses = [], today = localDayKey(), weeks = 4, responder = null, availability = {} }) {
   const all = mergeCalendar(plannedEvents, events);
   const byDay = new Map();
   for (const e of all) byDay.set(dayOf(e), [...(byDay.get(dayOf(e)) || []), e]);
@@ -2118,25 +2211,28 @@ function buildOutlook({ season, plannedEvents = [], events = [], weaknesses = []
     const state = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.getSeasonState)(cfg, ref);
     const progression = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.progressionFor)(state, responder);
     const sLevel = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.strengthLevel)(state);
-    const days = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.weekPlan)(state, ref, { weaknesses, raceDays, overrides, responder }).map(d => {
+    const days = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.weekPlan)(state, ref, { weaknesses, raceDays, overrides, responder, availability, today }).map(d => {
       const evs = byDay.get(d.date) || [];
       const race = evs.find(isRace);
       if (race) return { ...d, type: 'race', minutes: 0, source: 'race', title: race.name || race.title || 'Course', blocks: [], strength: null };
       d = { ...d, strength: d.strength ? (0,_data_strengthLibrary__WEBPACK_IMPORTED_MODULE_2__.strengthSession)(d.strength, sLevel) : null };
-      const planned = !d.overridden && evs.find(e => !isRace(e));
+      if (d.unavailable) return { date: d.date, type: 'rest', minutes: 0, source: 'availability', unavailable: true, movedTo: d.movedTo, dropped: d.dropped, blocks: [], strength: null };
+      const planned = !d.overridden && !d.movedFrom && evs.find(e => !isRace(e));
       if (planned && isRestDay(planned)) return { date: d.date, type: 'rest', minutes: 0, source: 'planned', blocks: [], strength: d.strength };
       if (planned) {
         const type = sessionType(planned) || 'endurance';
         const minutes = sessionMinutes(planned) || 60;
-        const blocks = planned.workoutBlocks?.length
+        const cap = (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(availability?.[d.date]?.minutes);
+        let blocks = planned.workoutBlocks?.length
           ? planned.workoutBlocks.map(b => ({ ...b, durationMin: Number(b.durationMin) || 0 }))
-          : (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(type, minutes, state.phase, progression).blocks;
+          : (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(type, cap ? Math.min(minutes, cap) : minutes, state.phase, progression).blocks;
+        if (cap && (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.blocksMinutes)(blocks) > cap + 3) blocks = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.shrinkToFit)(blocks, cap);
         return {
           date: d.date, type, minutes, source: 'planned', blocks, strength: d.strength,
           title: planned.name || planned.title, objective: planned.notes || '', tss: (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.estimateTss)(blocks),
         };
       }
-      const source = d.overridden ? 'override' : 'plan';
+      const source = d.overridden ? 'override' : d.movedFrom ? 'moved' : 'plan';
       if (d.type === 'rest') return { ...d, source, blocks: [] };
       const wk = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(d.type, d.minutes, state.phase, progression);
       return {

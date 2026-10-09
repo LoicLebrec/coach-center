@@ -39,10 +39,10 @@ export default function HelpPopup({ title, content, tips }) {
         top: pos.top,
         left: Math.min(pos.left, window.innerWidth - 280 - 8),
         width: 272,
-        background: '#0f1a2e',
-        border: '1px solid rgba(34,211,238,0.3)',
+        background: 'var(--bg-1)',
+        border: '1.5px solid var(--border-accent)',
         borderRadius: 10,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+        boxShadow: 'var(--shadow-lg)',
         overflow: 'hidden',
         animation: 'helpFadeIn 0.12s ease',
       }}
@@ -52,11 +52,11 @@ export default function HelpPopup({ title, content, tips }) {
       {/* Header */}
       <div style={{
         padding: '8px 12px',
-        background: 'rgba(34,211,238,0.08)',
-        borderBottom: '1px solid rgba(34,211,238,0.15)',
+        background: 'var(--bg-2)',
+        borderBottom: '1px solid var(--border)',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--pine)', fontFamily: 'var(--font-mono)' }}>
           {title || 'Aide'}
         </span>
         <button onClick={() => setOpen(false)} style={{
@@ -68,29 +68,29 @@ export default function HelpPopup({ title, content, tips }) {
       {/* Body */}
       <div style={{ padding: '10px 12px 12px', maxHeight: 280, overflowY: 'auto' }}>
         {typeof content === 'string' ? (
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-2)', lineHeight: 1.65 }}>{content}</p>
+          <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.65 }}>{content}</p>
         ) : Array.isArray(content) ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {content.map((block, i) => (
               <div key={i}>
                 {block.heading && (
-                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-1)', fontFamily: 'var(--font-mono)', marginBottom: 2, letterSpacing: '0.04em' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-0)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>
                     {block.heading}
                   </div>
                 )}
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>{block.text}</p>
+                <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.6 }}>{block.text}</p>
               </div>
             ))}
           </div>
         ) : null}
 
         {tips && tips.length > 0 && (
-          <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.06em' }}>CONSEILS</div>
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 5 }}>Conseils</div>
             {tips.map((tip, i) => (
               <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
-                <span style={{ color: 'var(--accent-cyan)', flexShrink: 0, fontSize: 11, lineHeight: '18px' }}>›</span>
-                <span style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.55 }}>{tip}</span>
+                <span style={{ color: 'var(--pine)', flexShrink: 0, fontSize: 11, lineHeight: '18px' }}>›</span>
+                <span style={{ fontSize: 13.5, color: 'var(--text-3)', lineHeight: 1.55 }}>{tip}</span>
               </div>
             ))}
           </div>
@@ -109,16 +109,16 @@ export default function HelpPopup({ title, content, tips }) {
         style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           width: 16, height: 16, borderRadius: '50%',
-          border: `1px solid ${open ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.18)'}`,
-          background: open ? 'rgba(34,211,238,0.15)' : 'transparent',
-          fontSize: 9, fontWeight: 700, fontFamily: 'var(--font-mono)',
-          color: open ? 'var(--accent-cyan)' : 'var(--text-4)',
+          border: `1px solid ${open ? 'var(--pine)' : 'var(--border-accent)'}`,
+          background: open ? 'var(--bg-2)' : 'transparent',
+          fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)',
+          color: open ? 'var(--pine)' : 'var(--text-4)',
           cursor: 'pointer', marginLeft: 6,
           transition: 'all 0.12s', lineHeight: 1, flexShrink: 0,
           userSelect: 'none',
         }}
-        onMouseOver={e => { if (!open) { e.currentTarget.style.borderColor = 'rgba(34,211,238,0.4)'; e.currentTarget.style.color = 'var(--text-2)'; } }}
-        onMouseOut={e => { if (!open) { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; e.currentTarget.style.color = 'var(--text-4)'; } }}
+        onMouseOver={e => { if (!open) { e.currentTarget.style.borderColor = 'var(--pine)'; e.currentTarget.style.color = 'var(--text-2)'; } }}
+        onMouseOut={e => { if (!open) { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--text-4)'; } }}
       >
         ?
       </button>

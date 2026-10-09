@@ -53,3 +53,36 @@ test('every library exercise has a figure', () => {
   const names = STRENGTH_KINDS.flatMap(k => [1, 2, 3].flatMap(l => strengthSession(k, l).exercises.map(e => e.name)));
   expect(names.filter(n => !figureFor(n))).toEqual([]);
 });
+
+test('every session fits the time it is given', () => {
+  // eslint-disable-next-line global-require
+  const { pickWorkout, blocksMinutes } = require('./periodization');
+  const off = [];
+  for (const phase of ['base', 'build', 'competition', 'peak']) {
+    for (const type of ['threshold', 'vo2', 'sweetspot', 'force', 'tempo', 'race_sim', 'sprint', 'durability', 'endurance', 'recovery', 'anaerobic']) {
+      for (const min of [45, 60, 75, 90, 120]) {
+        for (const level of [1, 3, 6]) {
+          const got = blocksMinutes(pickWorkout(type, min, phase, { level }).blocks);
+          if (Math.abs(got - min) > 5) off.push(`${phase} ${type} ${min}′ L${level} → ${Math.round(got)}′`);
+        }
+      }
+    }
+  }
+  expect(off).toEqual([]);
+});
+
+test('availability: day off moves the quality session, time cap shortens', () => {
+  // eslint-disable-next-line global-require
+  const { weekPlan: wp } = require('./periodization');
+  const state = { phase: 'build', isRecoveryWeek: false, weekInCycle: 1, cycleLen: 4, weekInPhase: 1 };
+  // build week: Mon rest, Tue threshold, Wed endurance, Thu vo2, Fri recovery, Sat durability, Sun sweetspot
+  const days = wp(state, monday, { availability: { '2026-12-08': { off: true }, '2026-12-12': { minutes: 90 } } });
+  expect(days[1]).toMatchObject({ type: 'rest', unavailable: true });
+  const moved = days.find(d => d.movedFrom === '2026-12-08');
+  expect(moved.type).toBe('threshold');
+  expect(['rest', 'recovery', 'endurance']).not.toContain(moved.type);
+  const i = days.indexOf(moved);
+  expect(['threshold', 'vo2', 'race'].includes(days[i - 1]?.type) || ['threshold', 'vo2'].includes(days[i + 1]?.type)).toBe(false);
+  expect(days[5]).toMatchObject({ minutes: 90, capped: 90 });
+  expect(days[1].strength).toBeNull();
+});

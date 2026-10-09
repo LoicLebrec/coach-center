@@ -115,7 +115,6 @@ function FormGauge({ tsb }) {
         fontSize: 9,
         fontFamily: 'var(--font-mono)',
         color: 'var(--text-3)',
-        letterSpacing: '0.04em',
       }}>
         <span>Overtraining</span>
         <span>Fatigued</span>
@@ -637,7 +636,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
                   width={36}
                   label={{ value: 'TSS', angle: -90, position: 'insideLeft', fill: 'var(--text-3)', fontSize: 9, fontFamily: 'var(--font-mono)', dy: 14 }}
                 />
-                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(36,64,46,0.06)' }} />
                 <Bar dataKey="tss" name="TSS" radius={[3, 3, 0, 0]}>
                   {weeklyTSS.map((entry, index) => (
                     <Cell
@@ -683,7 +682,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
                   width={36}
                   label={{ value: 'KM', angle: -90, position: 'insideLeft', fill: 'var(--text-3)', fontSize: 9, fontFamily: 'var(--font-mono)', dy: 14 }}
                 />
-                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(36,64,46,0.06)' }} />
                 <Bar dataKey="distance" name="Distance" radius={[3, 3, 0, 0]}>
                   {weeklyMetrics.map((entry, index) => (
                     <Cell
@@ -732,7 +731,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
                   width={36}
                   label={{ value: 'Watts', angle: -90, position: 'insideLeft', fill: 'var(--text-3)', fontSize: 9, fontFamily: 'var(--font-mono)', dy: 14 }}
                 />
-                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(36,64,46,0.06)' }} />
                 <Bar dataKey="avgWatts" name="Avg Power" radius={[3, 3, 0, 0]}>
                   {weeklyMetrics.map((entry, index) => (
                     <Cell
@@ -864,9 +863,9 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
                 <YAxis yAxisId="left" tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }} tickLine={false} axisLine={false} width={40} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }} tickLine={false} axisLine={false} width={40} />
                 <Tooltip content={<CustomTooltip />} />
-                <Line yAxisId="left" type="monotone" dataKey="rhr" name="Resting HR" stroke="#f97316" strokeWidth={1.8} dot={false} />
-                <Line yAxisId="left" type="monotone" dataKey="weight" name="Weight" stroke="#22c55e" strokeWidth={1.6} dot={false} />
-                <Line yAxisId="right" type="monotone" dataKey="ef" name="EF" stroke="#38bdf8" strokeWidth={1.8} dot={false} />
+                <Line yAxisId="left" type="monotone" dataKey="rhr" name="FC repos" stroke="#f97316" strokeWidth={1.8} dot={false} />
+                <Line yAxisId="left" type="monotone" dataKey="weight" name="Poids" stroke="#22c55e" strokeWidth={1.6} dot={false} />
+                <Line yAxisId="right" type="monotone" dataKey="ef" name="EF" stroke="#2f6fb0" strokeWidth={1.8} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -952,7 +951,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
       <div className="card">
         <div className="card-header">
           <span className="card-title">Records Personnels</span>
-          <span className="card-badge" style={{ background: 'rgba(255,107,43,0.08)', color: 'var(--brand)', border: '1px solid rgba(255,107,43,0.25)' }}>
+          <span className="card-badge" style={{ background: 'var(--brand-dim)', color: 'var(--brand)', border: '1px solid rgba(92,138,46,0.25)' }}>
             {activities?.length || 0} activités analysées
           </span>
         </div>
@@ -962,11 +961,11 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
           {/* FTP détecté */}
           <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px', position: 'relative', overflow: 'hidden' }}>
             {ftpDetection?.isNew && (
-              <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, fontWeight: 700, background: 'var(--brand)', color: '#fff', borderRadius: 99, padding: '2px 7px', letterSpacing: '0.05em' }}>
+              <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, fontWeight: 700, background: 'var(--brand)', color: '#fff', borderRadius: 99, padding: '2px 7px' }}>
                 NOUVEAU PR
               </div>
             )}
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'var(--text-3)', marginBottom: 6 }}>FTP Détecté</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', marginBottom: 6 }}>FTP Détecté</div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 34, fontWeight: 700, color: ftpDetection?.isNew ? 'var(--brand)' : 'var(--text-0)', letterSpacing: '-0.03em', lineHeight: 1 }}>
               {ftpDetection?.detected ?? '—'}<span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-3)', marginLeft: 3, fontFamily: 'var(--font-sans)' }}>W</span>
             </div>
@@ -986,7 +985,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
 
           {/* FC Max détectée */}
           <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'var(--text-3)', marginBottom: 6 }}>FC Max Détectée</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', marginBottom: 6 }}>FC Max Détectée</div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 34, fontWeight: 700, color: 'var(--text-0)', letterSpacing: '-0.03em', lineHeight: 1 }}>
               {maxHRDetection?.hr ?? '—'}<span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-3)', marginLeft: 3, fontFamily: 'var(--font-sans)' }}>bpm</span>
             </div>
@@ -1002,11 +1001,11 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
         </div>
 
         {/* Power PR table */}
-        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: 'var(--text-3)', marginBottom: 10 }}>Meilleures puissances</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 10 }}>Meilleures puissances</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
           {powerPRs.map(({ label, best, top3, hasCurve }) => (
             <div key={label} style={{ background: best ? 'var(--bg-1)' : 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 10px 8px', textAlign: 'center', boxShadow: best ? 'var(--shadow-sm)' : 'none' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-4)', marginBottom: 6 }}>{label}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-4)', marginBottom: 6 }}>{label}</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: best ? 'var(--text-0)' : 'var(--text-4)', letterSpacing: '-0.03em', lineHeight: 1 }}>
                 {best ?? '—'}
               </div>

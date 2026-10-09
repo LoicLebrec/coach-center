@@ -14,6 +14,7 @@ import { reviewSession, activitiesOn } from '../services/sessionReview';
 import { fmtDose, STRENGTH_KINDS, STRENGTH_LABELS } from '../data/strengthLibrary';
 import ExerciseFigure from './ExerciseFigure';
 import SeasonLandscape from './SeasonLandscape';
+import { loadAvailability, setAvailability, availabilityValue, availabilityLabel, AVAILABILITY_OPTIONS } from '../services/availability';
 import Picto from './Pictos';
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -326,7 +327,7 @@ const TYPE_SHORT = {
   recovery: 'Réc', endurance: 'End', durability: 'Dur', tempo: 'Tmp', force: 'For', sweetspot: 'SS',
   threshold: 'Seuil', vo2: 'VO2', anaerobic: 'Ana', sprint: 'Spr', race_sim: 'Sim', openers: 'Débl', race: 'Course',
 };
-const SOURCE_LABELS = { override: 'modifié', planned: 'calendrier', plan: 'plan', race: 'course' };
+const SOURCE_LABELS = { override: 'modifié', planned: 'calendrier', plan: 'plan', race: 'course', moved: 'déplacée', availability: 'pas dispo' };
 
 function weekLabel(w, i) {
   const start = new Date(`${w.start}T00:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
@@ -336,7 +337,7 @@ function weekLabel(w, i) {
 }
 
 /** Coming weeks of the plan: tap a day for the full session, change it or move it. */
-function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit }) {
+function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit, availability = {}, onAvailability }) {
   const [wi, setWi] = useState(0);
   const [sel, setSel] = useState(today);
   const week = weeks[wi];
@@ -354,6 +355,7 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit }) {
   const dayReview = day && reviews[day.date];
 
   const editable = day && day.date >= today && day.source !== 'race';
+  const avail = day ? availability[day.date] : null;
   const canSwap = (j) => {
     const other = week.days[j];
     return editable && other && other.date >= today && other.source !== 'race';
@@ -390,7 +392,7 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit }) {
         {week.days.map((d, i) => (
           <button type="button" key={d.date} onClick={() => setSel(d.date)}
             className={`today-week-day t-${d.type}${d.date === today ? ' is-today' : ''}${d.date === sel ? ' is-selected' : ''}`
-              + `${d.date < today ? ' is-past' : ''}${d.source === 'override' ? ' is-edited' : ''}`}>
+              + `${d.date < today ? ' is-past' : ''}${['override', 'moved'].includes(d.source) ? ' is-edited' : ''}${d.unavailable ? ' is-off' : ''}`}>
             <div className="today-week-letter">{DAY_LETTERS[i]} {Number(d.date.slice(8))}</div>
             <div className="today-week-type">
               {d.type === 'rest' ? '—' : (
@@ -399,6 +401,7 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit }) {
             </div>
             {d.blocks?.length > 0 && <div className="today-week-min">{Math.round(blocksMinutes(d.blocks))}′</div>}
             {d.strength && <div className="today-week-strength" title={d.strength.title}>+ renfo</div>}
+            {availability[d.date] && <div className="today-week-avail">{availability[d.date].off ? 'pas dispo' : `≤ ${Math.round(availability[d.date].minutes)}′`}</div>}
             {reviews[d.date]?.review && <span className={`today-week-check tone-${reviews[d.date].review.tone}`} title={reviews[d.date].review.title} />}
           </button>
         ))}
@@ -425,6 +428,14 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit }) {
               <BlockList blocks={day.blocks} ftp={ftp} />
             </>
           )}
+          {day.unavailable && (
+            <p className="today-avail-note">
+              Tu n’es pas dispo.{' '}
+              {day.movedTo ? `La séance passe au ${fmtDay(day.movedTo)}.` : day.dropped ? `Pas de place pour ${TYPE_LABELS[day.dropped].toLowerCase()} sans enchaîner deux jours durs : séance sautée cette semaine.` : ''}
+            </p>
+          )}
+          {day.movedFrom && <p className="today-avail-note">Séance déplacée du {fmtDay(day.movedFrom)} (pas dispo ce jour-là).</p>}
+          {avail?.minutes && !day.unavailable && <p className="today-avail-note">Séance calée sur {availabilityLabel(avail)}.</p>}
           {day.date === today && (
             <p className="today-hint">Le détail du jour est en haut de la page.</p>
           )}
@@ -453,6 +464,12 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit }) {
                     {day.type === 'rest' && <option value="">—</option>}
                     {day.type !== 'rest' && !EDIT_MINUTES.includes(day.minutes) && <option value="">{Math.round(day.minutes || 0)} min</option>}
                     {EDIT_MINUTES.map(m => <option key={m} value={m}>{fmtDur(m)}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>Ta dispo</span>
+                  <select value={availabilityValue(availability[day.date])} onChange={e => onAvailability(day.date, e.target.value)}>
+                    {AVAILABILITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </label>
                 <label>
@@ -684,17 +701,26 @@ export default function Today({
   const useResponder = season.useResponder !== false;
   const responder = useResponder && responderState.profile?.ready ? responderState.profile.traits : null;
 
+  // Days the rider can't ride or has limited time (set here or in the calendar).
+  const [availability, setAvail] = useState({});
+  useEffect(() => {
+    loadAvailability().then(setAvail);
+    const onChange = (e) => setAvail(e.detail || {});
+    window.addEventListener('availability-changed', onChange);
+    return () => window.removeEventListener('availability-changed', onChange);
+  }, []);
+
   const day = useMemo(() => computeDay({
     wellness, activities, athlete, events, plannedEvents, powerCurve,
-    season, profileWeaknesses: profile.weaknesses || [], checkin, today, responder,
-  }), [wellness, activities, athlete, events, plannedEvents, powerCurve, season, profile.weaknesses, checkin, today, responder]);
+    season, profileWeaknesses: profile.weaknesses || [], checkin, today, responder, availability,
+  }), [wellness, activities, athlete, events, plannedEvents, powerCurve, season, profile.weaknesses, checkin, today, responder, availability]);
   const {
     physio, cal, seasonState, analysis, readiness, base, adapted, strength, cycle, changes, form, phaseInfo,
     level: lvl,
   } = day;
   const outlook = useMemo(() => buildOutlook({
-    season, plannedEvents, events, weaknesses: day.weaknesses, today, weeks: 4, responder,
-  }), [season, plannedEvents, events, day.weaknesses, today, responder]);
+    season, plannedEvents, events, weaknesses: day.weaknesses, today, weeks: 4, responder, availability,
+  }), [season, plannedEvents, events, day.weaknesses, today, responder, availability]);
 
   // Keep what was prescribed today so the session analysis can compare the ride to it.
   // The prescription is built from the start-of-day state, so it stays put once ridden.
@@ -737,11 +763,12 @@ export default function Today({
         checkin: { date: today, ...checkin },
         plannedEvents: plannedEvents.filter(e => dayOf(e) >= today && dayOf(e) <= horizon),
         athlete: { icu_ftp: ftp, icu_weight: num(athlete?.icu_weight) || num(athlete?.weight) || null },
+        availability: Object.fromEntries(Object.entries(availability).filter(([k]) => k <= horizon)),
         tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
     }, 2000);
     return () => clearTimeout(timer);
-  }, [loading, day, ftp, athlete, season, profile.weaknesses, checkin, plannedEvents, today, responder]);
+  }, [loading, day, ftp, athlete, season, profile.weaknesses, checkin, plannedEvents, today, responder, availability]);
 
   const handleSave = async () => {
     if (!adapted || !onAddPlannedEvent) return;
@@ -802,6 +829,13 @@ export default function Today({
             <p className="today-hint">
               Jour de course. Échauffement 20–30 min avec 2–3 accélérations, mange 2–3 h avant, bois régulièrement.
               {physio.tsb != null && physio.tsb < -10 && ' Ta forme est basse : pars prudemment et reste abrité.'}
+            </p>
+          </div>
+        ) : base.unavailable ? (
+          <div>
+            <div className="today-session-title">Pas dispo aujourd’hui</div>
+            <p className="today-hint">
+              {base.movedTo ? `Ta séance passe au ${fmtDay(base.movedTo)}.` : base.dropped ? 'Pas de place cette semaine pour la séance prévue sans enchaîner deux jours durs : elle saute.' : 'Profite pour récupérer.'}
             </p>
           </div>
         ) : base.rest ? (
@@ -958,7 +992,8 @@ export default function Today({
       )}
 
 
-      <PlanAhead weeks={outlook} today={today} ftp={ftp} activities={activities} overrides={season.dayOverrides || {}} onEdit={editDays} />
+      <PlanAhead weeks={outlook} today={today} ftp={ftp} activities={activities} overrides={season.dayOverrides || {}} onEdit={editDays}
+        availability={availability} onAvailability={(date, v) => setAvailability(date, v).then(setAvail)} />
 
       <details className="today-more">
         <summary>

@@ -28,6 +28,7 @@ import { fr as dateFnsFr } from 'date-fns/locale';
 import { loadProfile, isProfileComplete, buildWeekPlan, SESSION_DEFINITIONS } from '../services/athlete-profile';
 import AthleteProfileSetup from './AthleteProfileSetup';
 import Picto from './Pictos';
+import { loadAvailability, setAvailability, availabilityValue, availabilityLabel, AVAILABILITY_OPTIONS } from '../services/availability';
 
 // ── Modern glassmorphic design system ───────────────────────────────
 const GLASS = {
@@ -399,6 +400,14 @@ export default function Calendar({
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [routePromptEvent, setRoutePromptEvent] = useState(null);
     const [selectedActivityDay, setSelectedActivityDay] = useState(null);
+    // Days off / limited time; the plan in Today moves or shortens sessions accordingly.
+    const [availability, setAvail] = useState({});
+    useEffect(() => {
+        loadAvailability().then(setAvail);
+        const onChange = (e) => setAvail(e.detail || {});
+        window.addEventListener('availability-changed', onChange);
+        return () => window.removeEventListener('availability-changed', onChange);
+    }, []);
     const [dayQuickTitle, setDayQuickTitle] = useState('');
     const [dayQuickType, setDayQuickType] = useState('Workout');
     const [dayQuickKind, setDayQuickKind] = useState('training');
@@ -1266,6 +1275,7 @@ export default function Calendar({
                                             <div className="calendar-day-num" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span>{format(day, 'd')}</span>
                                                 {activityData && <span style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--accent-green)', opacity: 0.8 }}>{Math.round(activityData.tss)}tss</span>}
+                                                {availability[dayKey] && <span className={`cal-avail${availability[dayKey].off ? ' is-off' : ''}`}>{availability[dayKey].off ? 'pas dispo' : `≤ ${availability[dayKey].minutes}′`}</span>}
                                             </div>
                                             <div className="calendar-day-events">
                                                 {entries.slice(0, 3).map(entry => {
@@ -1354,7 +1364,10 @@ export default function Calendar({
                                             onClick={() => openDayDetails(dayKey)}
                                             title={activityData ? `${Math.round(activityData.tss)} TSS` : 'Ajouter une séance ou une note'}
                                         >
-                                            <div className="calendar-day-num">{format(day, 'EEE d', { locale: dateFnsFr })}</div>
+                                            <div className="calendar-day-num">
+                                                {format(day, 'EEE d', { locale: dateFnsFr })}
+                                                {availability[dayKey] && <span className={`cal-avail${availability[dayKey].off ? ' is-off' : ''}`}>{availabilityLabel(availability[dayKey])}</span>}
+                                            </div>
                                             <div className="calendar-week-events">
                                                 {entries.map(entry => {
                                                     const tone = trainingTone(entry);
@@ -1832,6 +1845,23 @@ export default function Calendar({
                                 style={{ background: 'none', border: 'none', color: 'var(--text-2)', cursor: 'pointer', fontSize:20, lineHeight: 1, padding: '0 4px' }}
                             >×</button>
                         </div>
+
+                        {selectedActivityDay >= format(new Date(), 'yyyy-MM-dd') && (
+                            <div className="cal-avail-picker">
+                                <div className="cal-avail-title">Ta dispo ce jour-là</div>
+                                <div className="cal-avail-options" role="radiogroup" aria-label="Disponibilité">
+                                    {AVAILABILITY_OPTIONS.map(o => (
+                                        <button key={o.value} type="button" role="radio"
+                                            aria-checked={availabilityValue(availability[selectedActivityDay]) === o.value}
+                                            className={availabilityValue(availability[selectedActivityDay]) === o.value ? 'is-on' : ''}
+                                            onClick={() => setAvailability(selectedActivityDay, o.value).then(setAvail)}>
+                                            {o.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="cal-avail-help">Pas dispo : la séance passe sur un autre jour de la semaine. Temps limité : elle est raccourcie.</p>
+                            </div>
+                        )}
 
                         {/* Tab selector */}
                         <div style={{ display: 'flex', gap: 4, marginBottom: 16, padding: 4, background: 'var(--bg-2)', borderRadius: 8 }}>

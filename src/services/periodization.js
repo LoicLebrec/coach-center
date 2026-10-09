@@ -222,10 +222,10 @@ export function strengthForWeek(state, days, raceFlags = []) {
   let kinds = STRENGTH_PLAN[state.phase] || [];
   if (state.isRecoveryWeek) kinds = kinds.length ? ['core'] : [];
   // Rest days come last, and only when the week keeps another full day off.
-  const restDays = days.filter(d => d.type === 'rest').length;
+  const restDays = days.filter(d => d.type === 'rest' && !d.unavailable).length;
   const score = (d) => (d.type === 'rest' ? 1000 : d.minutes);
   const order = days.map((d, i) => i)
-    .filter(i => !raceFlags[i]?.today && !raceFlags[i]?.tomorrow && days[i].type !== 'race')
+    .filter(i => !raceFlags[i]?.today && !raceFlags[i]?.tomorrow && days[i].type !== 'race' && !days[i].unavailable)
     .filter(i => days[i].type !== 'rest' || restDays >= 2)
     .sort((a, b) => score(days[a]) - score(days[b]) || a - b);
   const picks = [];
@@ -248,6 +248,53 @@ export function strengthLevel(state) {
   return Math.min(3, 1 + Math.floor((state.weekInPhase - 1) / state.cycleLen));
 }
 
+const QUALITY = ['threshold', 'vo2', 'sweetspot', 'anaerobic', 'sprint', 'race_sim', 'force', 'tempo', 'durability'];
+const HARD_DAY = (d) => d && (QUALITY.includes(d.type) || d.type === 'race');
+
+/**
+ * The athlete's availability: { 'YYYY-MM-DD': { off: true } | { minutes: 60 } }.
+ * A day off becomes rest; its quality session moves to another free day of the
+ * week (an easy or rest day, not next to another hard day, later days first,
+ * never in the past); with no such day it is dropped rather than stacked. A time
+ * limit caps the day's minutes. Races are never touched. Mutates `days`.
+ */
+export function applyAvailability(days, availability = {}, today = null) {
+  if (!availability) return days;
+  const capOf = (d) => num0(availability[d.date]?.minutes);
+  days.forEach((d, i) => {
+    const a = availability[d.date];
+    if (!a?.off || d.type === 'race' || d._race?.today) return;
+    const moved = { type: d.type, minutes: d.minutes };
+    Object.assign(d, { type: 'rest', minutes: 0, unavailable: true });
+    if (!QUALITY.includes(moved.type)) return;
+    const order = days.map((_, j) => j).filter(j => j !== i)
+      .sort((x, y) => (x > i) === (y > i) ? Math.abs(x - i) - Math.abs(y - i) : (x > i ? -1 : 1));
+    const target = order.find(j => {
+      const t = days[j];
+      // An easy day or a rest day (the day off itself keeps the week's rest), never in the past.
+      if (t.unavailable || t._race?.today || t._race?.tomorrow || !['endurance', 'recovery', 'rest'].includes(t.type)) return false;
+      if (today && t.date < today) return false;
+      if (HARD_DAY(days[j - 1]) || HARD_DAY(days[j + 1])) return false;
+      const cap = capOf(t);
+      return !cap || cap >= 45;
+    });
+    if (target == null) { d.dropped = moved.type; return; }
+    const t = days[target];
+    Object.assign(t, { type: moved.type, minutes: moved.minutes, movedFrom: d.date });
+    d.movedTo = t.date;
+  });
+  days.forEach(d => {
+    const cap = capOf(d);
+    if (cap && !d.unavailable && d.type !== 'rest' && d.type !== 'race' && d.minutes > cap) Object.assign(d, { minutes: cap, capped: cap });
+  });
+  return days;
+}
+
+function num0(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export function weekPlan(state, fromDate = new Date(), opts = {}) {
   const monday = mondayOf(fromDate);
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -263,6 +310,7 @@ export function weekPlan(state, fromDate = new Date(), opts = {}) {
     };
     return { date: key, ...templateForDay(state, d, ctx), _race: { today: ctx.hasRaceThatDay, tomorrow: ctx.hasRaceTomorrow } };
   });
+  applyAvailability(days, opts.availability, opts.today);
   const auto = strengthForWeek(state, days, days.map(d => d._race));
   // A hand edit wins: false = none, a kind = that kind, true = the phase's kind (core by default).
   return days.map(({ _race, ...d }, i) => {
@@ -307,6 +355,29 @@ export function fitToDuration(blocks, targetMin) {
   }
   // still too long → drop trailing work reps
   return diff < -3 ? dropReps(out, Math.round(-diff)) : out;
+}
+
+/**
+ * Hit the target duration: stretch/shrink Z1–Z2 fillers, then shorten warm-up
+ * (down to 10 min) and cool-down (down to 5 min), then drop trailing reps.
+ */
+export function shrinkToFit(blocks, targetMin) {
+  let out = fitToDuration(blocks, targetMin);
+  let over = blocksMinutes(out) - targetMin;
+  // fitToDuration may already have dropped a long rep: top back up with Z2.
+  if (over < -3) return fitToDuration(out, targetMin);
+  if (over <= 3) return out;
+  out = out.map(b => {
+    if (over <= 0 || !isEdge(b)) return b;
+    const floor = /warm|échauff/i.test(b.label || '') ? 10 : 5;
+    const cut = Math.min(Math.max(0, (Number(b.durationMin) || 0) - floor), over);
+    over -= cut;
+    return { ...b, durationMin: Math.round((Number(b.durationMin) || 0) - cut) };
+  });
+  if (over <= 3) return out;
+  out = dropReps(out, Math.round(over));
+  // A long rep can take more than needed: top back up with Z2.
+  return blocksMinutes(out) < targetMin - 3 ? fitToDuration(out, targetMin) : out;
 }
 
 /** Remove work reps (and their recoveries) from the end of the main set. */
@@ -378,19 +449,22 @@ export function pickWorkout(type, minutes, phase, { library = LIBRARY_WORKOUTS, 
   if (familyNames.length && !NO_FAMILY_ROTATION.includes(type)) {
     const fam = familyNames[Math.abs(rotation) % familyNames.length];
     const levels = pool.filter(w => w.family === fam).sort((a, b) => a.level - b.level);
-    const w = levels[Math.max(0, Math.min(levels.length - 1, level - 1))];
+    let idx = Math.max(0, Math.min(levels.length - 1, level - 1));
+    // The time available wins: step down to the highest level that fits.
+    if (minutes) while (idx > 0 && blocksMinutes(levels[idx].blocks) > minutes + 5) idx--;
+    const w = levels[idx];
     const natural = blocksMinutes(w.blocks);
-    return {
-      ...w,
-      blocks: minutes && minutes > natural + 5 ? fitToDuration(w.blocks, minutes) : w.blocks.map(b => ({ ...b })),
-    };
+    let blocks = w.blocks.map(b => ({ ...b }));
+    if (minutes && minutes > natural + 5) blocks = fitToDuration(w.blocks, minutes);
+    else if (minutes && natural > minutes + 5) blocks = shrinkToFit(w.blocks, minutes);
+    return { ...w, blocks, ...(idx !== level - 1 && level - 1 < levels.length ? { steppedDown: true } : {}) };
   }
 
   const ranked = [...pool].sort((a, b) =>
     Math.abs(blocksMinutes(a.blocks) - minutes) - Math.abs(blocksMinutes(b.blocks) - minutes));
   const top = ranked.slice(0, Math.min(3, ranked.length));
   const w = top[Math.abs(rotation) % top.length];
-  return { ...w, blocks: minutes ? fitToDuration(w.blocks, minutes) : w.blocks.map(b => ({ ...b })) };
+  return { ...w, blocks: minutes ? shrinkToFit(w.blocks, minutes) : w.blocks.map(b => ({ ...b })) };
 }
 
 /** Same family, next level — for a "next week" preview. */

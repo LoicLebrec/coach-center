@@ -7,7 +7,7 @@
 import { inferTrainingType } from './workout-rules';
 import {
   PHASES, getSeasonState, templateForDay, weekPlan, pickWorkout, fitToDuration, keepRepRatio,
-  lowerOneZone, countWork, blocksMinutes, progressionFor, strengthLevel,
+  lowerOneZone, countWork, blocksMinutes, progressionFor, strengthLevel, shrinkToFit,
 } from './periodization';
 import { strengthSession } from '../data/strengthLibrary';
 import { analyzeTraining, decideSession, dataWeaknesses, estimateTss, suggestCycle } from './coachEngine';
@@ -177,7 +177,7 @@ export function adaptWorkout(base, level, availableMin, phase) {
     type = 'recovery';
   }
 
-  if (availableMin && blocksMinutes(blocks) > availableMin) blocks = fitToDuration(blocks, availableMin);
+  if (availableMin && blocksMinutes(blocks) > availableMin + 3) blocks = shrinkToFit(blocks, availableMin);
 
   return { title, objective, trainingType: type, blocks, minutes: Math.round(blocksMinutes(blocks)) };
 }
@@ -274,7 +274,7 @@ export function buildCalendar(plannedEvents, events, today) {
 }
 
 /** Base session: planned blocks > planned name matched to library > season template — then the data checks. */
-export function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override = null, responder = null }) {
+export function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override = null, responder = null, maxMinutes = null }) {
   // A day edited by hand in the plan beats whatever the calendar had.
   const planned = override ? null : cal.planned;
   if (planned) {
@@ -283,17 +283,19 @@ export function buildBaseSession({ cal, seasonState, progression, weaknesses, an
     const plannedMin = sessionMinutes(planned) || 60;
     const d = decideSession({ type, minutes: plannedMin }, analysis);
     if (planned.workoutBlocks?.length && d.type === type) {
+      let blocks = planned.workoutBlocks.map(b => ({ ...b, durationMin: Number(b.durationMin) || 0 }));
+      if (maxMinutes && blocksMinutes(blocks) > maxMinutes + 3) blocks = shrinkToFit(blocks, maxMinutes);
       return {
         source: 'planned', title: planned.name || planned.title, objective: planned.notes || '',
-        trainingType: type, blocks: planned.workoutBlocks.map(b => ({ ...b, durationMin: Number(b.durationMin) || 0 })),
-        dataChanges: d.changes,
+        trainingType: type, blocks, dataChanges: d.changes,
       };
     }
-    const w = pickWorkout(d.type, d.minutes, seasonState.phase, progression);
+    const w = pickWorkout(d.type, maxMinutes ? Math.min(d.minutes, maxMinutes) : d.minutes, seasonState.phase, progression);
     return { ...w, source: 'planned-matched', plannedName: planned.name || planned.title, trainingType: d.type, dataChanges: d.changes };
   }
   const tpl = templateForDay(seasonState, date, { weaknesses, hasRaceTomorrow: cal.raceTomorrow, override, responder });
   if (tpl.type === 'rest') return { rest: true, source: tpl.overridden ? 'override' : 'season' };
+  if (maxMinutes) tpl.minutes = Math.min(tpl.minutes, maxMinutes);
   const d = decideSession(tpl, analysis);
   const w = pickWorkout(d.type, d.minutes, seasonState.phase, progression);
   return { ...w, source: tpl.overridden ? 'override' : 'season', trainingType: d.type, plannedType: tpl.type, dataChanges: d.changes };
@@ -307,6 +309,7 @@ export function buildBaseSession({ cal, seasonState, progression, weaknesses, an
 export function computeDay({
   wellness = [], activities = [], athlete = null, events = [], plannedEvents = [], powerCurve = null,
   season, profileWeaknesses = [], checkin = DEFAULT_CHECKIN, today = localDayKey(), responder = null,
+  availability = {},
 }) {
   const date = dateOf(today);
   // A cycle scheduled from the suggestion takes over on its start date.
@@ -322,13 +325,27 @@ export function computeDay({
     : dataWeaknesses(analysis, profileWeaknesses);
   const progression = progressionFor(seasonState, responder);
   const overrides = season?.dayOverrides || {};
-  const week = weekPlan(seasonState, date, { weaknesses, raceDays: cal.raceDays, overrides, responder });
+  const week = weekPlan(seasonState, date, { weaknesses, raceDays: cal.raceDays, overrides, responder, availability, today });
+  const todayPlan = week.find(d => d.date === today) || {};
+  const avail = availability?.[today] || null;
   const readiness = computeReadiness({
     tsb: physio.tsb, hrvStatus: analysis.hrv?.status, hrvRatio: physio.hrvRatio,
     rhrDelta: analysis.rhr.delta ?? physio.rhrDelta, checkin,
   });
-  const base = buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override: overrides[today], responder });
-  const adapted = cal.race || base.rest ? null : adaptWorkout(base, readiness.level, checkin.minutes, seasonState.phase);
+  // A day off or a session moved here by the availability beats the calendar and the template.
+  const availOverride = todayPlan.unavailable || todayPlan.movedFrom ? { type: todayPlan.type, minutes: todayPlan.minutes } : null;
+  const base = {
+    ...buildBaseSession({
+      cal, seasonState, progression, weaknesses, analysis, date, override: overrides[today] || availOverride, responder,
+      maxMinutes: num(avail?.minutes),
+    }),
+    ...(todayPlan.unavailable ? { unavailable: true } : {}),
+    ...(todayPlan.movedFrom ? { movedFrom: todayPlan.movedFrom } : {}),
+    ...(todayPlan.movedTo ? { movedTo: todayPlan.movedTo } : {}),
+    ...(todayPlan.dropped ? { dropped: todayPlan.dropped } : {}),
+  };
+  const timeCap = [checkin.minutes, num(avail?.minutes)].filter(Boolean);
+  const adapted = cal.race || base.rest ? null : adaptWorkout(base, readiness.level, timeCap.length ? Math.min(...timeCap) : null, seasonState.phase);
   const strengthKind = week.find(d => d.date === today)?.strength || null;
   const strength = cal.race ? null : adaptStrength(strengthKind, strengthLevel(seasonState), readiness.level);
   const cycle = suggestCycle({ analysis, seasonState, season, today, weaknesses: profileWeaknesses });
@@ -346,7 +363,7 @@ export function computeDay({
  * would get. Precedence per day: race > hand-made override > calendar session > season template.
  * No readiness adaptation here — that only exists for today.
  */
-export function buildOutlook({ season, plannedEvents = [], events = [], weaknesses = [], today = localDayKey(), weeks = 4, responder = null }) {
+export function buildOutlook({ season, plannedEvents = [], events = [], weaknesses = [], today = localDayKey(), weeks = 4, responder = null, availability = {} }) {
   const all = mergeCalendar(plannedEvents, events);
   const byDay = new Map();
   for (const e of all) byDay.set(dayOf(e), [...(byDay.get(dayOf(e)) || []), e]);
@@ -364,25 +381,28 @@ export function buildOutlook({ season, plannedEvents = [], events = [], weakness
     const state = getSeasonState(cfg, ref);
     const progression = progressionFor(state, responder);
     const sLevel = strengthLevel(state);
-    const days = weekPlan(state, ref, { weaknesses, raceDays, overrides, responder }).map(d => {
+    const days = weekPlan(state, ref, { weaknesses, raceDays, overrides, responder, availability, today }).map(d => {
       const evs = byDay.get(d.date) || [];
       const race = evs.find(isRace);
       if (race) return { ...d, type: 'race', minutes: 0, source: 'race', title: race.name || race.title || 'Course', blocks: [], strength: null };
       d = { ...d, strength: d.strength ? strengthSession(d.strength, sLevel) : null };
-      const planned = !d.overridden && evs.find(e => !isRace(e));
+      if (d.unavailable) return { date: d.date, type: 'rest', minutes: 0, source: 'availability', unavailable: true, movedTo: d.movedTo, dropped: d.dropped, blocks: [], strength: null };
+      const planned = !d.overridden && !d.movedFrom && evs.find(e => !isRace(e));
       if (planned && isRestDay(planned)) return { date: d.date, type: 'rest', minutes: 0, source: 'planned', blocks: [], strength: d.strength };
       if (planned) {
         const type = sessionType(planned) || 'endurance';
         const minutes = sessionMinutes(planned) || 60;
-        const blocks = planned.workoutBlocks?.length
+        const cap = num(availability?.[d.date]?.minutes);
+        let blocks = planned.workoutBlocks?.length
           ? planned.workoutBlocks.map(b => ({ ...b, durationMin: Number(b.durationMin) || 0 }))
-          : pickWorkout(type, minutes, state.phase, progression).blocks;
+          : pickWorkout(type, cap ? Math.min(minutes, cap) : minutes, state.phase, progression).blocks;
+        if (cap && blocksMinutes(blocks) > cap + 3) blocks = shrinkToFit(blocks, cap);
         return {
           date: d.date, type, minutes, source: 'planned', blocks, strength: d.strength,
           title: planned.name || planned.title, objective: planned.notes || '', tss: estimateTss(blocks),
         };
       }
-      const source = d.overridden ? 'override' : 'plan';
+      const source = d.overridden ? 'override' : d.movedFrom ? 'moved' : 'plan';
       if (d.type === 'rest') return { ...d, source, blocks: [] };
       const wk = pickWorkout(d.type, d.minutes, state.phase, progression);
       return {
