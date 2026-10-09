@@ -1,11 +1,9 @@
 import React, { useMemo } from 'react';
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Cell } from 'recharts';
-import IntervalsService from '../services/intervals';
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import analytics from '../services/analytics';
-import InfoTip from './InfoTip';
-import HelpPopup from './HelpPopup';
-import { METRICS } from '../data/metricDefs';
 import { asNumber } from '../services/number';
+import { formStatus } from '../services/dailyPlan';
+import { weeklyTotals, Bars } from './WeeklyLoad';
 
 function findNumericByKeyPattern(obj, pattern, depth = 0) {
   if (!obj || typeof obj !== 'object' || depth > 2) return null;
@@ -85,49 +83,6 @@ function estimatePMCFromActivities(activities = []) {
 }
 
 // ── FormGauge: horizontal gradient bar with TSB indicator ────────────────────
-function FormGauge({ tsb }) {
-  if (tsb == null) return null;
-  const pct = Math.min(100, Math.max(0, ((tsb - (-30)) / 60) * 100));
-  return (
-    <div style={{ position: 'relative', width: '100%', marginTop: 12, marginBottom: 8 }}>
-      <div style={{
-        height: 10,
-        borderRadius: 5,
-        background: 'linear-gradient(to right, #ef4444 0%, #ef4444 15%, #f97316 15%, #f97316 35%, #facc15 35%, #facc15 55%, #22c55e 55%, #22c55e 80%, #4ade80 80%, #4ade80 92%, #94a3b8 92%, #94a3b8 100%)',
-        position: 'relative',
-      }}>
-        <div style={{
-          position: 'absolute',
-          left: `${pct}%`,
-          top: -3,
-          transform: 'translateX(-50%)',
-          width: 4,
-          height: 16,
-          background: 'var(--text-0)',
-          borderRadius: 2,
-          boxShadow: '0 0 4px rgba(0,0,0,0.5)',
-        }} />
-      </div>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        marginTop: 5,
-        fontSize: 9,
-        fontFamily: 'var(--font-mono)',
-        color: 'var(--text-3)',
-      }}>
-        <span>Overtraining</span>
-        <span>Fatigued</span>
-        <span>Neutral</span>
-        <span>Fresh</span>
-        <span>Race Ready</span>
-      </div>
-    </div>
-  );
-}
-
-// ── Personal Records helpers ─────────────────────────────────────────────────
-
 const PR_DURATIONS = [
   { label: '5 s',   sec: 5 },
   { label: '30 s',  sec: 30 },
@@ -254,7 +209,7 @@ function fmtDate(dateStr) {
   } catch { return null; }
 }
 
-export default function Dashboard({ wellness, activities, athlete, loading, error, powerCurve }) {
+export default function Dashboard({ wellness, activities, athlete, loading, powerCurve }) {
   const latest = wellness?.[wellness.length - 1];
   // Today's row is often empty until the watch syncs: use the latest measured value.
   const restingHr = getWellnessRestingHr([...(wellness || [])].reverse().find(w => getWellnessRestingHr(w) != null));
@@ -262,11 +217,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
   const ctl = latest?.icu_ctl ?? estimatedPMC?.ctl ?? null;
   const atl = latest?.icu_atl ?? estimatedPMC?.atl ?? null;
   const tsb = ctl != null && atl != null ? ctl - atl : null;
-  const formState = IntervalsService.assessFormState(tsb);
 
-  const readiness = (ctl != null || atl != null)
-    ? Math.round(Math.min(100, Math.max(0, 50 + tsb * 2)))
-    : null;
 
   const ftpValue = getAthleteFtp(athlete);
   const weightValue = getAthleteWeight(athlete) ?? getWellnessWeight(latest);
@@ -276,7 +227,6 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
   const ftpDetection = useMemo(() => detectFTP(powerCurve, activities || [], ftpValue), [powerCurve, activities, ftpValue]);
   const maxHRDetection = useMemo(() => detectMaxHR(activities || []), [activities]);
 
-  const pmcTrend = useMemo(() => analytics.computePMCTrend(wellness, 14), [wellness]);
   const efTrend = useMemo(() => analytics.computeEFTrend(activities, 14), [activities]);
 
   const evolutionData = useMemo(() => {
@@ -343,80 +293,6 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
     return output;
   }, [wellness, activities]);
 
-  // Recent 30 days for mini PMC sparkline
-  const miniPMC = useMemo(() => {
-    return evolutionData.slice(-30).map(d => ({
-      date: d.date,
-      ctl: d.ctl,
-      atl: d.atl,
-      tsb: d.tsb,
-    }));
-  }, [evolutionData]);
-
-  // Weekly TSS — last 8 weeks
-  const weeklyTSS = useMemo(() => {
-    if (!activities?.length) return [];
-    const result = [];
-    const now = new Date();
-    for (let i = 7; i >= 0; i--) {
-      const end = new Date(now);
-      end.setDate(now.getDate() - i * 7);
-      end.setHours(23, 59, 59, 999);
-      const start = new Date(end);
-      start.setDate(end.getDate() - 6);
-      start.setHours(0, 0, 0, 0);
-      const label = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-      const tss = activities
-        .filter(a => {
-          if (!a.start_date_local) return false;
-          const d = new Date(a.start_date_local);
-          return d >= start && d <= end;
-        })
-        .reduce((s, a) => s + (a.icu_training_load || 0), 0);
-      result.push({ label, tss: Math.round(tss), current: i === 0 });
-    }
-    return result;
-  }, [activities]);
-
-  // Weekly kilometers and average watts
-  const weeklyMetrics = useMemo(() => {
-    if (!activities?.length) return [];
-    const result = [];
-    const now = new Date();
-    for (let i = 7; i >= 0; i--) {
-      const end = new Date(now);
-      end.setDate(now.getDate() - i * 7);
-      end.setHours(23, 59, 59, 999);
-      const start = new Date(end);
-      start.setDate(end.getDate() - 6);
-      start.setHours(0, 0, 0, 0);
-      const label = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-
-      const weekActivities = activities.filter(a => {
-        if (!a.start_date_local) return false;
-        const d = new Date(a.start_date_local);
-        return d >= start && d <= end;
-      });
-
-      const distanceKm = weekActivities.reduce((s, a) => {
-        const raw = Number(a.distance || 0);
-        if (!Number.isFinite(raw) || raw <= 0) return s;
-        // Intervals/Strava can expose distance in meters; fallback to km for small values.
-        return s + (raw > 1000 ? raw / 1000 : raw);
-      }, 0);
-
-      const wattsSamples = weekActivities
-        .map(a => Number(a.icu_average_watts || a.average_watts || 0))
-        .filter(w => Number.isFinite(w) && w > 0);
-      const avgWatts = wattsSamples.length > 0
-        ? Math.round(wattsSamples.reduce((s, w) => s + w, 0) / wattsSamples.length)
-        : 0;
-
-      result.push({ label, distance: Number(distanceKm.toFixed(1)), avgWatts, current: i === 0 });
-    }
-    return result;
-  }, [activities]);
-
   // Recent activities (last 7)
   const recentActivities = useMemo(() => {
     if (!activities) return [];
@@ -429,7 +305,7 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
     return (
       <div className="loading-state">
         <div className="loading-spinner"></div>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>Loading athlete data...</span>
+        <span>Chargement…</span>
       </div>
     );
   }
@@ -441,598 +317,160 @@ export default function Dashboard({ wellness, activities, athlete, loading, erro
     return h > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${m}m`;
   };
 
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (!active || !payload?.length) return null;
-    return (
-      <div style={{
-        background: 'var(--bg-2)',
-        border: '1px solid var(--border)',
-        borderRadius: 6,
-        padding: '8px 12px',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 11,
-      }}>
-        <div style={{ color: 'var(--text-2)', marginBottom: 4 }}>{label}</div>
-        {payload.map((p, i) => (
-          <div key={i} style={{ color: p.color }}>
-            {p.name}: {p.value?.toFixed ? p.value.toFixed(1) : p.value}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const BarTooltip = ({ active, payload, label }) => {
-    if (!active || !payload?.length) return null;
-    const point = payload[0] || {};
-    const metricName = point.name || 'Value';
-    const suffix = metricName === 'Distance' ? ' km' : metricName === 'Avg Power' ? ' W' : '';
-    return (
-      <div style={{
-        background: 'var(--bg-2)',
-        border: '1px solid var(--border)',
-        borderRadius: 6,
-        padding: '8px 12px',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 11,
-      }}>
-        <div style={{ color: 'var(--text-2)', marginBottom: 4 }}>{label}</div>
-        <div style={{ color: point.color || 'var(--accent-blue)' }}>
-          {metricName}: {point?.value}{suffix}
-        </div>
-      </div>
-    );
-  };
+  const form = formStatus(tsb);
+  const ago14 = evolutionData[evolutionData.length - 15] || null;
+  const delta = (k) => (ago14 && evolutionData.length ? (evolutionData[evolutionData.length - 1][k] ?? 0) - (ago14[k] ?? 0) : null);
+  const weeks = weeklyTotals(activities || [], 8);
+  const doneWeeks = weeks.slice(0, -1);
+  const weekAvg = doneWeeks.length ? doneWeeks.reduce((x, w) => x + w.tss, 0) / doneWeeks.length : 0;
+  const shortDate = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  const efText = efTrend?.assessment
+    ? efTrend.assessment.startsWith('IMPROVING') ? 'Ton efficacité (puissance par battement) progresse : la base aérobie se construit.'
+      : efTrend.assessment.startsWith('DECLINING') ? 'Ton efficacité baisse : fatigue, chaleur ou manque de volume facile.'
+      : 'Ton efficacité est stable.'
+    : null;
+  const ChartTip = ({ active, payload, label }) => (active && payload?.length ? (
+    <div className="db-tip">
+      <div className="db-tip-date">{shortDate(label)}</div>
+      {payload.map(p => <div key={p.dataKey} style={{ color: p.color }}>{p.name} : {p.value?.toFixed ? p.value.toFixed(p.dataKey === 'ef' ? 2 : 0) : p.value}</div>)}
+    </div>
+  ) : null);
+  const axis = { tick: { fill: '#7b8b74', fontSize: 11, fontFamily: 'var(--font-sans)' }, tickLine: false, axisLine: false };
 
   return (
-    <div>
+    <div className="db">
       <div className="page-header">
-        <div className="page-title">Dashboard</div>
-        <div className="page-subtitle">
-          {athlete?.name || 'Athlete'} — {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        <div className="page-title">Tableau de bord</div>
+        <div className="page-subtitle">Ta condition en un coup d’œil · {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+      </div>
+
+      <div className="wl-tiles db-tiles">
+        <div className="wl-tile">
+          <div className="wl-tile-label">Forme (TSB)</div>
+          <div className={`wl-tile-value tone-${form.tone}`}>{tsb != null ? `${tsb > 0 ? '+' : ''}${Math.round(tsb)}` : '—'}</div>
+          <div className="wl-tile-sub">{form.label}</div>
+        </div>
+        <div className="wl-tile">
+          <div className="wl-tile-label">Condition (CTL)</div>
+          <div className="wl-tile-value">{ctl != null ? Math.round(ctl) : '—'}</div>
+          <div className="wl-tile-sub">{delta('ctl') != null ? `${delta('ctl') >= 0 ? '+' : ''}${delta('ctl').toFixed(1)} en 14 jours` : 'Moyenne de charge sur 6 semaines'}</div>
+        </div>
+        <div className="wl-tile">
+          <div className="wl-tile-label">Fatigue (ATL)</div>
+          <div className="wl-tile-value">{atl != null ? Math.round(atl) : '—'}</div>
+          <div className="wl-tile-sub">Charge des 7 derniers jours</div>
+        </div>
+        <div className="wl-tile">
+          <div className="wl-tile-label">FTP</div>
+          <div className="wl-tile-value">{ftpValue ?? '—'} <small>W</small></div>
+          <div className="wl-tile-sub">{wkgValue ? `${wkgValue.toFixed(2)} W/kg` : 'Poids non renseigné'}</div>
+        </div>
+        <div className="wl-tile">
+          <div className="wl-tile-label">FC repos</div>
+          <div className="wl-tile-value">{restingHr ?? '—'} <small>bpm</small></div>
+          <div className="wl-tile-sub">{weightValue ? `${Number(weightValue).toFixed(1)} kg` : '—'}</div>
         </div>
       </div>
 
-      {/* ─── Card 1: Training Readiness ─── */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-header">
-          <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
-            Training Readiness
-            <HelpPopup title="Training Readiness"
-              content={[
-                { heading: 'What is it?', text: 'Your current form score (0–100%) calculated from TSB (Training Stress Balance). It tells you how fresh and ready you are to perform.' },
-                { heading: 'TSB = CTL − ATL', text: 'A positive TSB means you are fresh (more fitness than fatigue). A negative TSB means you are tired but adapting.' },
-              ]}
-              tips={['Optimal race form: TSB between +5 and +25', 'TSB below −25 signals overreaching — rest before intensity', 'TSB above +20 for >10 days means you may be under-training']}
-            />
-          </span>
-          {formState && (
-            <span className="card-badge" style={{ background: `${formState.color}18`, color: formState.color }}>
-              {formState.label}
-            </span>
-          )}
+      <section className="ride-card">
+        <h3>Condition et fatigue · 60 jours</h3>
+        <p className="db-help">La condition (vert) monte avec l’entraînement régulier ; quand la fatigue (orange) passe au-dessus, la forme baisse.</p>
+        <div className="db-chart">
+          <ResponsiveContainer width="100%" height={240}>
+            <AreaChart data={evolutionData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+              <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={40} {...axis} />
+              <YAxis {...axis} />
+              <Tooltip content={<ChartTip />} />
+              <ReferenceLine y={0} stroke="#bcc98c" />
+              <Area type="monotone" dataKey="tsb" name="Forme" stroke="none" fill="#c9e08f" fillOpacity={0.55} isAnimationActive={false} />
+              <Area type="monotone" dataKey="ctl" name="Condition" stroke="#24402e" strokeWidth={2.2} fill="none" isAnimationActive={false} />
+              <Area type="monotone" dataKey="atl" name="Fatigue" stroke="#f0663a" strokeWidth={1.6} fill="none" isAnimationActive={false} />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, marginBottom: 4 }}>
-          <div style={{
-            fontSize: 52,
-            fontWeight: 700,
-            fontFamily: 'var(--font-mono)',
-            lineHeight: 1,
-            color: formState?.color || 'var(--text-0)',
-          }}>
-            {readiness != null ? `${readiness}%` : '—'}
-          </div>
-          <div style={{ paddingBottom: 6, fontSize: 12, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' }}>
-            TSB {tsb != null ? `${tsb >= 0 ? '+' : ''}${tsb.toFixed(1)}` : '—'}
-          </div>
+        <div className="ride-chart-legend">
+          <span><i style={{ background: 'var(--pine)' }} />Condition</span>
+          <span><i style={{ background: 'var(--sun)' }} />Fatigue</span>
+          <span><i style={{ background: '#c9e08f', height: 10 }} />Forme</span>
         </div>
-        <FormGauge tsb={tsb ?? 0} />
-      </div>
+      </section>
 
-      {/* ─── Card 2: PMC Metrics Row ─── */}
-      <div className="metrics-row">
-        <div className="metric-tile">
-          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>Fitness (CTL)<InfoTip {...METRICS.CTL} /></div>
-          <div className="metric-value" style={{ color: 'var(--ctl-color)' }}>
-            {ctl != null ? ctl.toFixed(1) : '—'}
-          </div>
-          {pmcTrend && (
-            <div className={`metric-delta ${pmcTrend.ctlTrend >= 0 ? 'positive' : 'negative'}`}>
-              {pmcTrend.ctlTrend >= 0 ? '↑' : '↓'} {Math.abs(pmcTrend.ctlTrendPct).toFixed(1)}% / 14d
-            </div>
-          )}
-        </div>
+      <section className="ride-card">
+        <h3>Charge par semaine</h3>
+        <Bars data={weeks} avg={weekAvg} />
+      </section>
 
-        <div className="metric-tile">
-          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>Fatigue (ATL)<InfoTip {...METRICS.ATL} /></div>
-          <div className="metric-value" style={{ color: 'var(--atl-color)' }}>
-            {atl != null ? atl.toFixed(1) : '—'}
-          </div>
-          {pmcTrend && (
-            <div className={`metric-delta ${pmcTrend.atlTrend >= 0 ? 'negative' : 'positive'}`}>
-              {pmcTrend.atlTrend >= 0 ? '↑' : '↓'} {Math.abs(pmcTrend.atlTrendPct).toFixed(1)}% / 14d
-            </div>
-          )}
-        </div>
-
-        <div className="metric-tile">
-          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>Form (TSB)<InfoTip {...METRICS.TSB} /></div>
-          <div className="metric-value" style={{ color: tsb >= 0 ? 'var(--tsb-color)' : 'var(--tsb-negative)' }}>
-            {tsb != null ? (tsb >= 0 ? '+' : '') + tsb.toFixed(1) : '—'}
-          </div>
-          <div className="form-indicator" style={{ marginTop: 6, background: `${formState.color}15`, color: formState.color }}>
-            <span className="form-dot" style={{ background: formState.color }}></span>
-            {formState.label}
-          </div>
-        </div>
-
-        <div className="metric-tile">
-          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>FTP<InfoTip {...METRICS.FTP} /></div>
-          <div className="metric-value">
-            {ftpValue || '—'}<span className="metric-unit">W</span>
-          </div>
-          {wkgValue != null && Number.isFinite(wkgValue) && (
-            <div className="metric-delta neutral">
-              {wkgValue.toFixed(2)} W/kg
-            </div>
-          )}
-        </div>
-
-        <div className="metric-tile">
-          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>Efficiency Factor<InfoTip {...METRICS.EF} /></div>
-          <div className="metric-value">
-            {efTrend?.latest ? efTrend.latest.toFixed(3) : '—'}
-          </div>
-          {efTrend && (
-            <div className={`metric-delta ${efTrend.trendPct >= 0 ? 'positive' : 'negative'}`}>
-              {efTrend.trendPct >= 0 ? '↑' : '↓'} {Math.abs(efTrend.trendPct).toFixed(1)}% / 14d
-            </div>
-          )}
-        </div>
-
-        <div className="metric-tile">
-          <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>Resting HR<InfoTip {...METRICS.RHR} /></div>
-          <div className="metric-value">
-            {restingHr ?? '—'}<span className="metric-unit">bpm</span>
-          </div>
-          {getWellnessWeight(latest) && (
-            <div className="metric-delta neutral">
-              {getWellnessWeight(latest).toFixed(1)} kg
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ─── Card 3: Weekly Load (last 8 weeks) ─── */}
-      {weeklyTSS.length > 0 && (
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
-              Weekly Load — Last 8 Weeks
-              <InfoTip {...METRICS.WEEKLY_TSS} />
-              <HelpPopup title="Weekly Load"
-                content={[
-                  { heading: 'What is TSS?', text: 'Training Stress Score measures the total training dose of a session — combining duration, intensity, and your FTP. 100 TSS ≈ a maximal 1-hour effort at FTP.' },
-                  { heading: 'Reading the chart', text: 'Each bar is the sum of all TSS for that week. Consistent bars = consistent training. A sudden spike risks injury or burnout.' },
-                ]}
-                tips={['A sustainable weekly TSS increase is ~5–7% per week', 'Plan 1 recovery week every 3–4 weeks with 40–50% lower TSS', 'Compare to your CTL target (weekly TSS ÷ 7 ≈ daily CTL contribution)']}
-              />
-            </span>
-            <span className="card-badge">TSS</span>
-          </div>
-          <div style={{ height: 180, marginTop: 8 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyTSS} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
-                  tickLine={false}
-                  axisLine={{ stroke: 'var(--border)' }}
-                />
-                <YAxis
-                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={36}
-                  label={{ value: 'TSS', angle: -90, position: 'insideLeft', fill: 'var(--text-3)', fontSize: 9, fontFamily: 'var(--font-mono)', dy: 14 }}
-                />
-                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(36,64,46,0.06)' }} />
-                <Bar dataKey="tss" name="TSS" radius={[3, 3, 0, 0]}>
-                  {weeklyTSS.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.current ? 'var(--accent-blue)' : 'var(--bg-3)'}
-                      stroke={entry.current ? 'var(--accent-blue)' : 'var(--border)'}
-                      strokeWidth={1}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Card 3b: Weekly Kilometers ─── */}
-      {weeklyMetrics.length > 0 && (
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
-              Weekly Distance — Last 8 Weeks
-              <HelpPopup title="Weekly Distance"
-                content="Total kilometres ridden each week over the last 8 weeks. Useful for tracking volume trends. Compare with Weekly Load to see if your km are getting more or less intense."
-                tips={['Flat distance with rising TSS = sessions are getting harder', 'Consistent distance = good training discipline', 'A big drop in distance usually signals a rest week — that\'s healthy']}
-              />
-            </span>
-            <span className="card-badge">KM</span>
-          </div>
-          <div style={{ height: 150, marginTop: 8 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyMetrics} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
-                  tickLine={false}
-                  axisLine={{ stroke: 'var(--border)' }}
-                />
-                <YAxis
-                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={36}
-                  label={{ value: 'KM', angle: -90, position: 'insideLeft', fill: 'var(--text-3)', fontSize: 9, fontFamily: 'var(--font-mono)', dy: 14 }}
-                />
-                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(36,64,46,0.06)' }} />
-                <Bar dataKey="distance" name="Distance" radius={[3, 3, 0, 0]}>
-                  {weeklyMetrics.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.current ? '#22c55e' : 'var(--bg-3)'}
-                      stroke={entry.current ? '#22c55e' : 'var(--border)'}
-                      strokeWidth={1}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Card 3c: Weekly Average Watts ─── */}
-      {weeklyMetrics.length > 0 && (
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
-              Weekly Avg Power — Last 8 Weeks
-              <HelpPopup title="Weekly Average Power"
-                content={[
-                  { heading: 'What it shows', text: 'Average normalized power (NP) across all rides each week. NP accounts for variations in effort, giving a more accurate picture than simple average power.' },
-                  { heading: 'Why it matters', text: 'Rising NP over weeks = you\'re getting stronger or training harder. Flat NP with rising distance = you\'re adding easy volume.' },
-                ]}
-                tips={['NP rising faster than distance → intensity is climbing', 'A power meter is required for accurate data — otherwise this is estimated', 'Compare NP to your FTP: NP/FTP = IF (Intensity Factor)']}
-              />
-            </span>
-            <span className="card-badge">W</span>
-          </div>
-          <div style={{ height: 150, marginTop: 8 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyMetrics} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
-                  tickLine={false}
-                  axisLine={{ stroke: 'var(--border)' }}
-                />
-                <YAxis
-                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={36}
-                  label={{ value: 'Watts', angle: -90, position: 'insideLeft', fill: 'var(--text-3)', fontSize: 9, fontFamily: 'var(--font-mono)', dy: 14 }}
-                />
-                <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(36,64,46,0.06)' }} />
-                <Bar dataKey="avgWatts" name="Avg Power" radius={[3, 3, 0, 0]}>
-                  {weeklyMetrics.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.current ? 'var(--accent-blue)' : 'var(--bg-3)'}
-                      stroke={entry.current ? 'var(--accent-blue)' : 'var(--border)'}
-                      strokeWidth={1}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Card 4: Form & Fatigue 30-day chart ─── */}
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
-            Form & Fatigue — 30 days
-            <HelpPopup title="Form & Fatigue (PMC)"
-              content={[
-                { heading: 'CTL — Fitness (42-day avg)', text: 'Chronic Training Load. Rises slowly with consistent training. Think of it as your "engine size".' },
-                { heading: 'ATL — Fatigue (7-day avg)', text: 'Acute Training Load. Spikes after hard blocks. Represents short-term tiredness.' },
-                { heading: 'TSB — Form (CTL − ATL)', text: 'Positive = fresh, negative = tired. Optimal race window: TSB +5 to +25.' },
-              ]}
-              tips={['Peak for a race by resting: ATL drops, CTL stays high', 'CTL drops ~5% per week without training', 'Source: Banister (1991), Coggan & Allen (2010)']}
-            />
-          </span>
-          <span className="card-badge">PMC</span>
-        </div>
-        <div className="chart-container" style={{ height: 200 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={miniPMC} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-              <XAxis
-                dataKey="date"
-                tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
-                tickLine={false}
-                axisLine={{ stroke: 'var(--border)' }}
-                interval="preserveStartEnd"
-              />
-              <YAxis
-                tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
-                tickLine={false}
-                axisLine={false}
-                width={40}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <ReferenceLine y={0} stroke="var(--border)" strokeDasharray="3 3" />
-              <Line type="monotone" dataKey="ctl" name="CTL" stroke="var(--ctl-color)" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="atl" name="ATL" stroke="var(--atl-color)" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
-              <Line type="monotone" dataKey="tsb" name="TSB" stroke="var(--tsb-color)" strokeWidth={1.5} dot={false} />
+      <section className="ride-card">
+        <h3>Physiologie · 60 jours</h3>
+        {efText && <p className="db-help">{efText}</p>}
+        <div className="db-chart">
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={evolutionData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+              <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={40} {...axis} />
+              <YAxis yAxisId="left" {...axis} />
+              <YAxis yAxisId="right" orientation="right" {...axis} hide />
+              <Tooltip content={<ChartTip />} />
+              <Line yAxisId="left" type="monotone" dataKey="rhr" name="FC repos" stroke="#c8372d" strokeWidth={1.8} dot={false} connectNulls isAnimationActive={false} />
+              <Line yAxisId="left" type="monotone" dataKey="weight" name="Poids" stroke="#24402e" strokeWidth={1.6} dot={false} connectNulls isAnimationActive={false} />
+              <Line yAxisId="right" type="monotone" dataKey="ef" name="Efficacité" stroke="#2f6fb0" strokeWidth={0} dot={{ r: 2.5, fill: '#2f6fb0' }} connectNulls={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
-      </div>
+        <div className="ride-chart-legend">
+          <span><i style={{ background: 'var(--accent-red)' }} />FC repos</span>
+          <span><i style={{ background: 'var(--pine)' }} />Poids</span>
+          <span><i style={{ background: 'var(--accent-blue)' }} />Efficacité (puissance / FC)</span>
+        </div>
+      </section>
 
-      {evolutionData.length > 0 && (
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
-              Evolution — Load & Form (60d)
-              <HelpPopup title="Load & Form Evolution"
-                content="Shows how your CTL (fitness), ATL (fatigue), and TSB (form) have evolved over the past 60 days. Useful to spot training blocks, recovery weeks, and form peaks."
-                tips={['Look for a CTL upward trend over months', 'ATL spikes followed by drops = structured block + recovery', 'TSB peaks before races = good planning']}
-              />
-            </span>
-            <span className="card-badge">Trend</span>
-          </div>
-          <div className="chart-container" style={{ height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={evolutionData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="ctlFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--ctl-color)" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="var(--ctl-color)" stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="atlFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--atl-color)" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="var(--atl-color)" stopOpacity={0.01} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="date"
-                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
-                  tickLine={false}
-                  axisLine={{ stroke: 'var(--border)' }}
-                  interval="preserveStartEnd"
-                />
-                <YAxis tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }} tickLine={false} axisLine={false} width={40} />
-                <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={0} stroke="var(--border)" strokeDasharray="3 3" />
-                <Area type="monotone" dataKey="ctl" name="CTL" stroke="var(--ctl-color)" fill="url(#ctlFill)" strokeWidth={2} />
-                <Area type="monotone" dataKey="atl" name="ATL" stroke="var(--atl-color)" fill="url(#atlFill)" strokeWidth={1.5} />
-                <Line type="monotone" dataKey="tsb" name="TSB" stroke="var(--tsb-color)" strokeWidth={1.5} dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {evolutionData.length > 0 && (
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
-              Evolution — Physiology (60d)
-              <HelpPopup title="Physiology Evolution"
-                content={[
-                  { heading: 'Resting HR', text: 'Lower resting HR over time is a sign of improving aerobic fitness. A spike (+5–7 bpm above baseline) signals incomplete recovery.' },
-                  { heading: 'Efficiency Factor (EF)', text: 'EF = Power ÷ Heart Rate. Rising EF means you produce more power for the same cardiac cost — the key marker of aerobic adaptation.' },
-                  { heading: 'Weight', text: 'Body weight trend from your wellness logs. Relevant for W/kg tracking.' },
-                ]}
-                tips={['Track all three together for a full recovery picture', 'Declining EF + elevated RHR = overreaching signal']}
-              />
-            </span>
-            <span className="card-badge">RHR / EF / Weight</span>
-          </div>
-          <div className="chart-container" style={{ height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={evolutionData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <XAxis
-                  dataKey="date"
-                  tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}
-                  tickLine={false}
-                  axisLine={{ stroke: 'var(--border)' }}
-                  interval="preserveStartEnd"
-                />
-                <YAxis yAxisId="left" tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }} tickLine={false} axisLine={false} width={40} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fill: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }} tickLine={false} axisLine={false} width={40} />
-                <Tooltip content={<CustomTooltip />} />
-                <Line yAxisId="left" type="monotone" dataKey="rhr" name="FC repos" stroke="#f97316" strokeWidth={1.8} dot={false} />
-                <Line yAxisId="left" type="monotone" dataKey="weight" name="Poids" stroke="#22c55e" strokeWidth={1.6} dot={false} />
-                <Line yAxisId="right" type="monotone" dataKey="ef" name="EF" stroke="#2f6fb0" strokeWidth={1.8} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Card 5: EF Assessment ─── */}
-      {efTrend && (
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
-              Efficiency Factor Assessment
-              <HelpPopup title="Efficiency Factor (EF)"
-                content={[
-                  { heading: 'Formula', text: 'EF = Normalized Power (W) ÷ Average Heart Rate (bpm). Calculated from your recent Z2 rides.' },
-                  { heading: 'What it means', text: 'A rising EF means your aerobic system is adapting — you\'re producing more power per heartbeat. This is the primary goal of base training.' },
-                  { heading: 'Declining EF', text: 'Can indicate overtraining, insufficient Z2 work, or accumulated fatigue. If EF drops >3%, shift back to base building.' },
-                ]}
-                tips={['EF is most meaningful on easy, steady Z2 rides', 'Requires a power meter + HR monitor for accuracy', 'Compare EF on the same route/conditions for the cleanest signal']}
-              />
-            </span>
-            <span className="card-badge" style={{
-              background: efTrend.assessment.startsWith('DECLINING') ? 'rgba(239,68,68,0.1)' :
-                efTrend.assessment.startsWith('IMPROVING') ? 'rgba(34,197,94,0.1)' : 'var(--bg-3)',
-              color: efTrend.assessment.startsWith('DECLINING') ? 'var(--accent-red)' :
-                efTrend.assessment.startsWith('IMPROVING') ? 'var(--accent-green)' : 'var(--text-1)',
-            }}>
-              {efTrend.assessment.split(':')[0]}
-            </span>
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.6 }}>
-            {efTrend.assessment}
-          </p>
-        </div>
-      )}
-
-      {/* ─── Card 6: Recent Activities ─── */}
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title" style={{ display: 'flex', alignItems: 'center' }}>
-            Recent Activities
-            <HelpPopup title="Recent Activities"
-              content="Your 10 most recent rides synced from Intervals.icu. Shows TSS, duration, and intensity factor (IF) for each session."
-              tips={['Click a session in Workout Analysis to see interval breakdown', 'IF > 1.0 = harder than your FTP — common in races or short maximal efforts', 'IF 0.75–0.85 = sweet spot / threshold zone']}
-            />
-          </span>
-          <span className="card-badge">{recentActivities.length} shown</span>
-        </div>
-        <div className="activity-row activity-row-header">
-          <span>Activity</span>
-          <span style={{ textAlign: 'right' }}>TSS</span>
-          <span style={{ textAlign: 'right' }}>Duration</span>
-          <span style={{ textAlign: 'right' }}>Avg W</span>
-          <span style={{ textAlign: 'right' }}>Avg HR</span>
-          <span style={{ textAlign: 'right' }}>EF</span>
-        </div>
-        {recentActivities.map(a => {
-          const ef = a.icu_average_watts && a.average_heartrate
-            ? (a.icu_average_watts / a.average_heartrate).toFixed(3)
-            : '—';
-          return (
-            <div className="activity-row" key={a.id}>
-              <span className="activity-name">
-                {a.name || 'Untitled'}
-                <span className="type-badge">{a.type}</span>
-              </span>
-              <span className="activity-data">{a.icu_training_load ? Math.round(a.icu_training_load) : '—'}</span>
-              <span className="activity-data">{formatDuration(a.moving_time || a.elapsed_time)}</span>
-              <span className="activity-data">{a.icu_average_watts || a.average_watts || '—'}</span>
-              <span className="activity-data">{a.average_heartrate ? Math.round(a.average_heartrate) : '—'}</span>
-              <span className="activity-data">{ef}</span>
+      <section className="ride-card">
+        <h3>Records</h3>
+        <div className="db-records">
+          <div className="wl-tile">
+            <div className="wl-tile-label">FTP estimée</div>
+            <div className="wl-tile-value">{ftpDetection?.detected ?? '—'} <small>W</small></div>
+            <div className="wl-tile-sub">
+              {ftpValue ? `Réglée : ${ftpValue} W` : 'FTP non réglée'}
+              {ftpDetection?.isNew && ftpDetection.detected > (ftpValue || 0) ? ` · +${ftpDetection.detected - (ftpValue || 0)} W à valider` : ''}
             </div>
-          );
-        })}
-        {recentActivities.length === 0 && (
-          <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-2)', fontSize: 13 }}>
-            No activities found in the last 90 days.
           </div>
-        )}
-      </div>
-
-      {/* ─── Card 7: Records Personnels ─── */}
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title">Records Personnels</span>
-          <span className="card-badge" style={{ background: 'var(--brand-dim)', color: 'var(--brand)', border: '1px solid rgba(92,138,46,0.25)' }}>
-            {activities?.length || 0} activités analysées
-          </span>
-        </div>
-
-        {/* FTP & FC Max détectés */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-          {/* FTP détecté */}
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px', position: 'relative', overflow: 'hidden' }}>
-            {ftpDetection?.isNew && (
-              <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, fontWeight: 700, background: 'var(--brand)', color: '#fff', borderRadius: 99, padding: '2px 7px' }}>
-                NOUVEAU PR
-              </div>
-            )}
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', marginBottom: 6 }}>FTP Détecté</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 34, fontWeight: 700, color: ftpDetection?.isNew ? 'var(--brand)' : 'var(--text-0)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-              {ftpDetection?.detected ?? '—'}<span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-3)', marginLeft: 3, fontFamily: 'var(--font-sans)' }}>W</span>
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 5 }}>
-              {ftpValue
-                ? <>Actuel : <span style={{ color: 'var(--text-2)', fontWeight: 600 }}>{ftpValue}W</span>
-                    {ftpDetection?.isNew && ftpDetection.detected > ftpValue && (
-                      <span style={{ color: 'var(--accent-green)', marginLeft: 6 }}>+{ftpDetection.detected - ftpValue}W</span>
-                    )}
-                  </>
-                : 'FTP non configuré'}
-            </div>
-            {ftpDetection?.method && (
-              <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 4 }}>via {ftpDetection.method}</div>
-            )}
-          </div>
-
-          {/* FC Max détectée */}
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', marginBottom: 6 }}>FC Max Détectée</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 34, fontWeight: 700, color: 'var(--text-0)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-              {maxHRDetection?.hr ?? '—'}<span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-3)', marginLeft: 3, fontFamily: 'var(--font-sans)' }}>bpm</span>
-            </div>
-            {maxHRDetection?.date && (
-              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 5 }}>
-                {fmtDate(maxHRDetection.date)}
-              </div>
-            )}
-            {maxHRDetection?.name && (
-              <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{maxHRDetection.name}</div>
-            )}
+          <div className="wl-tile">
+            <div className="wl-tile-label">FC max relevée</div>
+            <div className="wl-tile-value">{maxHRDetection?.hr ?? '—'} <small>bpm</small></div>
+            <div className="wl-tile-sub">{maxHRDetection?.date ? fmtDate(maxHRDetection.date) : '—'}</div>
           </div>
         </div>
-
-        {/* Power PR table */}
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 10 }}>Meilleures puissances</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
-          {powerPRs.map(({ label, best, top3, hasCurve }) => (
-            <div key={label} style={{ background: best ? 'var(--bg-1)' : 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 10px 8px', textAlign: 'center', boxShadow: best ? 'var(--shadow-sm)' : 'none' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-4)', marginBottom: 6 }}>{label}</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: best ? 'var(--text-0)' : 'var(--text-4)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-                {best ?? '—'}
-              </div>
-              {best && <div style={{ fontSize: 9, color: 'var(--text-3)', marginTop: 2, fontFamily: 'var(--font-sans)' }}>W{hasCurve ? ' · all-time' : ''}</div>}
-              {top3 && top3.length > 1 && (
-                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {top3.slice(1).map((e, i) => (
-                    <div key={i} style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-4)', fontSize: 9 }}>#{i + 2}</span>
-                      <span>{e.watts}W</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {top3?.[0]?.date && (
-                <div style={{ fontSize: 9, color: 'var(--text-4)', marginTop: 4 }}>{fmtDate(top3[0].date)}</div>
-              )}
-            </div>
+        <ul className="ride-peaks db-prs">
+          {powerPRs.map(({ label, best, top3 }) => (
+            <li key={label}>
+              <span className="ride-peak-dur">{label}</span>
+              <strong>{best ? `${best} W` : '—'}</strong>
+              {best && weightValue && <span className="ride-peak-wkg">{(best / weightValue).toFixed(1)} W/kg</span>}
+              {top3?.[0]?.date && <span className="ride-peak-pct">{fmtDate(top3[0].date)}</span>}
+            </li>
           ))}
-        </div>
+        </ul>
+      </section>
 
-        {powerPRs.every(p => !p.best) && (
-          <div style={{ padding: '16px 0 4px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
-            Connecte un capteur de puissance + Intervals.icu pour voir tes records.
-          </div>
+      <section className="ride-card">
+        <h3>Dernières sorties</h3>
+        {recentActivities.length === 0 ? <p className="db-help">Aucune sortie sur les 90 derniers jours.</p> : (
+          <table className="ride-climbs">
+            <thead><tr><th>Date</th><th>Sortie</th><th>Durée</th><th>TSS</th><th>Puissance</th></tr></thead>
+            <tbody>
+              {recentActivities.map(a => (
+                <tr key={a.id}>
+                  <td>{shortDate(String(a.start_date_local).slice(0, 10))}</td>
+                  <td className="db-name">{a.name || a.type}</td>
+                  <td>{formatDuration(a.moving_time)}</td>
+                  <td>{a.icu_training_load ? Math.round(a.icu_training_load) : '—'}</td>
+                  <td>{a.icu_average_watts || a.average_watts ? `${Math.round(a.icu_average_watts || a.average_watts)} W` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
-      </div>
+      </section>
     </div>
   );
 }

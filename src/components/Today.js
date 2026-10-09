@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import persistence from '../services/persistence';
 import { loadProfile } from '../services/athlete-profile';
-import { PHASES, PHASE_ORDER, DEFAULT_SEASON_CONFIG, CYCLE_FOCUS, blocksMinutes, nextLevelOf } from '../services/periodization';
+import { PHASES, PHASE_ORDER, DEFAULT_SEASON_CONFIG, CYCLE_FOCUS, blocksMinutes, nextLevelOf, seasonOf } from '../services/periodization';
 import { estimateTss } from '../services/coachEngine';
 import {
   ZONE_PCT, TYPE_LABELS, CHECKIN_QUESTIONS, DEFAULT_CHECKIN, localDayKey, dayOf, num, fmtDur, groupBlocks,
@@ -216,7 +216,7 @@ function NewCycleForm({ config, onChange, onDone }) {
           Phase
           <select value={draft.phase} onChange={e => set({ phase: e.target.value })}>
             <option value="auto">Auto (selon la date)</option>
-            {PHASE_ORDER.map(p => <option key={p} value={p}>{PHASES[p].label} — {PHASES[p].season}</option>)}
+            {PHASE_ORDER.map(p => <option key={p} value={p}>{PHASES[p].label}</option>)}
           </select>
         </label>
         <label>
@@ -796,11 +796,11 @@ export default function Today({
   return (
     <div className="today">
       <header className="today-header today-hero">
-        <SeasonLandscape phase={seasonState.phase} className="today-hero-art" />
+        <SeasonLandscape season={seasonOf(new Date()).key} className="today-hero-art" />
         <div>
           <div className="today-date">{dateLabel}</div>
           <h1 className="today-title">Aujourd’hui</h1>
-          <div className="today-hero-phase">{phaseInfo.label}, {phaseInfo.season.toLowerCase()}</div>
+          <div className="today-hero-phase">{seasonOf(new Date()).label} · phase {phaseInfo.label.toLowerCase()}</div>
         </div>
         {cal.nextRaceDays != null && (
           <div className="today-race-chip">
@@ -1033,7 +1033,7 @@ export default function Today({
         {/* ── 0. Season ── */}
         <section className="today-card">
           <div className="today-card-head">
-            <h2>Saison : {phaseInfo.label} <span className="today-muted">· {phaseInfo.season}</span></h2>
+            <h2>Phase : {phaseInfo.label}</h2>
             <span className={`today-pill tone-${seasonState.isRecoveryWeek ? 'blue' : 'muted'}`}>
               {seasonState.isRecoveryWeek
                 ? 'Semaine de récup'

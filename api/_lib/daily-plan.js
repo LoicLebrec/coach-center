@@ -185,6 +185,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   nextLevelOf: () => (/* binding */ nextLevelOf),
 /* harmony export */   pickWorkout: () => (/* binding */ pickWorkout),
 /* harmony export */   progressionFor: () => (/* binding */ progressionFor),
+/* harmony export */   seasonOf: () => (/* binding */ seasonOf),
 /* harmony export */   shrinkToFit: () => (/* binding */ shrinkToFit),
 /* harmony export */   strengthForWeek: () => (/* binding */ strengthForWeek),
 /* harmony export */   strengthLevel: () => (/* binding */ strengthLevel),
@@ -276,6 +277,35 @@ function calendarPhase(date) {
 }
 
 /**
+ * A phase picked by hand (or by a scheduled cycle) doesn't last forever: it ends
+ * when the road calendar moves to its next phase after it was started, unless an
+ * A-race is still ahead; and after 20 weeks in any case.
+ */
+function manualExpired(cfg, today, todayKey) {
+  if (!cfg.phaseStart) return false;
+  const start = parseDay(cfg.phaseStart);
+  if ((today - start) / (7 * 86400000) > 20) return true;
+  const targetAhead = cfg.targetDate && cfg.targetDate > todayKey;
+  return !targetAhead && start < calendarPhase(today).start;
+}
+
+const SEASONS = [
+  { key: 'winter', label: 'Hiver', from: [12, 21] },
+  { key: 'spring', label: 'Printemps', from: [3, 20] },
+  { key: 'summer', label: 'Été', from: [6, 21] },
+  { key: 'autumn', label: 'Automne', from: [9, 22] },
+];
+
+/** The real season for a date (northern hemisphere), independent of the training phase. */
+function seasonOf(date = new Date()) {
+  const md = (date.getMonth() + 1) * 100 + date.getDate();
+  let cur = SEASONS[0];
+  for (const s of SEASONS) if (md >= s.from[0] * 100 + s.from[1]) cur = s;
+  if (md >= 1221) cur = SEASONS[0];
+  return cur;
+}
+
+/**
  * Resolve today's season position.
  * Returns { phase, source, phaseStart, weekInPhase, weekInCycle, cycleLen, isRecoveryWeek, daysToTarget, reason }
  */
@@ -294,14 +324,14 @@ function getSeasonState(config = DEFAULT_SEASON_CONFIG, today = new Date()) {
     phase = 'peak'; source = 'target';
     phaseStart = new Date(parseDay(cfg.targetDate).getTime() - 21 * 86400000);
     reason = `${cfg.targetName || 'Objectif'} dans ${daysToTarget} j`;
-  } else if (cfg.mode === 'manual' && cfg.phase) {
+  } else if (cfg.mode === 'manual' && cfg.phase && !manualExpired(cfg, today, todayKey)) {
     phase = cfg.phase; source = 'manual';
     phaseStart = cfg.phaseStart ? parseDay(cfg.phaseStart) : mondayOf(today);
-    reason = 'Phase choisie manuellement';
+    reason = cfg.targetDate && cfg.targetDate > todayKey ? `Préparation de ${cfg.targetName || 'ton objectif'}` : 'Phase choisie manuellement';
   } else {
     const cal = calendarPhase(today);
     phase = cal.phase; phaseStart = cal.start; source = 'calendar';
-    reason = `${PHASES[phase].season} — saison route`;
+    reason = `${seasonOf(today).label}, calendrier route`;
   }
 
   const cycleLen = cfg.cycle === '2:1' ? 3 : 4;
@@ -1644,7 +1674,7 @@ function suggestCycle({ analysis, seasonState, season = {}, today = dayKey(new D
     reasons.push(`${season.targetName || 'Objectif'} dans ${weeksToTarget} sem. → ${_periodization__WEBPACK_IMPORTED_MODULE_0__.PHASES[phase].label.toLowerCase()}`);
   } else {
     phase = (0,_periodization__WEBPACK_IMPORTED_MODULE_0__.getSeasonState)({ mode: 'auto' }, new Date(`${start}T12:00:00`)).phase;
-    reasons.push(`${_periodization__WEBPACK_IMPORTED_MODULE_0__.PHASES[phase].season} → ${_periodization__WEBPACK_IMPORTED_MODULE_0__.PHASES[phase].label.toLowerCase()}`);
+    reasons.push(`Calendrier route au ${new Date(`${start}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} → ${_periodization__WEBPACK_IMPORTED_MODULE_0__.PHASES[phase].label.toLowerCase()}`);
   }
   if (['build', 'competition'].includes(phase) && load.ctl != null && load.ctl < 35) {
     phase = 'base';

@@ -13,6 +13,7 @@ const SEASONS = {
   peak: { sky: '#e7e1fb', sun: '#f0663a', far: '#c5c3e6', mid: '#8fa86a', near: '#55783a', tree: '#2c4a2d', tree2: '#3c5f35', road: '#f6f3fb', burst: true },
 };
 SEASONS.taper = SEASONS.peak;
+const BY_SEASON = { autumn: 'transition', winter: 'base', spring: 'build', summer: 'competition' };
 
 // Left of centre: the right side carries the race chip.
 const SUN = [430, 62];
@@ -46,8 +47,9 @@ function RoundTree({ x, y, h, c }) {
   );
 }
 
-export default function SeasonLandscape({ phase, className }) {
-  const p = SEASONS[phase] || SEASONS.build;
+export default function SeasonLandscape({ season, phase, className }) {
+  // Drawn from the real season; `phase` kept for callers that still pass it.
+  const p = SEASONS[BY_SEASON[season]] || SEASONS[phase] || SEASONS.build;
   const Tree = p.round ? RoundTree : Pine;
   return (
     <svg className={className} viewBox="0 0 800 220" preserveAspectRatio="xMidYMax slice" aria-hidden="true">

@@ -86,3 +86,18 @@ test('availability: day off moves the quality session, time cap shortens', () =>
   expect(days[5]).toMatchObject({ minutes: 90, capped: 90 });
   expect(days[1].strength).toBeNull();
 });
+
+test('real season and manual phases that expire', () => {
+  // eslint-disable-next-line global-require
+  const { seasonOf, getSeasonState: gs } = require('./periodization');
+  expect(seasonOf(new Date('2026-10-09T12:00:00')).label).toBe('Automne');
+  expect(seasonOf(new Date('2026-12-25T12:00:00')).label).toBe('Hiver');
+  expect(seasonOf(new Date('2026-04-02T12:00:00')).label).toBe('Printemps');
+  const oct9 = new Date('2026-10-09T12:00:00');
+  // Build picked by hand in March: over once the calendar moved on.
+  expect(gs({ mode: 'manual', phase: 'build', phaseStart: '2026-03-02' }, oct9).phase).toBe('transition');
+  // Picked two weeks ago, inside the current calendar phase: kept.
+  expect(gs({ mode: 'manual', phase: 'base', phaseStart: '2026-10-01' }, oct9).phase).toBe('base');
+  // Build for a December A-race: kept while the race is ahead.
+  expect(gs({ mode: 'manual', phase: 'build', phaseStart: '2026-09-21', targetDate: '2026-12-20' }, oct9).phase).toBe('build');
+});

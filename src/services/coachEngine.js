@@ -398,7 +398,7 @@ export function suggestCycle({ analysis, seasonState, season = {}, today = dayKe
     reasons.push(`${season.targetName || 'Objectif'} dans ${weeksToTarget} sem. → ${PHASES[phase].label.toLowerCase()}`);
   } else {
     phase = getSeasonState({ mode: 'auto' }, new Date(`${start}T12:00:00`)).phase;
-    reasons.push(`${PHASES[phase].season} → ${PHASES[phase].label.toLowerCase()}`);
+    reasons.push(`Calendrier route au ${new Date(`${start}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} → ${PHASES[phase].label.toLowerCase()}`);
   }
   if (['build', 'competition'].includes(phase) && load.ctl != null && load.ctl < 35) {
     phase = 'base';

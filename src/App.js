@@ -32,6 +32,7 @@ import { asNumber } from './services/number';
 import Logo from './components/Logo';
 import Picto from './components/Pictos';
 import SeasonLandscape from './components/SeasonLandscape';
+import { seasonOf } from './services/periodization';
 
 function extractJsonBlock(text) {
   if (!text) return null;
@@ -886,7 +887,7 @@ export default function App() {
     if (!connections.intervals && !connections.strava && view !== VIEWS.SETTINGS) {
       return (
         <div className="welcome">
-          <SeasonLandscape phase="build" className="welcome-art" />
+          <SeasonLandscape season={seasonOf(new Date()).key} className="welcome-art" />
           <div className="welcome-body">
             <h1 className="welcome-title">Bienvenue</h1>
             <p>Connecte tes sorties pour recevoir ta séance du jour, adaptée à ta forme.</p>

@@ -39,7 +39,7 @@ export function weeklyTotals(activities = [], weeks = 8, today = new Date()) {
 const fmtWeek = (key) => new Date(`${key}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 const fmtH = (h) => `${Math.floor(h)}h${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
 
-function Bars({ data, avg }) {
+export function Bars({ data, avg }) {
   const W = 760; const H = 220; const top = 22; const bottom = 26;
   const max = Math.max(avg * 1.2, ...data.map(d => d.tss), 1);
   const bw = W / data.length;
