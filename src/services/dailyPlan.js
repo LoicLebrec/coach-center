@@ -274,7 +274,7 @@ export function buildCalendar(plannedEvents, events, today) {
 }
 
 /** Base session: planned blocks > planned name matched to library > season template — then the data checks. */
-export function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override = null, responder = null, maxMinutes = null }) {
+export function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override = null, responder = null, maxMinutes = null, targetMinutes = null }) {
   // A day edited by hand in the plan beats whatever the calendar had.
   const planned = override ? null : cal.planned;
   if (planned) {
@@ -295,7 +295,8 @@ export function buildBaseSession({ cal, seasonState, progression, weaknesses, an
   }
   const tpl = templateForDay(seasonState, date, { weaknesses, hasRaceTomorrow: cal.raceTomorrow, override, responder });
   if (tpl.type === 'rest') return { rest: true, source: tpl.overridden ? 'override' : 'season' };
-  if (maxMinutes) tpl.minutes = Math.min(tpl.minutes, maxMinutes);
+  if (targetMinutes && tpl.type !== 'recovery') tpl.minutes = targetMinutes;
+  else if (maxMinutes) tpl.minutes = Math.min(tpl.minutes, maxMinutes);
   const d = decideSession(tpl, analysis);
   const w = pickWorkout(d.type, d.minutes, seasonState.phase, progression);
   return { ...w, source: tpl.overridden ? 'override' : 'season', trainingType: d.type, plannedType: tpl.type, dataChanges: d.changes };
@@ -337,14 +338,17 @@ export function computeDay({
   const base = {
     ...buildBaseSession({
       cal, seasonState, progression, weaknesses, analysis, date, override: overrides[today] || availOverride, responder,
+      // Time available: sets the session length (calendar sessions are only shortened).
       maxMinutes: num(avail?.minutes),
+      targetMinutes: todayPlan.capped ? todayPlan.minutes : null,
     }),
     ...(todayPlan.unavailable ? { unavailable: true } : {}),
     ...(todayPlan.movedFrom ? { movedFrom: todayPlan.movedFrom } : {}),
     ...(todayPlan.movedTo ? { movedTo: todayPlan.movedTo } : {}),
     ...(todayPlan.dropped ? { dropped: todayPlan.dropped } : {}),
   };
-  const timeCap = [checkin.minutes, num(avail?.minutes)].filter(Boolean);
+  // checkin.minutes is the pre-availability way of saying "short on time today".
+  const timeCap = [avail ? null : checkin.minutes, num(avail?.minutes)].filter(Boolean);
   const adapted = cal.race || base.rest ? null : adaptWorkout(base, readiness.level, timeCap.length ? Math.min(...timeCap) : null, seasonState.phase);
   const strengthKind = week.find(d => d.date === today)?.strength || null;
   const strength = cal.race ? null : adaptStrength(strengthKind, strengthLevel(seasonState), readiness.level);

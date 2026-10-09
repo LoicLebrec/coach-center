@@ -322,7 +322,6 @@ function CycleCard({ cycle, pending, onApply, onCancelPending }) {
 
 const EDIT_TYPES = ['recovery', 'endurance', 'durability', 'tempo', 'force', 'sweetspot', 'threshold', 'vo2',
   'anaerobic', 'sprint', 'race_sim', 'openers'];
-const EDIT_MINUTES = [30, 45, 60, 75, 90, 105, 120, 150, 180, 210, 240];
 const TYPE_SHORT = {
   recovery: 'Réc', endurance: 'End', durability: 'Dur', tempo: 'Tmp', force: 'For', sweetspot: 'SS',
   threshold: 'Seuil', vo2: 'VO2', anaerobic: 'Ana', sprint: 'Spr', race_sim: 'Sim', openers: 'Débl', race: 'Course',
@@ -401,7 +400,7 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit, availabil
             </div>
             {d.blocks?.length > 0 && <div className="today-week-min">{Math.round(blocksMinutes(d.blocks))}′</div>}
             {d.strength && <div className="today-week-strength" title={d.strength.title}>+ renfo</div>}
-            {availability[d.date] && <div className="today-week-avail">{availability[d.date].off ? 'pas dispo' : `≤ ${Math.round(availability[d.date].minutes)}′`}</div>}
+            {availability[d.date] && <div className="today-week-avail">{availability[d.date].off ? 'pas dispo' : availabilityLabel(availability[d.date])}</div>}
             {reviews[d.date]?.review && <span className={`today-week-check tone-${reviews[d.date].review.tone}`} title={reviews[d.date].review.title} />}
           </button>
         ))}
@@ -435,7 +434,7 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit, availabil
             </p>
           )}
           {day.movedFrom && <p className="today-avail-note">Séance déplacée du {fmtDay(day.movedFrom)} (pas dispo ce jour-là).</p>}
-          {avail?.minutes && !day.unavailable && <p className="today-avail-note">Séance calée sur {availabilityLabel(avail)}.</p>}
+          {avail?.minutes && !day.unavailable && <p className="today-avail-note">Séance calée sur ton temps dispo : {availabilityLabel(avail)}.</p>}
           {day.date === today && (
             <p className="today-hint">Le détail du jour est en haut de la page.</p>
           )}
@@ -458,16 +457,7 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit, availabil
                   </select>
                 </label>
                 <label>
-                  <span>Durée</span>
-                  <select disabled={day.type === 'rest'} value={day.type === 'rest' ? '' : EDIT_MINUTES.includes(day.minutes) ? day.minutes : ''}
-                    onChange={e => setDay({ minutes: Number(e.target.value) })}>
-                    {day.type === 'rest' && <option value="">—</option>}
-                    {day.type !== 'rest' && !EDIT_MINUTES.includes(day.minutes) && <option value="">{Math.round(day.minutes || 0)} min</option>}
-                    {EDIT_MINUTES.map(m => <option key={m} value={m}>{fmtDur(m)}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span>Ta dispo</span>
+                  <span>Temps dispo</span>
                   <select value={availabilityValue(availability[day.date])} onChange={e => onAvailability(day.date, e.target.value)}>
                     {AVAILABILITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
@@ -493,7 +483,7 @@ function PlanAhead({ weeks, today, ftp, activities, overrides, onEdit, availabil
             <div className="today-plan-edit">
               <div className="today-plan-edit-fields">
                 <label>
-                  <span>Ta dispo</span>
+                  <span>Temps dispo</span>
                   <select value={availabilityValue(availability[day.date])} onChange={e => onAvailability(day.date, e.target.value)}>
                     {AVAILABILITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
@@ -802,7 +792,13 @@ export default function Today({
     }
   };
 
-  const minuteOptions = [30, 45, 60, 90, 120, 180];
+  // One "time available" for today, shared with the plan and the calendar.
+  const TODAY_TIME_OPTIONS = ['', '30', '45', '60', '90', '120', '180', 'off'];
+  const todayTime = availabilityValue(availability[today]) || (checkin.minutes ? String(checkin.minutes) : '');
+  const setTodayTime = (v) => {
+    if (checkin.minutes) updateCheckin({ minutes: null });
+    setAvailability(today, v).then(setAvail);
+  };
   const noSession = cal.race || base.rest;
 
   return (
@@ -957,12 +953,9 @@ export default function Today({
           <div className="today-q">
             <div className="today-q-label">Temps dispo</div>
             <div className="today-seg">
-              <button type="button" className={!checkin.minutes ? 'on' : ''} onClick={() => updateCheckin({ minutes: null })}>
-                Comme prévu
-              </button>
-              {minuteOptions.map(m => (
-                <button key={m} type="button" className={checkin.minutes === m ? 'on' : ''} onClick={() => updateCheckin({ minutes: m })}>
-                  {m < 60 ? `${m}′` : `${Math.floor(m / 60)}h${m % 60 ? '30' : ''}`}
+              {TODAY_TIME_OPTIONS.map(v => (
+                <button key={v || 'plan'} type="button" className={todayTime === v ? 'on' : ''} onClick={() => setTodayTime(v)}>
+                  {v === '' ? 'Comme prévu' : v === 'off' ? 'Pas dispo' : Number(v) < 60 ? `${v}′` : `${Math.floor(v / 60)}h${v % 60 ? '30' : ''}`}
                 </button>
               ))}
             </div>
@@ -980,7 +973,7 @@ export default function Today({
           </div>
           <div className="today-readiness-text">
             <strong>{readiness.score}/100 · {lvl.title}</strong>
-            {!noSession && <> → {lvl.effect}{checkin.minutes ? `, limité à ${checkin.minutes} min` : ''}</>}
+            {!noSession && <> → {lvl.effect}{todayTime && todayTime !== 'off' ? `, calée sur ${availabilityLabel({ minutes: Number(todayTime) })}` : ''}</>}
           </div>
         </div>
       </section>

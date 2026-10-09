@@ -480,7 +480,7 @@ const HARD_DAY = (d) => d && (QUALITY.includes(d.type) || d.type === 'race');
  * A day off becomes rest; its quality session moves to another free day of the
  * week (an easy or rest day, not next to another hard day, later days first,
  * never in the past); with no such day it is dropped rather than stacked. A time
- * limit caps the day's minutes. Races are never touched. Mutates `days`.
+ * given time sets the day's length. Races are never touched. Mutates `days`.
  */
 function applyAvailability(days, availability = {}, today = null) {
   if (!availability) return days;
@@ -507,9 +507,13 @@ function applyAvailability(days, availability = {}, today = null) {
     Object.assign(t, { type: moved.type, minutes: moved.minutes, movedFrom: d.date });
     d.movedTo = t.date;
   });
+  // Time available = the session's length (longer endurance when there's more time,
+  // shorter when there's less); a recovery ride is never stretched.
   days.forEach(d => {
     const cap = capOf(d);
-    if (cap && !d.unavailable && d.type !== 'rest' && d.type !== 'race' && d.minutes > cap) Object.assign(d, { minutes: cap, capped: cap });
+    if (!cap || d.unavailable || d.type === 'rest' || d.type === 'race') return;
+    const minutes = d.type === 'recovery' ? Math.min(d.minutes, cap) : cap;
+    if (minutes !== d.minutes) Object.assign(d, { minutes, capped: cap });
   });
   return days;
 }
@@ -2134,7 +2138,7 @@ function buildCalendar(plannedEvents, events, today) {
 }
 
 /** Base session: planned blocks > planned name matched to library > season template — then the data checks. */
-function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override = null, responder = null, maxMinutes = null }) {
+function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis, date, override = null, responder = null, maxMinutes = null, targetMinutes = null }) {
   // A day edited by hand in the plan beats whatever the calendar had.
   const planned = override ? null : cal.planned;
   if (planned) {
@@ -2155,7 +2159,8 @@ function buildBaseSession({ cal, seasonState, progression, weaknesses, analysis,
   }
   const tpl = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.templateForDay)(seasonState, date, { weaknesses, hasRaceTomorrow: cal.raceTomorrow, override, responder });
   if (tpl.type === 'rest') return { rest: true, source: tpl.overridden ? 'override' : 'season' };
-  if (maxMinutes) tpl.minutes = Math.min(tpl.minutes, maxMinutes);
+  if (targetMinutes && tpl.type !== 'recovery') tpl.minutes = targetMinutes;
+  else if (maxMinutes) tpl.minutes = Math.min(tpl.minutes, maxMinutes);
   const d = (0,_coachEngine__WEBPACK_IMPORTED_MODULE_3__.decideSession)(tpl, analysis);
   const w = (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.pickWorkout)(d.type, d.minutes, seasonState.phase, progression);
   return { ...w, source: tpl.overridden ? 'override' : 'season', trainingType: d.type, plannedType: tpl.type, dataChanges: d.changes };
@@ -2197,14 +2202,17 @@ function computeDay({
   const base = {
     ...buildBaseSession({
       cal, seasonState, progression, weaknesses, analysis, date, override: overrides[today] || availOverride, responder,
+      // Time available: sets the session length (calendar sessions are only shortened).
       maxMinutes: (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(avail?.minutes),
+      targetMinutes: todayPlan.capped ? todayPlan.minutes : null,
     }),
     ...(todayPlan.unavailable ? { unavailable: true } : {}),
     ...(todayPlan.movedFrom ? { movedFrom: todayPlan.movedFrom } : {}),
     ...(todayPlan.movedTo ? { movedTo: todayPlan.movedTo } : {}),
     ...(todayPlan.dropped ? { dropped: todayPlan.dropped } : {}),
   };
-  const timeCap = [checkin.minutes, (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(avail?.minutes)].filter(Boolean);
+  // checkin.minutes is the pre-availability way of saying "short on time today".
+  const timeCap = [avail ? null : checkin.minutes, (0,_number__WEBPACK_IMPORTED_MODULE_4__.num)(avail?.minutes)].filter(Boolean);
   const adapted = cal.race || base.rest ? null : adaptWorkout(base, readiness.level, timeCap.length ? Math.min(...timeCap) : null, seasonState.phase);
   const strengthKind = week.find(d => d.date === today)?.strength || null;
   const strength = cal.race ? null : adaptStrength(strengthKind, (0,_periodization__WEBPACK_IMPORTED_MODULE_1__.strengthLevel)(seasonState), readiness.level);

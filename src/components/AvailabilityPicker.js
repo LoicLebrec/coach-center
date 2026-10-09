@@ -2,7 +2,7 @@ import React from 'react';
 import { AVAILABILITY_OPTIONS, availabilityValue, setAvailability } from '../services/availability';
 
 /** "Ta dispo ce jour-là" — one tap per option; shared by the calendar dialogs. */
-export default function AvailabilityPicker({ date, availability, onChange, title = 'Ta dispo ce jour-là' }) {
+export default function AvailabilityPicker({ date, availability, onChange, title = 'Ton temps dispo ce jour-là' }) {
   const current = availabilityValue(availability[date]);
   return (
     <div className="cal-avail-picker">
@@ -16,7 +16,7 @@ export default function AvailabilityPicker({ date, availability, onChange, title
           </button>
         ))}
       </div>
-      <p className="cal-avail-help">Pas dispo : la séance passe sur un autre jour de la semaine. Temps limité : elle est raccourcie.</p>
+      <p className="cal-avail-help">Pas dispo : la séance passe sur un autre jour de la semaine. Un temps : la séance est calée dessus.</p>
     </div>
   );
 }

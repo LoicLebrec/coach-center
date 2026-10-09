@@ -285,7 +285,7 @@ const HARD_DAY = (d) => d && (QUALITY.includes(d.type) || d.type === 'race');
  * A day off becomes rest; its quality session moves to another free day of the
  * week (an easy or rest day, not next to another hard day, later days first,
  * never in the past); with no such day it is dropped rather than stacked. A time
- * limit caps the day's minutes. Races are never touched. Mutates `days`.
+ * given time sets the day's length. Races are never touched. Mutates `days`.
  */
 export function applyAvailability(days, availability = {}, today = null) {
   if (!availability) return days;
@@ -312,9 +312,13 @@ export function applyAvailability(days, availability = {}, today = null) {
     Object.assign(t, { type: moved.type, minutes: moved.minutes, movedFrom: d.date });
     d.movedTo = t.date;
   });
+  // Time available = the session's length (longer endurance when there's more time,
+  // shorter when there's less); a recovery ride is never stretched.
   days.forEach(d => {
     const cap = capOf(d);
-    if (cap && !d.unavailable && d.type !== 'rest' && d.type !== 'race' && d.minutes > cap) Object.assign(d, { minutes: cap, capped: cap });
+    if (!cap || d.unavailable || d.type === 'rest' || d.type === 'race') return;
+    const minutes = d.type === 'recovery' ? Math.min(d.minutes, cap) : cap;
+    if (minutes !== d.minutes) Object.assign(d, { minutes, capped: cap });
   });
   return days;
 }

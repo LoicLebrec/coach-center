@@ -1276,7 +1276,7 @@ export default function Calendar({
                                             <div className="calendar-day-num" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span>{format(day, 'd')}</span>
                                                 {activityData && <span style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--accent-green)', opacity: 0.8 }}>{Math.round(activityData.tss)}tss</span>}
-                                                {availability[dayKey] && <span className={`cal-avail${availability[dayKey].off ? ' is-off' : ''}`}>{availability[dayKey].off ? 'pas dispo' : `≤ ${availability[dayKey].minutes}′`}</span>}
+                                                {availability[dayKey] && <span className={`cal-avail${availability[dayKey].off ? ' is-off' : ''}`}>{availability[dayKey].off ? 'pas dispo' : availabilityLabel(availability[dayKey])}</span>}
                                             </div>
                                             <div className="calendar-day-events">
                                                 {entries.slice(0, 3).map(entry => {

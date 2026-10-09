@@ -1,6 +1,7 @@
 /**
  * When the athlete can ride: { 'YYYY-MM-DD': { off: true } | { minutes: 60 } }.
- * Days with no entry are "as planned". Stored as one preference, past days pruned.
+ * Days with no entry are "as planned"; minutes = the time the athlete has, which
+ * becomes the session's length. Stored as one preference, past days pruned.
  */
 import persistence from './persistence';
 
@@ -9,12 +10,14 @@ const KEY = 'availability';
 export const AVAILABILITY_OPTIONS = [
   { value: '', label: 'Comme prévu' },
   { value: 'off', label: 'Pas dispo' },
-  { value: '30', label: '30 min max' },
-  { value: '45', label: '45 min max' },
-  { value: '60', label: '1 h max' },
-  { value: '90', label: '1 h 30 max' },
-  { value: '120', label: '2 h max' },
-  { value: '180', label: '3 h max' },
+  { value: '30', label: '30 min' },
+  { value: '45', label: '45 min' },
+  { value: '60', label: '1 h' },
+  { value: '90', label: '1 h 30' },
+  { value: '120', label: '2 h' },
+  { value: '150', label: '2 h 30' },
+  { value: '180', label: '3 h' },
+  { value: '240', label: '4 h' },
 ];
 
 const todayKey = () => {
@@ -48,5 +51,5 @@ export function availabilityLabel(entry) {
   if (!entry) return null;
   if (entry.off) return 'Pas dispo';
   const m = entry.minutes;
-  return m ? `${m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60}` : ''}` : `${m} min`} max` : null;
+  return m ? (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60}` : ''}` : `${m} min`) : null;
 }

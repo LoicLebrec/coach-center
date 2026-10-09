@@ -84,6 +84,10 @@ test('availability: day off moves the quality session, time cap shortens', () =>
   const i = days.indexOf(moved);
   expect(['threshold', 'vo2', 'race'].includes(days[i - 1]?.type) || ['threshold', 'vo2'].includes(days[i + 1]?.type)).toBe(false);
   expect(days[5]).toMatchObject({ minutes: 90, capped: 90 });
+  // More time than planned stretches the day; a recovery ride is never stretched.
+  const longer = wp(state, monday, { availability: { '2026-12-09': { minutes: 180 }, '2026-12-11': { minutes: 180 } } });
+  expect(longer[2]).toMatchObject({ type: 'endurance', minutes: 180 });
+  expect(longer[4].minutes).toBe(45);
   expect(days[1].strength).toBeNull();
 });
 
