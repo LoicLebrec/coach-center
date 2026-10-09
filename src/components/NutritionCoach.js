@@ -28,7 +28,6 @@ const MEAL_META = {
 };
 
 const DAY_TITLES = { rest: 'Jour de repos', easy: 'Journée facile', moderate: 'Journée modérée', hard: 'Journée intense', long: 'Longue sortie' };
-const LOAD_COLORS = { rest: '#64748b', easy: '#22c55e', moderate: '#f59e0b', hard: '#f97316', long: '#ef4444' };
 const LOAD_LABELS = { rest: 'Repos',   easy: 'Facile',  moderate: 'Modéré',  hard: 'Intensif', long: 'Longue sortie' };
 
 const DURING_STATIC = [
@@ -55,51 +54,9 @@ const DURING_STATIC = [
   },
 ];
 
-// ── Helpers de style ──────────────────────────────────────────────────────────
-
-const sectionLabel = {
-  fontSize: 11, fontWeight: 600, color: 'var(--text-3)',
-  letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 10,
-};
-
-const monoVal = (color = 'var(--text-1)') => ({
-  fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color,
-});
-
-const pill = (color, active) => ({
-  padding: '6px 14px', borderRadius: 20, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
-  fontWeight: active ? 600 : 400, border: `1px solid ${active ? color : 'var(--border)'}`,
-  background: active ? `${color}18` : 'transparent',
-  color: active ? color : 'var(--text-3)', transition: 'all 0.15s',
-});
-
-const tag = (color) => ({
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '3px 9px', borderRadius: 99, fontSize: 12, fontWeight: 600,
-  background: `${color}18`, color, border: `1px solid ${color}30`,
-});
-
 // ── Sous-composants ───────────────────────────────────────────────────────────
 
-function MacroProgress({ label, value, max, color }) {
-  const pct = Math.min(100, (value / max) * 100);
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-        <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{label}</span>
-        <span style={monoVal(color)}>{value} g</span>
-      </div>
-      <div style={{ height: 5, borderRadius: 99, background: 'var(--bg-3)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, borderRadius: 99, background: color, transition: 'width 0.5s ease' }} />
-      </div>
-    </div>
-  );
-}
 
-function DifficultyBadge({ difficulty }) {
-  const opt = DIFFICULTY_OPTIONS.find(o => o.key === difficulty) || DIFFICULTY_OPTIONS[0];
-  return <span style={tag(opt.color)}>{opt.label}</span>;
-}
 
 function RecipeCard({ recipe, expanded, onToggle, onShuffle, canShuffle }) {
   const { name, difficulty, time, macros, macrosEstimated, ingredients, steps, note } = recipe;
@@ -218,135 +175,79 @@ function ShoppingList({ diet, weightKg, difficulty }) {
   const totalCount   = shopping.reduce((s, cat) => s + cat.items.length, 0);
 
   if (state === 'idle') return (
-    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-      <div style={{ marginBottom: 16 }}><Picto name="cart" size={48} /></div>
-      <div style={{ fontSize: 15, color: 'var(--text-2)', marginBottom: 6, lineHeight: 1.6 }}>
-        Génère un plan repas pour une semaine type et la liste d'ingrédients agrégée.
-      </div>
-      <div style={{ fontSize: 13, color: 'var(--text-4)', marginBottom: 24 }}>
-        Repos · Facile · Intensif · Modéré · Facile · Longue sortie · Repos
-      </div>
-      <button onClick={generate} style={{
-        padding: '11px 28px', borderRadius: 10, background: 'var(--accent-orange)', color: '#fff',
-        border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-      }}>
-        Générer la liste de courses
-      </button>
+    <div className="nutri-empty">
+      <Picto name="cart" size={48} />
+      <p>Une semaine de repas type, calée sur une semaine d’entraînement, et la liste des ingrédients à acheter.</p>
+      <button type="button" className="btn btn-primary" onClick={generate}>Préparer ma liste de courses</button>
     </div>
   );
 
   if (state === 'loading') return (
-    <div style={{ textAlign: 'center', padding: '48px 20px' }}>
-      <div style={{ width: 32, height: 32, border: '3px solid var(--border)', borderTopColor: 'var(--accent-orange)', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 16px' }} />
-      <div style={{ fontSize: 14, color: 'var(--text-3)' }}>Génération du plan semaine…</div>
-    </div>
+    <div className="nutri-empty"><p>Préparation de la semaine…</p></div>
   );
 
   if (state === 'error') return (
-    <div style={{ textAlign: 'center', padding: 24, color: '#ef4444', fontSize: 14 }}>
-      Erreur.{' '}
-      <button onClick={generate} style={{ background: 'none', border: 'none', color: 'var(--accent-orange)', cursor: 'pointer', textDecoration: 'underline', fontSize: 14 }}>
-        Réessayer
-      </button>
+    <div className="nutri-empty">
+      <p>La liste n’a pas pu être préparée.</p>
+      <button type="button" className="btn" onClick={generate}>Réessayer</button>
     </div>
   );
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
-        <span style={{ fontSize: 13, color: 'var(--text-3)' }}>
-          {checkedCount} / {totalCount} articles cochés
-        </span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={copyList} style={{
-            padding: '7px 14px', borderRadius: 8, background: 'var(--bg-3)', border: '1px solid var(--border)',
-            color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-          }}>Copier</button>
-          <button onClick={generate} style={{
-            padding: '7px 14px', borderRadius: 8, background: 'var(--bg-3)', border: '1px solid var(--border)',
-            color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-          }}>Régénérer</button>
+      <div className="shop-head">
+        <span className="shop-count">{checkedCount} / {totalCount} dans le panier</span>
+        <div className="shop-actions">
+          <button type="button" className="btn" onClick={copyList}>Copier la liste</button>
+          <button type="button" className="btn" onClick={generate}>Autre semaine</button>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 28 }}>
+      <div className="shop-grid">
         {shopping.map(cat => (
-          <div key={cat.category} style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ padding: '9px 13px', borderBottom: '1px solid var(--border)', background: 'var(--bg-3)' }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>{cat.category}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-4)', marginLeft: 6 }}>({cat.items.length})</span>
-            </div>
-            <div style={{ padding: '6px 4px' }}>
+          <section key={cat.category} className="shop-cat">
+            <h4>{cat.category} <span>{cat.items.length}</span></h4>
+            <ul>
               {cat.items.map(item => {
                 const key  = item.name.toLowerCase();
                 const done = checked.has(key);
                 const measures = [...new Set(item.measures)].slice(0, 3).join(', ');
                 return (
-                  <div key={key} onClick={() => toggle(key)} style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 9, padding: '5px 10px',
-                    cursor: 'pointer', borderRadius: 6, transition: 'background 0.1s',
-                  }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-3)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <div style={{
-                      width: 16, height: 16, borderRadius: 4, marginTop: 2, flexShrink: 0, transition: 'all 0.15s',
-                      border: `2px solid ${done ? '#22c55e' : 'var(--border)'}`,
-                      background: done ? '#22c55e' : 'transparent',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      {done && <span style={{ color: '#fff', fontSize: 10, fontWeight: 800 }}>✓</span>}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 13, color: done ? 'var(--text-4)' : 'var(--text-1)', textDecoration: done ? 'line-through' : 'none', fontWeight: 500 }}>
-                        {item.name}
-                      </div>
-                      {measures && <div style={{ fontSize: 11, color: 'var(--text-4)' }}>{measures}</div>}
-                    </div>
-                  </div>
+                  <li key={key}>
+                    <label className={done ? 'is-done' : ''}>
+                      <input type="checkbox" checked={done} onChange={() => toggle(key)} />
+                      <span className="shop-item">{item.name}{measures && <small>{measures}</small>}</span>
+                    </label>
+                  </li>
                 );
               })}
-            </div>
-          </div>
+            </ul>
+          </section>
         ))}
       </div>
 
       {weekPlan && (
-        <div>
-          <div style={{ ...sectionLabel, marginBottom: 10 }}>Plan semaine type</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {weekPlan.map(({ day, load, meals }) => (
-              <div key={day} style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-                <button onClick={() => setExpandedDay(d => d === day ? null : day)} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
-                  background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', minWidth: 84 }}>{day}</span>
-                  <span style={tag(LOAD_COLORS[load])}>{LOAD_LABELS[load]}</span>
-                  <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-4)' }}>
-                    {expandedDay === day ? '▲' : '▼'}
-                  </span>
-                </button>
-                {expandedDay === day && (
-                  <div style={{ padding: '2px 14px 10px', borderTop: '1px solid var(--border)' }}>
-                    {Object.entries(meals).map(([slot, recipe]) => {
-                      const meta = MEAL_META[slot];
-                      if (!meta) return null;
-                      return (
-                        <div key={slot} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <Picto name={meta.icon} size={16} />
-                          <span style={{ fontSize: 12, color: meta.color, minWidth: 120 }}>{meta.label}</span>
-                          <span style={{ fontSize: 13, color: recipe ? 'var(--text-2)' : 'var(--text-4)', fontStyle: recipe ? 'normal' : 'italic' }}>
-                            {recipe ? recipe.name : '—'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+        <div className="shop-week">
+          <h4>La semaine type</h4>
+          {weekPlan.map(({ day, load, meals }) => (
+            <details key={day} className="shop-day" open={expandedDay === day}
+              onToggle={e => { if (e.currentTarget.open) setExpandedDay(day); }}>
+              <summary><span className="shop-day-name">{day}</span><span className="shop-day-load">{LOAD_LABELS[load]}</span></summary>
+              <ul>
+                {Object.entries(meals).map(([slot, recipe]) => {
+                  const meta = MEAL_META[slot];
+                  if (!meta) return null;
+                  return (
+                    <li key={slot}>
+                      <Picto name={meta.icon} size={16} />
+                      <span className="shop-slot">{meta.label}</span>
+                      <span>{recipe ? recipe.name : '—'}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          ))}
         </div>
       )}
     </div>
@@ -404,142 +305,73 @@ function JournalAlimentaire({ needs }) {
   }), { cal: 0, carbs: 0, protein: 0, fat: 0 });
 
   const calRatio = totals.cal / (needs.cal || 2000);
-  const calColor = calRatio < 0.5 ? '#f97316' : calRatio > 1.1 ? '#ef4444' : '#22c55e';
-
-  const inputStyle = {
-    width: '100%', padding: '9px 12px', background: 'var(--bg-3)', border: '1px solid var(--border)',
-    borderRadius: 8, color: 'var(--text-0)', fontSize: 13, outline: 'none', fontFamily: 'inherit',
-    boxSizing: 'border-box',
-  };
+  const isToday = date >= todayStr();
+  const macros = [
+    { key: 'carbs', label: 'Glucides', value: totals.carbs, target: needs.carbs },
+    { key: 'protein', label: 'Protéines', value: totals.protein, target: needs.protein },
+    { key: 'fat', label: 'Lipides', value: totals.fat, target: needs.fat },
+  ];
 
   return (
-    <div>
-      {/* Navigation de date */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <button onClick={() => navDay(-1)} style={{
-          width: 34, height: 34, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--border)',
-          color: 'var(--text-2)', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>◀</button>
-        <div style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-1)', textTransform: 'capitalize' }}>
-            {formatDate(date)}
-          </div>
-          {date === todayStr() && (
-            <div style={{ fontSize: 11, color: 'var(--accent-orange)', marginTop: 2 }}>Aujourd'hui</div>
-          )}
-        </div>
-        <button onClick={() => navDay(1)} disabled={date >= todayStr()} style={{
-          width: 34, height: 34, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--border)',
-          color: 'var(--text-2)', cursor: date >= todayStr() ? 'default' : 'pointer', fontSize: 14,
-          opacity: date >= todayStr() ? 0.3 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>▶</button>
+    <div className="journal">
+      <div className="journal-nav">
+        <button type="button" className="btn" onClick={() => navDay(-1)} aria-label="Jour précédent">‹</button>
+        <div className="journal-date">{formatDate(date)}{isToday && <small>Aujourd’hui</small>}</div>
+        <button type="button" className="btn" onClick={() => navDay(1)} disabled={isToday} aria-label="Jour suivant">›</button>
       </div>
 
-      {/* Bilan vs objectifs */}
-      <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 18px', marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
-          <span style={{ fontSize: 13, color: 'var(--text-3)' }}>Calories consommées</span>
-          <div>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 700, color: calColor }}>{totals.cal}</span>
-            <span style={{ fontSize: 13, color: 'var(--text-4)', marginLeft: 6 }}>/ {needs.cal} kcal</span>
-          </div>
-        </div>
-        <div style={{ height: 6, borderRadius: 99, background: 'var(--bg-3)', overflow: 'hidden', marginBottom: 16 }}>
-          <div style={{ height: '100%', borderRadius: 99, background: calColor, width: `${Math.min(100, calRatio * 100)}%`, transition: 'width 0.4s' }} />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
-          {[
-            { label: 'Glucides',  value: totals.carbs,   target: needs.carbs,   color: '#f97316' },
-            { label: 'Protéines', value: totals.protein, target: needs.protein, color: '#22c55e' },
-            { label: 'Lipides',   value: totals.fat,     target: needs.fat,     color: '#f97316' },
-          ].map(m => (
-            <div key={m.label}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{m.label}</span>
-                <span style={{ ...monoVal(m.color), fontSize: 11 }}>{m.value}/{m.target}g</span>
-              </div>
-              <div style={{ height: 4, borderRadius: 99, background: 'var(--bg-3)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', borderRadius: 99, background: m.color, width: `${Math.min(100, (m.value / m.target) * 100)}%`, transition: 'width 0.4s' }} />
-              </div>
+      <div className="journal-total">
+        <p><strong>{totals.cal}</strong> / {needs.cal} kcal mangées</p>
+        <div className="nutri-bar"><span className="m-carbs" style={{ width: `${Math.min(100, calRatio * 100)}%` }} /></div>
+        <div className="journal-macros">
+          {macros.map(m => (
+            <div key={m.key}>
+              <span><i className={`m-${m.key}`} />{m.label}</span>
+              <strong>{m.value} / {m.target} g</strong>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Liste des repas */}
-      <div style={{ marginBottom: 12 }}>
-        {entries.length === 0 && !showForm && (
-          <div style={{ textAlign: 'center', padding: '28px 0', color: 'var(--text-4)', fontSize: 14 }}>
-            Aucun repas enregistré pour ce jour
-          </div>
-        )}
-        {entries.map(entry => (
-          <div key={entry.id} style={{
-            display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-            background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 6,
-          }}>
-            <span style={{ fontSize: 12, color: 'var(--text-4)', minWidth: 38, fontFamily: 'var(--font-mono)' }}>{entry.time}</span>
-            <span style={{ flex: 1, fontSize: 14, color: 'var(--text-0)', fontWeight: 500 }}>{entry.name}</span>
-            <div style={{ display: 'flex', gap: 10, flexShrink: 0, alignItems: 'center' }}>
-              <span style={{ ...monoVal('#f59e0b'), fontSize: 12 }}>{entry.cal} kcal</span>
-              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>G{entry.carbs} P{entry.protein} L{entry.fat}</span>
-            </div>
-            <button onClick={() => save(entries.filter(e => e.id !== entry.id))} style={{
-              background: 'none', border: 'none', color: 'var(--text-4)', cursor: 'pointer',
-              fontSize: 18, padding: '0 2px', lineHeight: 1, flexShrink: 0,
-            }}>×</button>
-          </div>
-        ))}
-      </div>
-
-      {/* Formulaire */}
-      {showForm && (
-        <div style={{ background: 'var(--bg-2)', border: '1px solid var(--accent-orange)', borderRadius: 12, padding: 16, marginBottom: 12 }}>
-          <input
-            value={form.name}
-            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="Nom du repas ou de l'aliment"
-            style={{ ...inputStyle, marginBottom: 10 }}
-            onKeyDown={e => e.key === 'Enter' && addEntry()}
-            autoFocus
-          />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
-            {[
-              { key: 'cal',     placeholder: 'kcal *' },
-              { key: 'carbs',   placeholder: 'Glucides g' },
-              { key: 'protein', placeholder: 'Protéines g' },
-              { key: 'fat',     placeholder: 'Lipides g' },
-            ].map(f => (
-              <input key={f.key} type="number" value={form[f.key]} placeholder={f.placeholder}
-                onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                style={inputStyle} />
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={addEntry} disabled={!form.name || !form.cal} style={{
-              flex: 1, padding: '10px', borderRadius: 8, background: 'var(--accent-orange)', color: '#fff',
-              border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-              opacity: (!form.name || !form.cal) ? 0.5 : 1,
-            }}>Ajouter</button>
-            <button onClick={() => { setShowForm(false); setForm({ name: '', cal: '', carbs: '', protein: '', fat: '' }); }} style={{
-              padding: '10px 18px', borderRadius: 8, background: 'var(--bg-3)', border: '1px solid var(--border)',
-              color: 'var(--text-3)', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
-            }}>Annuler</button>
-          </div>
-        </div>
+      {entries.length === 0 && !showForm && <p className="journal-empty">Rien de noté pour ce jour.</p>}
+      {entries.length > 0 && (
+        <ul className="journal-list">
+          {entries.map(entry => (
+            <li key={entry.id}>
+              <span className="journal-time">{entry.time}</span>
+              <span className="journal-name">{entry.name}</span>
+              <span className="journal-kcal">{entry.cal} kcal</span>
+              <button type="button" className="journal-del" onClick={() => save(entries.filter(e => e.id !== entry.id))} aria-label={`Supprimer ${entry.name}`}>×</button>
+            </li>
+          ))}
+        </ul>
       )}
 
-      {!showForm && (
-        <button onClick={() => setShowForm(true)} style={{
-          width: '100%', padding: '11px', borderRadius: 10, background: 'transparent',
-          border: '2px dashed var(--border)', color: 'var(--text-4)', fontSize: 14, cursor: 'pointer',
-          transition: 'all 0.15s', fontFamily: 'inherit',
-        }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-accent)'; e.currentTarget.style.color = 'var(--text-2)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-4)'; }}
-        >
-          + Ajouter un repas
-        </button>
+      {showForm ? (
+        <div className="journal-form">
+          <label className="journal-field-wide">
+            Repas ou aliment
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              onKeyDown={e => e.key === 'Enter' && addEntry()} autoFocus />
+          </label>
+          {[
+            { key: 'cal', label: 'kcal' },
+            { key: 'carbs', label: 'Glucides (g)' },
+            { key: 'protein', label: 'Protéines (g)' },
+            { key: 'fat', label: 'Lipides (g)' },
+          ].map(f => (
+            <label key={f.key}>
+              {f.label}
+              <input type="number" inputMode="numeric" value={form[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} />
+            </label>
+          ))}
+          <div className="journal-form-actions">
+            <button type="button" className="btn btn-primary" onClick={addEntry} disabled={!form.name || !form.cal}>Noter ce repas</button>
+            <button type="button" className="btn" onClick={() => { setShowForm(false); setForm({ name: '', cal: '', carbs: '', protein: '', fat: '' }); }}>Annuler</button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="journal-add" onClick={() => setShowForm(true)}>+ Noter un repas</button>
       )}
     </div>
   );
@@ -691,7 +523,6 @@ export default function NutritionCoach({ athlete, activities = [], plannedEvents
         </div>
       )}
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

@@ -1194,13 +1194,7 @@ export default function Calendar({
         return event.kind === 'training' && hasPlannedId && event.date >= startOfDay(new Date());
     };
 
-    const openEventCard = (event) => {
-        if (isRouteCandidate(event)) {
-            setRoutePromptEvent(event);
-            return;
-        }
-        setSelectedEvent(event);
-    };
+    const openEventCard = (event) => setSelectedEvent(event);
 
     return (
         <div>
@@ -1806,7 +1800,7 @@ export default function Calendar({
                                         )}
                                         {String(event.id).startsWith('local_') && (
                                             <button className="calendar-remove-btn" onClick={() => onRemovePlannedEvent(event.id)}>
-                                                Remove
+                                                Supprimer
                                             </button>
                                         )}
                                     </div>
@@ -1819,28 +1813,16 @@ export default function Calendar({
 
             {/* ── Activity details modal ───────────────────────────── */}
             {selectedActivityDay && (
-                <div
-                    style={{
-                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-                        zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        padding: '16px',
-                    }}
+                <div className="cal-modal-backdrop"
                     onClick={() => setSelectedActivityDay(null)}
                 >
-                    <div
-                        style={{
-                            background: 'var(--bg-1)', border: '1px solid var(--border)',
-                            borderRadius: 12, width: '100%', maxWidth: 860,
-                            maxHeight: '94vh', overflowY: 'auto',
-                            boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-                            padding: '24px',
-                        }}
+                    <div className="cal-modal" style={{ maxWidth: 860 }}
                         onClick={e => e.stopPropagation()}
                     >
                         {/* Header */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
                             <div>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:15, color: 'var(--text-3)', marginBottom: 4 }}>DAY DETAILS</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:15, color: 'var(--text-3)', marginBottom: 4 }}>Détail du jour</div>
                                 <div style={{ fontFamily: 'var(--font-sans)', fontSize:20, fontWeight: 600, color: 'var(--text-0)' }}>
                                     {format(parseISO(`${selectedActivityDay}T00:00:00`), 'EEEE, dd MMMM yyyy', { locale: dateFnsFr })}
                                 </div>
@@ -1853,7 +1835,7 @@ export default function Calendar({
 
                         {/* Tab selector */}
                         <div style={{ display: 'flex', gap: 4, marginBottom: 16, padding: 4, background: 'var(--bg-2)', borderRadius: 8 }}>
-                            {[{ id: 'quick', label: 'Quick Add' }, { id: 'builder', label: 'Build Workout' }].map(tab => (
+                            {[{ id: 'quick', label: 'Ajout rapide' }, { id: 'builder', label: 'Construire la séance' }].map(tab => (
                                 <button
                                     key={tab.id}
                                     onClick={() => setDayModalTab(tab.id)}
@@ -1872,9 +1854,9 @@ export default function Calendar({
 
                         {dayModalTab === 'quick' && (
                             <div style={{ marginBottom: 16, padding: 12, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-2)' }}>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 8 }}>ADD WORKOUT OR NOTE</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 8 }}>Ajouter une séance ou une note</div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
-                                    <input className="form-input calendar-form-input" placeholder="Title (optional)" value={dayQuickTitle} onChange={e => setDayQuickTitle(e.target.value)} />
+                                    <input className="form-input calendar-form-input" placeholder="Titre (facultatif)" value={dayQuickTitle} onChange={e => setDayQuickTitle(e.target.value)} />
                                     <select className="form-input calendar-form-input" value={dayQuickType} onChange={e => setDayQuickType(e.target.value)}>
                                         <option value="Workout">Workout</option>
                                         <option value="Ride">Ride</option>
@@ -1894,7 +1876,7 @@ export default function Calendar({
                                         setDayQuickType('Note');
                                         setDayQuickKind('objective');
                                         if (!dayQuickTitle.trim()) setDayQuickTitle('Note');
-                                    }}>Note Preset</button>
+                                    }}>Note type</button>
                                 </div>
                             </div>
                         )}
@@ -1917,11 +1899,11 @@ export default function Calendar({
 
                         {/* Activities list */}
                         <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 8 }}>
-                            ACTIVITIES ({currentDayActivities.length})
+                            Sorties ({currentDayActivities.length})
                         </div>
                         {currentDayActivities.length === 0 && (
                             <div style={{ marginBottom: 14, padding: 10, borderRadius: 8, background: 'var(--bg-2)', color: 'var(--text-2)', fontSize:15 }}>
-                                No synced activity found on this day. You can still add a workout or note above.
+                                Aucune sortie ce jour-là. Tu peux ajouter une séance ou une note au-dessus.
                             </div>
                         )}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1933,7 +1915,7 @@ export default function Calendar({
                                 const distance = activity.distance ? (activity.distance / 1000).toFixed(1) : null;
                                 const elevGain = activity.total_elevation_gain;
                                 const ef = (avgWatts && avgHr) ? (avgWatts / avgHr).toFixed(3) : null;
-                                const type = activity.type || activity.sport_type || activity.sport || 'Activity';
+                                const type = activity.type || activity.sport_type || activity.sport || 'Activité';
 
                                 return (
                                     <div key={idx} style={{
@@ -1943,7 +1925,7 @@ export default function Calendar({
                                         {/* Activity title and type */}
                                         <div style={{ marginBottom: 12 }}>
                                             <div style={{ fontFamily: 'var(--font-sans)', fontSize:15, fontWeight: 600, color: 'var(--text-0)', marginBottom: 4 }}>
-                                                {activity.name || 'Untitled Activity'}
+                                                {activity.name || 'Sortie sans titre'}
                                             </div>
                                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                                 <span style={{ fontFamily: 'var(--font-mono)', fontSize:13, padding: '4px 10px', borderRadius: 20, background: 'var(--bg-3)', color: 'var(--text-2)' }}>
@@ -1961,7 +1943,7 @@ export default function Calendar({
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 12 }}>
                                             {duration > 0 && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>DURATION</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>Durée</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize:15, fontWeight: 600, color: 'var(--text-0)' }}>
                                                         {duration}m
                                                     </div>
@@ -1969,7 +1951,7 @@ export default function Calendar({
                                             )}
                                             {distance && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>DISTANCE</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>Distance</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize:15, fontWeight: 600, color: 'var(--text-0)' }}>
                                                         {distance} km
                                                     </div>
@@ -1977,7 +1959,7 @@ export default function Calendar({
                                             )}
                                             {avgWatts && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>AVG POWER</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>Puissance moy.</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize:15, fontWeight: 600, color: 'var(--accent-orange)' }}>
                                                         {Math.round(avgWatts)} W
                                                     </div>
@@ -1985,7 +1967,7 @@ export default function Calendar({
                                             )}
                                             {avgHr && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>AVG HR</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>FC moy.</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize:15, fontWeight: 600, color: 'var(--accent-red)' }}>
                                                         {Math.round(avgHr)} bpm
                                                     </div>
@@ -1993,7 +1975,7 @@ export default function Calendar({
                                             )}
                                             {ef && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>EFFICIENCY</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>Efficacité</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize:15, fontWeight: 600, color: 'var(--accent-green)' }}>
                                                         {ef}
                                                     </div>
@@ -2001,7 +1983,7 @@ export default function Calendar({
                                             )}
                                             {elevGain && (
                                                 <div style={{ padding: 10, background: 'var(--bg-1)', borderRadius: 8 }}>
-                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>ELEVATION</div>
+                                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 4 }}>Dénivelé</div>
                                                     <div style={{ fontFamily: 'var(--font-mono)', fontSize:15, fontWeight: 600, color: 'var(--text-0)' }}>
                                                         {Math.round(elevGain)} m
                                                     </div>
@@ -2021,29 +2003,17 @@ export default function Calendar({
                         </div>
 
                         {/* Close button */}
-                        <button className="btn" style={{ marginTop: 20, width: '100%' }} onClick={() => setSelectedActivityDay(null)}>Close</button>
+                        <button className="btn" style={{ marginTop: 20, width: '100%' }} onClick={() => setSelectedActivityDay(null)}>Fermer</button>
                     </div>
                 </div>
             )}
 
             {/* ── Event detail modal ───────────────────────────── */}
             {selectedEvent && (
-                <div
-                    style={{
-                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-                        zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        padding: '16px',
-                    }}
+                <div className="cal-modal-backdrop"
                     onClick={() => setSelectedEvent(null)}
                 >
-                    <div
-                        style={{
-                            background: 'var(--bg-1)', border: '1px solid var(--border)',
-                            borderRadius: 12, width: '100%', maxWidth: 640,
-                            maxHeight: '92vh', overflowY: 'auto',
-                            boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-                            padding: '24px',
-                        }}
+                    <div className="cal-modal" style={{ maxWidth: 640 }}
                         onClick={e => e.stopPropagation()}
                     >
                         {/* Header */}
@@ -2085,7 +2055,7 @@ export default function Calendar({
                         {/* Workout block visual */}
                         {selectedEvent.workoutBlocks?.length > 0 && (
                             <div style={{ marginBottom: 16 }}>
-                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 8 }}>WORKOUT STRUCTURE</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 8 }}>Structure de la séance</div>
                                 <WorkoutDetailVisual
                                     blocks={selectedEvent.workoutBlocks}
                                     ftp={athlete?.ftp || athlete?.icu_ftp || null}
@@ -2095,9 +2065,9 @@ export default function Calendar({
 
                         {/* Notes */}
                         <div style={{ marginBottom: 16 }}>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 6 }}>NOTES</div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize:13, color: 'var(--text-3)', marginBottom: 6 }}>Notes</div>
                             <div style={{ fontFamily: 'var(--font-sans)', fontSize:13, color: selectedEvent.notes ? 'var(--text-1)' : 'var(--text-3)', lineHeight: 1.7, whiteSpace: 'pre-wrap', background: 'var(--bg-2)', borderRadius: 8, padding: '12px 14px' }}>
-                                {selectedEvent.notes || 'No notes for this session.'}
+                                {selectedEvent.notes || 'Pas de note pour cette séance.'}
                             </div>
                         </div>
 
@@ -2117,55 +2087,42 @@ export default function Calendar({
                                 <button className="btn" onClick={async () => {
                                     try {
                                         await onSendToWahoo(selectedEvent);
-                                        alert('Workout sent to Wahoo!');
+                                        alert('Séance envoyée sur Wahoo');
                                     } catch (err) {
-                                        alert('Wahoo error: ' + err.message);
+                                        alert('Wahoo : ' + err.message);
                                     }
                                 }}>
-                                    Send to Wahoo
+                                    Envoyer sur Wahoo
                                 </button>
                             )}
                             {isRouteCandidate(selectedEvent) && (
                                 <button className="btn" onClick={() => setRoutePromptEvent(selectedEvent)}>
-                                    Build Route
+                                    Préparer un parcours
                                 </button>
                             )}
                             {String(selectedEvent.id).startsWith('local_') && (
                                 <button className="btn btn-danger" onClick={() => { onRemovePlannedEvent(selectedEvent.id); setSelectedEvent(null); }}>
-                                    Remove
+                                    Supprimer
                                 </button>
                             )}
-                            <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => setSelectedEvent(null)}>Close</button>
+                            <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => setSelectedEvent(null)}>Fermer</button>
                         </div>
                     </div>
                 </div>
             )}
 
             {routePromptEvent && (
-                <div
-                    style={{
-                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
-                        zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-                    }}
+                <div className="cal-modal-backdrop"
                     onClick={() => setRoutePromptEvent(null)}
                 >
-                    <div
-                        style={{
-                            width: '100%',
-                            maxWidth: 520,
-                            background: 'var(--bg-1)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 14,
-                            padding: 22,
-                            boxShadow: '0 18px 52px rgba(0,0,0,0.42)',
-                        }}
+                    <div className="cal-modal" style={{ maxWidth: 520 }}
                         onClick={e => e.stopPropagation()}
                     >
                         <div style={{ fontSize:20, fontWeight: 650, color: 'var(--text-0)', marginBottom: 8 }}>
-                            Build route based on your training
+                            Préparer un parcours pour cette séance
                         </div>
                         <div style={{ fontSize:15, color: 'var(--text-1)', lineHeight: 1.6, marginBottom: 14 }}>
-                            Open Route Builder to generate a route for <strong>{routePromptEvent.title}</strong> on {format(routePromptEvent.date, 'EEE dd MMM', { locale: dateFnsFr })}.
+                            Un parcours adapté à <strong>{routePromptEvent.title}</strong>, le {format(routePromptEvent.date, 'EEE dd MMM', { locale: dateFnsFr })}.
                         </div>
                         <div style={{
                             border: '1px solid var(--border)',
@@ -2176,11 +2133,11 @@ export default function Calendar({
                             color: 'var(--text-2)',
                             marginBottom: 16,
                         }}>
-                            Tip: adjust distance, surface, and route style in Route Builder after opening.
+                            Tu pourras régler distance, revêtement et style de parcours sur la carte.
                         </div>
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                             <button className="btn" onClick={() => setRoutePromptEvent(null)}>
-                                Cancel
+                                Annuler
                             </button>
                             <button
                                 className="btn btn-primary"
@@ -2190,7 +2147,7 @@ export default function Calendar({
                                     setSelectedEvent(null);
                                 }}
                             >
-                                Open Route Builder
+                                Ouvrir la carte
                             </button>
                         </div>
                     </div>
@@ -2209,107 +2166,7 @@ export default function Calendar({
                 />
             )}
 
-            {/* ── Week proposal modal ── */}
-            {weekProposal && (
-                <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:20 }}
-                    onClick={() => setWeekProposal(null)}>
-                    <div style={{ background:'var(--bg-1)', border:'1px solid var(--border)', borderRadius:16, padding:24, maxWidth:560, width:'100%', maxHeight:'90vh', overflowY:'auto' }}
-                        onClick={e => e.stopPropagation()}>
 
-                        {/* Header */}
-                        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
-                            <Picto name="compass" size={22} />
-                            <div>
-                                <div style={{ fontSize:20, fontWeight:800, color:'var(--text-0)' }}>
-                                    Proposition de semaine
-                                    <span style={{ marginLeft:10, fontSize:13, fontFamily:'var(--font-mono)', padding:'2px 8px', borderRadius:20,
-                                        background: weekProposal.weekType === 'recovery' ? 'rgba(148,163,184,0.15)' : weekProposal.weekType === 'taper' ? 'rgba(239,68,68,0.12)' : 'rgba(249,115,22,0.12)',
-                                        color: weekProposal.weekType === 'recovery' ? '#94a3b8' : weekProposal.weekType === 'taper' ? '#ef4444' : 'var(--accent-orange)',
-                                        border: '1px solid',
-                                        borderColor: weekProposal.weekType === 'recovery' ? 'rgba(148,163,184,0.3)' : weekProposal.weekType === 'taper' ? 'rgba(239,68,68,0.3)' : 'rgba(249,115,22,0.3)',
-                                    }}>
-                                        {{ recovery:'RÉCUPÉRATION', maintain:'MAINTIEN', build:'PROGRESSION', taper:'AFFÛTAGE' }[weekProposal.weekType]}
-                                    </span>
-                                </div>
-                                <div style={{ fontSize:13, color:'var(--text-3)', fontFamily:'var(--font-mono)', marginTop:3 }}>
-                                    CTL {weekProposal.ctl} · ATL {weekProposal.atl} · TSB {weekProposal.tsb > 0 ? '+' : ''}{weekProposal.tsb} · Moy. {weekProposal.avgWeeklyTss} TSS/sem
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Analysis reasons */}
-                        <div style={{ background:'var(--bg-2)', borderRadius:10, padding:'12px 14px', marginBottom:16, borderLeft:'3px solid var(--accent-orange)' }}>
-                            <div style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--accent-orange)', marginBottom:8 }}>ANALYSE</div>
-                            {weekProposal.reasons.map((r, i) => (
-                                <div key={i} style={{ fontSize:13, color:'var(--text-2)', lineHeight:1.6, marginBottom:4 }}>{r}</div>
-                            ))}
-                        </div>
-
-                        {/* Sessions */}
-                        <div style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--text-4)', marginBottom:8 }}>SÉANCES PROPOSÉES</div>
-                        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
-                            {weekProposal.sessions.map((s, i) => {
-                                const typeColor = s.sessionColor || { endurance:'#22c55e', intervals:'#f97316', long:'#f59e0b', recovery:'#94a3b8' }[s.sessionType] || '#f97316';
-                                return (
-                                    <div key={i} style={{
-                                        borderRadius:10, padding:'12px 14px',
-                                        background: s.accepted ? 'var(--bg-2)' : 'var(--bg-0)',
-                                        border: `1px solid ${s.accepted ? typeColor + '44' : 'var(--border)'}`,
-                                        opacity: s.accepted ? 1 : 0.4,
-                                        transition:'all 0.15s',
-                                    }}>
-                                        <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
-                                            {/* Accept toggle */}
-                                            <button onClick={() => {
-                                                const next = [...weekProposal.sessions];
-                                                next[i] = { ...next[i], accepted: !next[i].accepted };
-                                                setWeekProposal({ ...weekProposal, sessions: next });
-                                            }} style={{
-                                                width:20, height:20, borderRadius:4, flexShrink:0, marginTop:2, cursor:'pointer',
-                                                border:`2px solid ${s.accepted ? typeColor : 'var(--border)'}`,
-                                                background: s.accepted ? typeColor : 'transparent',
-                                                display:'flex', alignItems:'center', justifyContent:'center',
-                                            }}>
-                                                {s.accepted && <span style={{ color:'#000', fontSize:12, fontWeight:900 }}>✓</span>}
-                                            </button>
-                                            <div style={{ flex:1 }}>
-                                                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-                                                    <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--text-3)' }}>{s.dateLabel}</span>
-                                                    <span style={{ fontFamily:'var(--font-mono)', fontSize:12, padding:'1px 6px', borderRadius:10, background:`${typeColor}22`, color:typeColor, border:`1px solid ${typeColor}44`, whiteSpace:'nowrap' }}>
-                                                        {s.sessionLabel || s.sessionType}
-                                                        {s.sessionDuration && ` · ${s.sessionDuration}`}
-                                                    </span>
-                                                </div>
-                                                <div style={{ fontSize:13, fontWeight:700, color:'var(--text-0)', marginBottom:4 }}>{s.workout.title}</div>
-                                                <div style={{ fontSize:12, color:'var(--text-3)', fontFamily:'var(--font-mono)', lineHeight:1.5 }}>
-                                                    <Picto name="compass" size={14} className="picto-inline" /> {s.reason}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                            {weekProposal.sessions.length === 0 && (
-                                <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text-4)', fontSize:13 }}>
-                                    Tous les jours ont déjà des séances planifiées.
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Actions */}
-                        <div style={{ display:'flex', gap:10 }}>
-                            <button className="btn" onClick={() => { setWeekProposal(null); setShowProfileSetup(true); }} title="Modifier ton profil coureur">
-                                ✎ Profil
-                            </button>
-                            <button className="btn" style={{ flex:1 }} onClick={() => setWeekProposal(null)}>Annuler</button>
-                            <button className="btn btn-primary" style={{ flex:2 }} onClick={confirmWeekProposal}
-                                disabled={!weekProposal.sessions.some(s => s.accepted)}>
-                                Ajouter {weekProposal.sessions.filter(s => s.accepted).length} séance{weekProposal.sessions.filter(s => s.accepted).length > 1 ? 's' : ''} au calendrier
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

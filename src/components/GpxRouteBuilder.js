@@ -134,11 +134,11 @@ function routeFitScore(candidate, { duration, targetKm, intervalLoad, terrainPre
   return timeScore * wTime + terrainScore * wTerrain + shapeScore * wShape + prefBonus;
 }
 const ZONES = [
-  { id: 'Z1', label: 'Recovery' }, { id: 'Z2', label: 'Endurance' },
-  { id: 'Z3', label: 'Tempo' }, { id: 'Z4', label: 'Threshold' },
+  { id: 'Z1', label: 'Récup' }, { id: 'Z2', label: 'Endurance' },
+  { id: 'Z3', label: 'Tempo' }, { id: 'Z4', label: 'Seuil' },
   { id: 'Z5', label: 'VO2 Max' },
 ];
-const ROUTE_COLORS = ['#4d7fe8', '#3ecf6e', '#f77f3a'];
+const ROUTE_COLORS = ['#e35d2c', '#5c8a2e', '#f0663a'];
 // Primary BRouter profile, then fallback chain if server rejects it.
 // BRouter public server: https://brouter.de/brouter
 const SURFACE_PROFILES = {
@@ -166,10 +166,10 @@ const ZONE_COLORS = {
 
 // ── POI categories ────────────────────────────────────────────
 const POI_CATEGORIES = [
-  { id: 'bicycle_shop', label: 'Bike Shops', icon: 'bike', color: '#4d7fe8', overpass: '"shop"="bicycle"' },
-  { id: 'cafe', label: 'Cafes', icon: 'coffee', color: '#f77f3a', overpass: '"amenity"="cafe"' },
-  { id: 'viewpoint', label: 'Viewpoints', icon: 'binoculars', color: '#3ecf6e', overpass: '"tourism"="viewpoint"' },
-  { id: 'peak', label: 'Peaks', icon: 'mountain', color: '#e8a84d', overpass: '"natural"="peak"' },
+  { id: 'bicycle_shop', label: 'Vélocistes', icon: 'bike', color: '#e35d2c', overpass: '"shop"="bicycle"' },
+  { id: 'cafe', label: 'Cafés', icon: 'coffee', color: '#f0663a', overpass: '"amenity"="cafe"' },
+  { id: 'viewpoint', label: 'Points de vue', icon: 'binoculars', color: '#5c8a2e', overpass: '"tourism"="viewpoint"' },
+  { id: 'peak', label: 'Sommets', icon: 'mountain', color: '#c98a12', overpass: '"natural"="peak"' },
 ];
 
 function poiCategory(type) {
@@ -246,13 +246,13 @@ function poiDescription(poi) {
 
 function poiHours(poi) {
   const t = poi?.tags || {};
-  return t.opening_hours || t['opening_hours:covid19'] || t.hours || 'No official opening hours in map data';
+  return t.opening_hours || t['opening_hours:covid19'] || t.hours || 'Horaires non renseignés';
 }
 
 function poiAddress(poi) {
   const t = poi?.tags || {};
   const line = [t['addr:street'], t['addr:housenumber'], t['addr:city']].filter(Boolean).join(' ');
-  return line || 'No address provided';
+  return line || 'Adresse non renseignée';
 }
 
 function googleMapsPlaceUrl(lat, lng, name = '') {
@@ -268,8 +268,8 @@ function poiDivIcon(cat, isSelected) {
   const size = isSelected ? 46 : 38;
   const border = isSelected ? '3px solid #fff' : '2.5px solid rgba(255,255,255,0.9)';
   const shadow = isSelected
-    ? `0 0 0 3px ${cat.color}, 0 4px 16px rgba(0,0,0,0.55)`
-    : '0 3px 10px rgba(0,0,0,0.4)';
+    ? `0 0 0 3px ${cat.color}, 0 4px 16px rgba(36,64,46,0.19)`
+    : '0 3px 10px rgba(36,64,46,0.14)';
   return L.divIcon({
     html: `<div style="
       width:${size}px;height:${size}px;border-radius:50%;
@@ -290,13 +290,13 @@ function poiDivIcon(cat, isSelected) {
   });
 }
 
-function mapPinIcon(label, color = '#4d7fe8') {
+function mapPinIcon(label, color = '#e35d2c') {
   return L.divIcon({
     html: `<div style="
       width:26px;height:26px;border-radius:50%;
       background:${color};
       border:2px solid rgba(255,255,255,0.96);
-      box-shadow:0 3px 14px rgba(0,0,0,0.45),0 0 0 2px ${color}55;
+      box-shadow:0 3px 14px rgba(36,64,46,0.16),0 0 0 2px ${color}55;
       display:flex;align-items:center;justify-content:center;
       font-family:var(--font-mono);font-size:10px;font-weight:700;color:#fff;
       letter-spacing:0.03em;
@@ -348,7 +348,7 @@ async function fetchOverpassPois(lat, lng, radiusM, catIds) {
       id,
       lat: elLat,
       lng: elLng,
-      name: e.tags?.name || e.tags?.['name:en'] || 'Unnamed',
+      name: e.tags?.name || e.tags?.['name:en'] || 'Sans nom',
       type,
       tags: e.tags || {},
     });
@@ -518,12 +518,12 @@ function ElevationProfile({ rawCoords }) {
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 56, display: 'block' }} preserveAspectRatio="none">
         <defs>
           <linearGradient id="elev-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#4d7fe8" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="#4d7fe8" stopOpacity="0.03" />
+            <stop offset="0%" stopColor="#e35d2c" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#e35d2c" stopOpacity="0.03" />
           </linearGradient>
         </defs>
         <polygon points={areaPts} fill="url(#elev-fill)" />
-        <polyline points={linePts} fill="none" stroke="#4d7fe8" strokeWidth="1.5" strokeLinejoin="round" />
+        <polyline points={linePts} fill="none" stroke="#e35d2c" strokeWidth="1.5" strokeLinejoin="round" />
       </svg>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-4)', marginTop: 2 }}>
         <span>↑ {Math.round(maxE)}m max</span>
@@ -749,7 +749,7 @@ async function routeOutAndBack(startLat, startLng, halfKm, sport, surface, dir) 
 // ── Interval analysis ─────────────────────────────────────────
 function scoreForIntervals(rawCoords, warmupKmDist) {
   if (!rawCoords?.length || rawCoords[0]?.length < 3)
-    return { score: 0.5, note: 'No elevation data', climbM: 0, descentM: 0, hasData: false };
+    return { score: 0.5, note: 'Pas de données d’altitude', climbM: 0, descentM: 0, hasData: false };
   let cum = 0, warmupEnd = 0;
   for (let i = 1; i < rawCoords.length; i++) {
     cum += haversineKm({ lat: rawCoords[i - 1][1], lng: rawCoords[i - 1][0] }, { lat: rawCoords[i][1], lng: rawCoords[i][0] });
@@ -881,11 +881,11 @@ function MapMoveHandler({ onMoveEnd }) {
 
 // ── UI primitives ─────────────────────────────────────────────
 const GLASS = {
-  background: 'rgba(10, 10, 10, 0.90)',
+  background: 'rgba(251,252,243,0.96)',
   backdropFilter: 'blur(24px)',
   WebkitBackdropFilter: 'blur(24px)',
-  border: '1px solid rgba(255,255,255,0.07)',
-  boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+  border: '1.5px solid var(--border)',
+  boxShadow: '0 4px 0 rgba(36,64,46,0.08), 0 12px 32px rgba(36,64,46,0.14)',
 };
 
 function Fab({ onClick, disabled, children, active, color }) {
@@ -896,8 +896,8 @@ function Fab({ onClick, disabled, children, active, color }) {
       fontFamily: 'var(--font-sans)', fontSize: 14,
       fontWeight: 600,
       color: active ? (color || 'var(--brand)') : 'var(--text-1)',
-      border: `1px solid ${active ? (color || 'var(--brand)') : 'rgba(255,255,255,0.07)'}`,
-      background: active ? (color ? `${color}22` : 'var(--brand-dim)') : 'rgba(10,10,10,0.90)',
+      border: `1px solid ${active ? (color || 'var(--brand)') : 'rgba(36,64,46,0.112)'}`,
+      background: active ? (color ? `${color}22` : 'var(--brand-dim)') : 'rgba(251,252,243,0.96)',
       whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 8,
       width: '100%', textAlign: 'left',
       transition: 'all 0.18s', opacity: disabled ? 0.6 : 1,
@@ -909,12 +909,12 @@ function Fab({ onClick, disabled, children, active, color }) {
 
 function PillToggle({ options, value, onChange }) {
   return (
-    <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 11, padding: 4, gap: 3 }}>
+    <div style={{ display: 'flex', background: 'rgba(36,64,46,0.064)', borderRadius: 11, padding: 4, gap: 3 }}>
       {options.map(o => (
         <button key={o.id} onClick={() => onChange(o.id)} style={{
           flex: 1, padding: '9px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
           fontSize: 14, fontFamily: 'var(--font-sans)', fontWeight: 600, transition: 'all 0.15s',
-          background: value === o.id ? 'rgba(255,255,255,0.11)' : 'transparent',
+          background: value === o.id ? 'rgba(36,64,46,0.176)' : 'transparent',
           color: value === o.id ? 'var(--text-0)' : 'var(--text-3)',
           letterSpacing: '-0.01em',
         }}>
@@ -932,7 +932,7 @@ function RouteRating({ value, onChange, readonly }) {
         <button key={n} onClick={() => !readonly && onChange && onChange(n)} style={{
           width: 16, height: 16, borderRadius: '50%', border: 'none', padding: 0,
           cursor: readonly ? 'default' : 'pointer',
-          background: n <= (value || 0) ? '#f5c518' : 'rgba(255,255,255,0.12)',
+          background: n <= (value || 0) ? '#f5c518' : 'rgba(36,64,46,0.192)',
           transition: 'background 0.15s',
         }} />
       ))}
@@ -965,14 +965,14 @@ function PoiCard({ poi, thumb, onClose, currentLocation }) {
       {thumb && (
         <div style={{ position: 'relative', height: 170, overflow: 'hidden' }}>
           <img src={thumb} alt={poi.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 35%, rgba(10,10,10,0.92) 100%)' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 35%, rgba(27,46,34,0.75) 100%)' }} />
           <div style={{ position: 'absolute', bottom: 16, left: 18, right: 48 }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', lineHeight: 1.2, textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>{poi.name}</div>
           </div>
           <button onClick={onClose} style={{
             position: 'absolute', top: 12, right: 12,
             width: 32, height: 32, borderRadius: '50%',
-            background: 'rgba(0,0,0,0.55)', border: 'none',
+            background: 'rgba(36,64,46,0.19)', border: 'none',
             color: '#fff', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
             backdropFilter: 'blur(8px)',
           }}>×</button>
@@ -989,7 +989,7 @@ function PoiCard({ poi, thumb, onClose, currentLocation }) {
                 width: 48, height: 48, borderRadius: 14,
                 background: `${cat.color}22`, border: `2px solid ${cat.color}44`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', flexShrink: 0,
+                fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, flexShrink: 0,
               }}><Picto name={cat.icon} size={26} /></div>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-0)', lineHeight: 1.2 }}>{poi.name}</div>
@@ -997,7 +997,7 @@ function PoiCard({ poi, thumb, onClose, currentLocation }) {
               </div>
             </div>
             <button onClick={onClose} style={{
-              width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.07)',
+              width: 30, height: 30, borderRadius: '50%', background: 'rgba(36,64,46,0.112)',
               border: 'none', color: 'var(--text-3)', fontSize: 18, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>×</button>
@@ -1019,30 +1019,30 @@ function PoiCard({ poi, thumb, onClose, currentLocation }) {
         {/* Details */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr', gap: 10, alignItems: 'start' }}>
-            <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>Type</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>Type</span>
             <span style={{ fontSize: 14, color: cat.color, fontWeight: 600, lineHeight: 1.45 }}>{cat.label}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr', gap: 10, alignItems: 'start' }}>
-            <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>Address</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>Adresse</span>
             <span style={{ fontSize: 14, color: 'var(--text-1)', lineHeight: 1.45 }}>{poiAddress(poi)}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr', gap: 10, alignItems: 'start' }}>
-            <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>Hours</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>Horaires</span>
             <span style={{ fontSize: 13, color: 'var(--text-1)', fontFamily: 'var(--font-mono)', lineHeight: 1.4 }}>{poiHours(poi)}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr', gap: 10, alignItems: 'start' }}>
-            <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>Description</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>Description</span>
             <span style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.55 }}>{poiDescription(poi)}</span>
           </div>
           {t.phone && (
             <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr', gap: 10, alignItems: 'start' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>Phone</span>
+              <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>Téléphone</span>
               <span style={{ fontSize: 13, color: 'var(--text-1)', fontFamily: 'var(--font-mono)' }}>{t.phone}</span>
             </div>
           )}
           {t.website && (
             <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr', gap: 10, alignItems: 'start' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>Website</span>
+              <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>Site web</span>
               <a href={t.website} target="_blank" rel="noopener noreferrer"
                 style={{ fontSize: 13, color: 'var(--brand)', fontFamily: 'var(--font-mono)', textDecoration: 'none' }}>
                 {t.website.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}
@@ -1051,7 +1051,7 @@ function PoiCard({ poi, thumb, onClose, currentLocation }) {
           )}
           {t.ele && (
             <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr', gap: 10, alignItems: 'start' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>Elevation</span>
+              <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>Altitude</span>
               <span style={{ fontSize: 14, color: 'var(--text-1)', fontFamily: 'var(--font-mono)' }}>{t.ele} m elevation</span>
             </div>
           )}
@@ -1068,7 +1068,7 @@ function PoiCard({ poi, thumb, onClose, currentLocation }) {
               fontFamily: 'var(--font-mono)',
               color: 'var(--brand)',
               textDecoration: 'none',
-              border: '1px solid rgba(77,127,232,0.35)',
+              border: '1px solid rgba(227,93,44,0.35)',
               borderRadius: 999,
               padding: '5px 10px',
             }}
@@ -1085,7 +1085,7 @@ function PoiCard({ poi, thumb, onClose, currentLocation }) {
                 fontFamily: 'var(--font-mono)',
                 color: 'var(--text-1)',
                 textDecoration: 'none',
-                border: '1px solid rgba(255,255,255,0.2)',
+                border: '1px solid rgba(36,64,46,0.22)',
                 borderRadius: 999,
                 padding: '5px 10px',
               }}
@@ -1702,7 +1702,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
   const displayCurrentLocation = currentLocation || displayCenter;
   const mapCursor = mapPickMode ? 'crosshair' : tab === 'draw' ? 'copy' : 'grab';
   const allGenCoords = candidates.flatMap(c => c.coords);
-  const drawnPolylineColor = editingRoute ? '#f77f3a' : '#4d7fe8';
+  const drawnPolylineColor = editingRoute ? '#f0663a' : '#e35d2c';
   const filteredPois = pois.filter(p => activePoiCats.has(p.type));
   const mapPoiResults = useMemo(() => {
     const q = mapPoiSearch.trim().toLowerCase();
@@ -1738,7 +1738,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
 
             {heatmapPolylines.map((pts, i) => (
               <Polyline key={`hm-${i}`} positions={pts}
-                pathOptions={{ color: '#f77f3a', weight: 1.5, opacity: 0.22 }} />
+                pathOptions={{ color: '#f0663a', weight: 1.5, opacity: 0.22 }} />
             ))}
 
             {tab === 'generate' && candidates.map((c, i) => (
@@ -1753,7 +1753,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
             {tab === 'draw' && waypoints.map((pt, i) => {
               const isFirst = i === 0;
               const isLast = i === waypoints.length - 1 && waypoints.length > 1;
-              const pinColor = isFirst ? '#1f9d77' : isLast ? '#ef4444' : '#4d7fe8';
+              const pinColor = isFirst ? '#5c8a2e' : isLast ? '#ef4444' : '#e35d2c';
               const pinLabel = isFirst ? 'S' : isLast ? 'E' : String(i + 1);
               // Cumulative distance up to this waypoint
               let cumDist = 0;
@@ -1767,13 +1767,13 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                 <Marker key={i} position={[pt.lat, pt.lng]} icon={mapPinIcon(pinLabel, pinColor)}>
                   <Tooltip direction="top" offset={[0, -16]} opacity={0.95} permanent={false}>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                      {isFirst ? 'Start' : isLast ? `End · ${cumDist.toFixed(1)} km` : `WP ${i + 1} · ${cumDist.toFixed(1)} km`}
+                      {isFirst ? 'Départ' : isLast ? `Arrivée · ${cumDist.toFixed(1)} km` : `Point ${i + 1} · ${cumDist.toFixed(1)} km`}
                     </span>
                   </Tooltip>
                   <Popup>
                     <div style={{ minWidth: 160, fontFamily: 'var(--font-sans)', padding: '4px 2px' }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: '#111', marginBottom: 4 }}>
-                        {isFirst ? 'Start' : isLast ? 'End point' : `Waypoint ${i + 1}`}
+                        {isFirst ? 'Départ' : isLast ? 'Arrivée' : `Point ${i + 1}`}
                       </div>
                       <div style={{ fontSize: 11, color: '#666', marginBottom: i > 0 ? 4 : 8 }}>
                         {pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}
@@ -1800,10 +1800,10 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
             })}
             {tab === 'saved' && previewRoute?.coords && (
               <Polyline positions={previewRoute.coords.map(([ln, la]) => [la, ln])}
-                pathOptions={{ color: '#4d7fe8', weight: 4, opacity: 0.95 }} />
+                pathOptions={{ color: '#e35d2c', weight: 4, opacity: 0.95 }} />
             )}
             {startLat && startLng && tab !== 'draw' && (
-              <Marker position={[parseFloat(startLat), parseFloat(startLng)]} icon={mapPinIcon('ST', '#1f9d77')} />
+              <Marker position={[parseFloat(startLat), parseFloat(startLng)]} icon={mapPinIcon('ST', '#5c8a2e')} />
             )}
             {routeType === 'point' && endLat && endLng && tab !== 'draw' && (
               <Marker position={[parseFloat(endLat), parseFloat(endLng)]} icon={mapPinIcon('EN', '#f97316')} />
@@ -1818,11 +1818,11 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                 radius={10}
                 pathOptions={{ color: '#0ea5e9', fillColor: '#38bdf8', fillOpacity: 0.35, weight: 2 }}
               >
-                <Tooltip direction="top" offset={[0, -8]} opacity={0.92}>You are here</Tooltip>
+                <Tooltip direction="top" offset={[0, -8]} opacity={0.92}>Tu es ici</Tooltip>
                 <Popup>
                   <div style={{ minWidth: 220, fontFamily: 'var(--font-sans)' }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 6 }}>Current Location</div>
-                    <div style={{ fontSize: 12, color: '#4b5563', marginBottom: 10 }}>{coordStr(displayCurrentLocation[0], displayCurrentLocation[1])}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-0)', marginBottom: 6 }}>Ta position</div>
+                    <div style={{ fontSize: 12, color: '#7b8b74', marginBottom: 10 }}>{coordStr(displayCurrentLocation[0], displayCurrentLocation[1])}</div>
                     <a
                       href={googleMapsPlaceUrl(displayCurrentLocation[0], displayCurrentLocation[1], 'Current location')}
                       target="_blank"
@@ -1830,7 +1830,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                       style={{
                         display: 'inline-block',
                         borderRadius: 8,
-                        background: '#4d7fe8',
+                        background: '#e35d2c',
                         color: '#fff',
                         padding: '7px 10px',
                         fontSize: 12,
@@ -1864,18 +1864,18 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                   <Tooltip direction="top" offset={[0, -8]} opacity={0.9}>{poi.name}</Tooltip>
                   <Popup>
                     <div style={{ minWidth: 238, fontFamily: 'var(--font-sans)' }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 2, lineHeight: 1.2 }}>{poi.name}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: cat.color, marginBottom: 8, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{cat.label}</div>
-                      <div style={{ fontSize: 13, color: '#1f2937', lineHeight: 1.5, marginBottom: 6 }}><strong>Description:</strong> {poiDescription(poi)}</div>
-                      <div style={{ fontSize: 13, color: '#1f2937', lineHeight: 1.45, marginBottom: 6 }}><strong>Hours:</strong> {poiHours(poi)}</div>
-                      <div style={{ fontSize: 12, color: '#4b5563', lineHeight: 1.45, marginBottom: 9 }}><strong>Address:</strong> {poiAddress(poi)}</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-0)', marginBottom: 2, lineHeight: 1.2 }}>{poi.name}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: cat.color, marginBottom: 8 }}>{cat.label}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.5, marginBottom: 6 }}><strong>Description :</strong> {poiDescription(poi)}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-1)', lineHeight: 1.45, marginBottom: 6 }}><strong>Horaires :</strong> {poiHours(poi)}</div>
+                      <div style={{ fontSize: 12, color: '#7b8b74', lineHeight: 1.45, marginBottom: 9 }}><strong>Adresse :</strong> {poiAddress(poi)}</div>
                       <button
                         onClick={() => handlePoiMarkerClick(poi)}
                         style={{
                           width: '100%',
                           border: 'none',
                           borderRadius: 8,
-                          background: '#4d7fe8',
+                          background: '#e35d2c',
                           color: '#fff',
                           fontSize: 12,
                           fontWeight: 600,
@@ -1894,7 +1894,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                           marginTop: 8,
                           width: '100%',
                           borderRadius: 8,
-                          background: '#0f172a',
+                          background: 'var(--pine)',
                           color: '#fff',
                           fontSize: 12,
                           fontWeight: 600,
@@ -1919,14 +1919,14 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
         ) : (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'linear-gradient(180deg, #0f1217 0%, #121826 100%)',
+            background: 'var(--bg-0)',
           }}>
             <div style={{
               padding: '12px 16px', borderRadius: 10,
-              border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.35)',
+              border: '1px solid rgba(36,64,46,0.16)', background: 'rgba(36,64,46,0.12)',
               fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-1)',
             }}>
-              Locating your area...
+              Recherche de ta position…
             </div>
           </div>
         )}
@@ -1945,18 +1945,18 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
           ...GLASS,
           borderRadius: 12,
           padding: 8,
-          border: '1px solid rgba(255,255,255,0.08)',
+          border: '1px solid rgba(36,64,46,0.128)',
         }}>
           <input
             value={mapPoiSearch}
             onChange={(e) => handleMapSearchChange(e.target.value)}
             onFocus={() => setShowMapPoiResults(true)}
-            placeholder="Search POIs, cities, locations..."
+            placeholder="Chercher un lieu, une ville, un col…"
             style={{
               width: '100%',
               boxSizing: 'border-box',
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'rgba(36,64,46,0.096)',
+              border: '1px solid rgba(36,64,46,0.16)',
               borderRadius: 9,
               padding: '10px 12px',
               color: 'var(--text-0)',
@@ -1970,19 +1970,19 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               marginTop: 8,
               borderRadius: 9,
               overflow: 'hidden',
-              border: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(8, 10, 14, 0.98)',
+              border: '1px solid rgba(36,64,46,0.128)',
+              background: 'rgba(251,252,243,0.96)',
             }}>
               {mapSearching && (
-                <div style={{ padding: '9px 11px', fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ padding: '9px 11px', fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', borderBottom: '1px solid rgba(36,64,46,0.096)' }}>
                   Searching places...
                 </div>
               )}
 
               {mapPoiResults.length > 0 && (
-                <div style={{ borderBottom: (mapPlaceResults.length > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none') }}>
-                  <div style={{ padding: '7px 11px', fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>
-                    VISIBLE POIS
+                <div style={{ borderBottom: (mapPlaceResults.length > 0 ? '1px solid rgba(36,64,46,0.096)' : 'none') }}>
+                  <div style={{ padding: '7px 11px', fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)' }}>
+                    Lieux affichés
                   </div>
                   {mapPoiResults.map((poi) => (
                     <button
@@ -2000,7 +2000,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                         textAlign: 'left',
                         padding: '9px 11px',
                         cursor: 'pointer',
-                        borderTop: '1px solid rgba(255,255,255,0.05)',
+                        borderTop: '1px solid rgba(36,64,46,0.08)',
                         fontFamily: 'var(--font-sans)',
                         fontSize: 14,
                       }}
@@ -2014,7 +2014,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
 
               {mapPlaceResults.length > 0 && (
                 <div>
-                  <div style={{ padding: '7px 11px', fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>
+                  <div style={{ padding: '7px 11px', fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)' }}>
                     CITIES & LOCATIONS
                   </div>
                   {mapPlaceResults.map((place, idx) => (
@@ -2029,7 +2029,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                         textAlign: 'left',
                         padding: '9px 11px',
                         cursor: 'pointer',
-                        borderTop: '1px solid rgba(255,255,255,0.05)',
+                        borderTop: '1px solid rgba(36,64,46,0.08)',
                         fontFamily: 'var(--font-sans)',
                         fontSize: 14,
                       }}
@@ -2054,7 +2054,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
           ...GLASS,
           marginTop: 8,
           borderRadius: 12,
-          border: '1px solid rgba(255,255,255,0.08)',
+          border: '1px solid rgba(36,64,46,0.128)',
           overflow: 'hidden',
         }}>
           <button
@@ -2062,36 +2062,35 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
             style={{
               width: '100%',
               border: 'none',
-              background: 'rgba(255,255,255,0.04)',
+              background: 'rgba(36,64,46,0.064)',
               color: 'var(--text-1)',
               padding: '9px 11px',
               textAlign: 'left',
               cursor: 'pointer',
               fontFamily: 'var(--font-mono)',
               fontSize: 12,
-              letterSpacing: '0.06em',
             }}
           >
-            {topBuildExpanded ? 'HIDE' : 'SHOW'} BUILD POINTS
+            {topBuildExpanded ? 'Masquer' : 'Afficher'} les points du parcours
           </button>
 
           {topBuildExpanded && (
-            <div style={{ padding: 10, background: 'rgba(8, 10, 14, 0.94)' }}>
+            <div style={{ padding: 10, background: 'rgba(251,252,243,0.96)' }}>
               <div style={{ fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>
-                ROUTE MODE
+                Type de parcours
               </div>
               <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
                 {[
-                  { id: 'loop', label: 'Loop' },
-                  { id: 'outback', label: 'Out & Back' },
-                  { id: 'point', label: 'Point to Point' },
+                  { id: 'loop', label: 'Boucle' },
+                  { id: 'outback', label: 'Aller-retour' },
+                  { id: 'point', label: 'Point à point' },
                 ].map(o => (
                   <button
                     key={o.id}
                     onClick={() => setRouteType(o.id)}
                     style={{
-                      border: `1px solid ${routeType === o.id ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`,
-                      background: routeType === o.id ? 'var(--brand-dim)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${routeType === o.id ? 'var(--brand)' : 'rgba(36,64,46,0.192)'}`,
+                      background: routeType === o.id ? 'var(--brand-dim)' : 'rgba(36,64,46,0.08)',
                       color: routeType === o.id ? 'var(--brand)' : 'var(--text-2)',
                       borderRadius: 7,
                       padding: '5px 8px',
@@ -2106,20 +2105,20 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               </div>
 
               <div style={{ fontSize: 11, color: 'var(--text-4)', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>
-                POINT PICKER
+                Choix des points
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                <button onClick={() => setMapPickMode('start')} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: `1px solid ${mapPickMode === 'start' ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`, background: mapPickMode === 'start' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.05)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                <button onClick={() => setMapPickMode('start')} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: `1px solid ${mapPickMode === 'start' ? 'var(--brand)' : 'rgba(36,64,46,0.192)'}`, background: mapPickMode === 'start' ? 'var(--brand-dim)' : 'rgba(36,64,46,0.08)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
                   Pick Start
                 </button>
-                <button onClick={() => { setRouteType('point'); setMapPickMode('via'); }} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: `1px solid ${mapPickMode === 'via' ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`, background: mapPickMode === 'via' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.05)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                <button onClick={() => { setRouteType('point'); setMapPickMode('via'); }} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: `1px solid ${mapPickMode === 'via' ? 'var(--brand)' : 'rgba(36,64,46,0.192)'}`, background: mapPickMode === 'via' ? 'var(--brand-dim)' : 'rgba(36,64,46,0.08)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
                   Pick Waypoint
                 </button>
-                <button onClick={() => { setRouteType('point'); setMapPickMode('end'); }} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: `1px solid ${mapPickMode === 'end' ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`, background: mapPickMode === 'end' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.05)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                <button onClick={() => { setRouteType('point'); setMapPickMode('end'); }} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: `1px solid ${mapPickMode === 'end' ? 'var(--brand)' : 'rgba(36,64,46,0.192)'}`, background: mapPickMode === 'end' ? 'var(--brand-dim)' : 'rgba(36,64,46,0.08)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
                   Pick End
                 </button>
                 {mapPickMode && (
-                  <button onClick={() => setMapPickMode(null)} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                  <button onClick={() => setMapPickMode(null)} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 7, border: '1px solid rgba(36,64,46,0.192)', background: 'rgba(36,64,46,0.08)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
                     Cancel
                   </button>
                 )}
@@ -2141,15 +2140,15 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
         width: 'min(390px, calc(100vw - 28px))', borderRadius: 18, zIndex: 1000,
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         minHeight: 0,
-        background: 'linear-gradient(180deg, rgba(14,17,24,0.96) 0%, rgba(8,10,15,0.95) 100%)',
-        border: '1px solid rgba(255,255,255,0.11)',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,255,255,0.06)',
+        background: 'rgba(251,252,243,0.97)',
+        border: '1px solid rgba(36,64,46,0.176)',
+        boxShadow: '0 24px 60px rgba(36,64,46,0.22), inset 0 1px 0 rgba(36,64,46,0.096)',
       }}>
         {/* Panel header */}
         <div style={{
           padding: '18px 18px 10px',
-          borderBottom: '1px solid rgba(255,255,255,0.09)',
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%)',
+          borderBottom: '1px solid rgba(36,64,46,0.144)',
+          background: 'linear-gradient(180deg, rgba(36,64,46,0.08) 0%, rgba(36,64,46,0) 100%)',
           flex: '0 0 50%',
           height: '50%',
           minHeight: 0,
@@ -2162,10 +2161,10 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
         }}>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontFamily: 'var(--font-sans)', fontSize: 20, fontWeight: 800, color: 'var(--text-0)', letterSpacing: '-0.02em', lineHeight: 1.2, marginBottom: 2 }}>
-              Route Builder
+              Parcours
             </div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.1em' }}>
-              {tile.url.includes('maptiler') ? 'MapTiler Outdoor' : 'Esri'} · {sport === 'Run' ? 'Running' : 'Cycling'}
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)' }}>
+              {tile.url.includes('maptiler') ? 'MapTiler Outdoor' : 'Esri'} · {sport === 'Run' ? 'Course à pied' : 'Vélo'}
             </div>
           </div>
 
@@ -2174,8 +2173,8 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               marginBottom: 10,
               padding: '8px 10px',
               borderRadius: 9,
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(36,64,46,0.064)',
+              border: '1px solid rgba(36,64,46,0.128)',
               fontFamily: 'var(--font-sans)',
               fontSize: 13,
               color: 'var(--text-2)',
@@ -2185,24 +2184,24 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
             </div>
           )}
 
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.1em', marginBottom: 8 }}>
-            WORKFLOW
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginBottom: 8 }}>
+            Étapes
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6, marginBottom: 10 }}>
             {[
-              { id: 'start', label: 'Start Location' },
-              { id: 'training', label: 'Training' },
-              { id: 'settings', label: 'Advanced Training Type' },
-              { id: 'output', label: 'View' },
+              { id: 'start', label: 'Départ' },
+              { id: 'training', label: 'Séance' },
+              { id: 'settings', label: 'Réglages' },
+              { id: 'output', label: 'Résultat' },
             ].map((s) => (
               <button
                 key={s.id}
                 onClick={() => setMenuStep(s.id)}
                 style={{
                   borderRadius: 8,
-                  border: `1px solid ${menuStep === s.id ? 'var(--brand)' : 'rgba(255,255,255,0.1)'}`,
-                  background: menuStep === s.id ? 'var(--brand-dim)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${menuStep === s.id ? 'var(--brand)' : 'rgba(36,64,46,0.16)'}`,
+                  background: menuStep === s.id ? 'var(--brand-dim)' : 'rgba(36,64,46,0.064)',
                   color: menuStep === s.id ? 'var(--brand)' : 'var(--text-2)',
                   cursor: 'pointer',
                   fontFamily: 'var(--font-mono)',
@@ -2218,35 +2217,35 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
 
           {menuStep === 'start' && (
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', letterSpacing: '0.08em', marginBottom: 7 }}>
-                START POINT
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', marginBottom: 7 }}>
+                Point de départ
               </div>
               {startLat && startLng ? (
                 <div style={{ display: 'flex', gap: 5, marginBottom: 8, flexWrap: 'wrap' }}>
                   {homeLat && (
                     <button onClick={() => { setStartLat(homeLat); setStartLng(homeLng); setStartName(homeName); setMapFlyTo({ lat: parseFloat(homeLat), lng: parseFloat(homeLng), zoom: 13 }); }}
-                      style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                      style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: 'rgba(36,64,46,0.112)', border: '1px solid rgba(36,64,46,0.192)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
                       Use home
                     </button>
                   )}
                   <button onClick={() => setMapPickMode('start')}
-                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: mapPickMode === 'start' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.07)', border: `1px solid ${mapPickMode === 'start' ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`, color: mapPickMode === 'start' ? 'var(--brand)' : 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: mapPickMode === 'start' ? 'var(--brand-dim)' : 'rgba(36,64,46,0.112)', border: `1px solid ${mapPickMode === 'start' ? 'var(--brand)' : 'rgba(36,64,46,0.192)'}`, color: mapPickMode === 'start' ? 'var(--brand)' : 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
                     Select start on map
                   </button>
                   <button onClick={() => { setStartLat(''); setStartLng(''); setStartName(''); }}
-                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: 'rgba(36,64,46,0.112)', border: '1px solid rgba(36,64,46,0.192)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
                     Clear
                   </button>
                 </div>
               ) : (
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                   <button onClick={() => setMapPickMode('start')}
-                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: mapPickMode === 'start' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.07)', border: `1px solid ${mapPickMode === 'start' ? 'var(--brand)' : 'rgba(255,255,255,0.12)'}`, color: mapPickMode === 'start' ? 'var(--brand)' : 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
-                    Pick start
+                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: mapPickMode === 'start' ? 'var(--brand-dim)' : 'rgba(36,64,46,0.112)', border: `1px solid ${mapPickMode === 'start' ? 'var(--brand)' : 'rgba(36,64,46,0.192)'}`, color: mapPickMode === 'start' ? 'var(--brand)' : 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                    Choisir sur la carte
                   </button>
                   <button onClick={handleDetectLocation}
-                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
-                    Use my location
+                    style={{ fontSize: 12, padding: '6px 11px', borderRadius: 8, background: 'rgba(36,64,46,0.112)', border: '1px solid rgba(36,64,46,0.192)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                    Ma position
                   </button>
                 </div>
               )}
@@ -2256,13 +2255,13 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
           {menuStep === 'training' && <div style={{
             marginBottom: 10,
             padding: '11px 12px',
-            background: 'rgba(255,255,255,0.045)',
-            border: '1px solid rgba(255,255,255,0.11)',
+            background: 'rgba(36,64,46,0.072)',
+            border: '1px solid rgba(36,64,46,0.176)',
             borderRadius: 12,
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+            boxShadow: 'inset 0 1px 0 rgba(36,64,46,0.064)',
           }}>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.08em', marginBottom: 8 }}>
-              PICK FROM TRAINING LIBRARY
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', marginBottom: 8 }}>
+              Choisir dans la bibliothèque
             </div>
             <div style={{
               display: 'flex',
@@ -2283,8 +2282,8 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                       applyLibrarySession(s);
                     }}
                     style={{
-                      border: `1px solid ${isSelected ? 'rgba(77,127,232,0.65)' : 'rgba(255,255,255,0.1)'}`,
-                      background: isSelected ? 'rgba(77,127,232,0.16)' : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${isSelected ? 'rgba(227,93,44,0.65)' : 'rgba(36,64,46,0.16)'}`,
+                      background: isSelected ? 'rgba(227,93,44,0.16)' : 'rgba(36,64,46,0.048)',
                       borderRadius: 10,
                       padding: '9px 10px',
                       textAlign: 'left',
@@ -2310,7 +2309,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                       height: 10,
                       borderRadius: 999,
                       overflow: 'hidden',
-                      background: 'rgba(255,255,255,0.06)',
+                      background: 'rgba(36,64,46,0.096)',
                       marginBottom: 7,
                     }}>
                       {s.blocks.slice(0, 16).map((b) => (
@@ -2354,9 +2353,9 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                   <span style={{
                     fontSize: 12,
                     fontFamily: 'var(--font-mono)',
-                    color: current.profile.sport === 'Run' ? '#f0b429' : '#4d7fe8',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    color: current.profile.sport === 'Run' ? '#f0b429' : '#e35d2c',
+                    background: 'rgba(36,64,46,0.096)',
+                    border: '1px solid rgba(36,64,46,0.16)',
                     borderRadius: 999,
                     padding: '3px 9px',
                   }}>{current.profile.sport}</span>
@@ -2364,8 +2363,8 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                     fontSize: 12,
                     fontFamily: 'var(--font-mono)',
                     color: ZONE_COLORS[current.profile.zone] || 'var(--text-1)',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'rgba(36,64,46,0.096)',
+                    border: '1px solid rgba(36,64,46,0.16)',
                     borderRadius: 999,
                     padding: '3px 9px',
                   }}>{current.profile.zone}</span>
@@ -2373,8 +2372,8 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                     fontSize: 12,
                     fontFamily: 'var(--font-mono)',
                     color: 'var(--text-2)',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'rgba(36,64,46,0.096)',
+                    border: '1px solid rgba(36,64,46,0.16)',
                     borderRadius: 999,
                     padding: '3px 9px',
                   }}>{current.profile.duration} min</span>
@@ -2386,13 +2385,13 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
           {menuStep === 'settings' && <>
             <div style={{ display: 'flex', gap: 7, marginBottom: 10 }}>
               <select value={sport} onChange={e => setSport(e.target.value)} style={{
-                flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)',
+                flex: 1, background: 'rgba(36,64,46,0.096)', border: '1px solid rgba(36,64,46,0.144)',
                 borderRadius: 8, padding: '8px 10px', color: 'var(--text-0)', fontFamily: 'var(--font-mono)', fontSize: 13, cursor: 'pointer',
               }}>
-                <option value="Ride">Cycling</option>
-                <option value="Run">Running</option>
+                <option value="Ride">Vélo</option>
+                <option value="Run">Course à pied</option>
               </select>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '0 10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'rgba(36,64,46,0.096)', border: '1px solid rgba(36,64,46,0.144)', borderRadius: 8, padding: '0 10px' }}>
                 <input type="number" min="20" max="360" value={duration} onChange={e => setDuration(e.target.value)}
                   style={{ background: 'none', border: 'none', width: 44, color: 'var(--text-0)', fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 700, outline: 'none', textAlign: 'right' }} />
                 <span style={{ fontSize: 13, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>min</span>
@@ -2401,13 +2400,13 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
 
             {sport === 'Ride' && (
               <div style={{ marginBottom: 10 }}>
-                <PillToggle options={[{ id: 'road', label: 'Road' }, { id: 'quiet', label: 'Quiet' }, { id: 'gravel', label: 'Gravel' }, { id: 'mtb', label: 'MTB' }]} value={surface} onChange={setSurface} />
+                <PillToggle options={[{ id: 'road', label: 'Route' }, { id: 'quiet', label: 'Petites routes' }, { id: 'gravel', label: 'Gravel' }, { id: 'mtb', label: 'MTB' }]} value={surface} onChange={setSurface} />
                 <div style={{ fontSize: 13, color: 'var(--text-2)', fontFamily: 'var(--font-sans)', marginTop: 7, lineHeight: 1.5 }}>{SURFACE_DESC[surface]}</div>
               </div>
             )}
 
             <div style={{ marginBottom: 10 }}>
-              <PillToggle options={[{ id: 'loop', label: 'Loop' }, { id: 'outback', label: 'Out & Back' }, { id: 'point', label: 'Point to Point' }]} value={routeType} onChange={setRouteType} />
+              <PillToggle options={[{ id: 'loop', label: 'Boucle' }, { id: 'outback', label: 'Aller-retour' }, { id: 'point', label: 'Point à point' }]} value={routeType} onChange={setRouteType} />
             </div>
 
             <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-sans)', marginBottom: 10 }}>
@@ -2415,34 +2414,34 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
             </div>
 
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', letterSpacing: '0.1em', marginBottom: 6 }}>TERRAIN</div>
-              <PillToggle options={[{ id: 'any', label: 'Any' }, { id: 'flat', label: 'Flat' }, { id: 'hilly', label: 'Hilly' }]} value={terrainPref} onChange={setTerrainPref} />
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', marginBottom: 6 }}>Relief</div>
+              <PillToggle options={[{ id: 'any', label: 'Peu importe' }, { id: 'flat', label: 'Plat' }, { id: 'hilly', label: 'Vallonné' }]} value={terrainPref} onChange={setTerrainPref} />
             </div>
 
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', letterSpacing: '0.1em', marginBottom: 6 }}>DIRECTION</div>
-              <PillToggle options={[{ id: 'any', label: 'Any' }, { id: 'north', label: 'N' }, { id: 'east', label: 'E' }, { id: 'south', label: 'S' }, { id: 'west', label: 'W' }]} value={directionPref} onChange={setDirectionPref} />
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', marginBottom: 6 }}>Direction</div>
+              <PillToggle options={[{ id: 'any', label: 'Peu importe' }, { id: 'north', label: 'N' }, { id: 'east', label: 'E' }, { id: 'south', label: 'S' }, { id: 'west', label: 'W' }]} value={directionPref} onChange={setDirectionPref} />
             </div>
           </>}
 
           {menuStep === 'output' && (
-            <div style={{ marginBottom: 12, padding: '10px 11px', borderRadius: 10, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ marginBottom: 12, padding: '10px 11px', borderRadius: 10, background: 'rgba(36,64,46,0.056)', border: '1px solid rgba(36,64,46,0.128)' }}>
               <div style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginBottom: 8 }}>
                 Quick access to route output
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                <button onClick={() => setTab('generate')} style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.12)', background: tab === 'generate' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.06)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                <button onClick={() => setTab('generate')} style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(36,64,46,0.192)', background: tab === 'generate' ? 'var(--brand-dim)' : 'rgba(36,64,46,0.096)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
                   Open Generate
                 </button>
-                <button onClick={() => setTab('saved')} style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.12)', background: tab === 'saved' ? 'var(--brand-dim)' : 'rgba(255,255,255,0.06)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                <button onClick={() => setTab('saved')} style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(36,64,46,0.192)', background: tab === 'saved' ? 'var(--brand-dim)' : 'rgba(36,64,46,0.096)', color: 'var(--text-1)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
                   Open Saved
                 </button>
                 <button
                   onClick={() => candidates[selected]?.coords?.length && exportGpxFile(`${sport}-${zone}-${candidates[selected]?.distanceKm}km`, exportCoords(candidates[selected]?.coords || []))}
                   disabled={!candidates[selected]?.coords?.length || isExportingGpx}
-                  style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(77,127,232,0.18)', color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-mono)', opacity: (!candidates[selected]?.coords?.length || isExportingGpx) ? 0.5 : 1 }}
+                  style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(36,64,46,0.192)', background: 'rgba(227,93,44,0.18)', color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-mono)', opacity: (!candidates[selected]?.coords?.length || isExportingGpx) ? 0.5 : 1 }}
                 >
-                  {isExportingGpx ? 'Preparing...' : 'Download GPX'}
+                  {isExportingGpx ? 'Préparation…' : 'Télécharger le GPX'}
                 </button>
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.4 }}>
@@ -2455,9 +2454,9 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
           {/* Tabs */}
           <div style={{ display: 'flex', marginLeft: -18, marginRight: -18 }}>
             {[
-              { id: 'generate', label: 'Generate' },
-              { id: 'draw', label: editingRoute ? 'Editing' : 'Draw' },
-              { id: 'saved', label: `Saved (${savedRoutes.length})` },
+              { id: 'generate', label: 'Générer' },
+              { id: 'draw', label: editingRoute ? 'Modification' : 'Dessiner' },
+              { id: 'saved', label: `Enregistrés (${savedRoutes.length})` },
             ].map(t => {
               const isEdit = t.id === 'draw' && !!editingRoute;
               return (
@@ -2496,14 +2495,14 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
           {tab === 'generate' && (
             <div>
               {(todayIntervals || ['Z4', 'Z5'].includes(zone)) && (
-                <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, background: 'rgba(77,127,232,0.1)', border: '1px solid rgba(77,127,232,0.25)' }}>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--brand)', marginBottom: 4, letterSpacing: '0.08em' }}>
+                <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, background: 'rgba(227,93,44,0.1)', border: '1px solid rgba(227,93,44,0.25)' }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--brand)', marginBottom: 4 }}>
                     {todayIntervals ? 'INTERVAL WORKOUT DETECTED' : `${zone} — INTERVAL TERRAIN MODE`}
                   </div>
                   <div style={{ fontSize: 15, color: 'var(--text-1)', lineHeight: 1.55 }}>
                     {todayIntervals
                       ? `${todayIntervals.count}x intervals after ~${todayIntervals.warmupMin}min warmup (${warmupKmEst} km).`
-                      : `${zone === 'Z5' ? 'VO2 max' : 'Threshold'} efforts — routes ranked to avoid descents in the hard section.`}
+                      : `$Efforts {zone === 'Z5' ? 'VO2 max' : 'au seuil'} : les parcours sans descente sur la partie dure passent en premier.`}
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 4, lineHeight: 1.5 }}>
                     Routes ranked by terrain — flat or uphill interval zone avoids losing power on descents.
@@ -2511,10 +2510,10 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                 </div>
               )}
               {todayTraining && !todayIntervals && (
-                <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, background: 'rgba(77,127,232,0.08)', border: '1px solid rgba(77,127,232,0.18)' }}>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--brand)', marginBottom: 4 }}>TODAY</div>
+                <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, background: 'rgba(227,93,44,0.08)', border: '1px solid rgba(227,93,44,0.18)' }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--brand)', marginBottom: 4 }}>Aujourd’hui</div>
                   <div style={{ fontSize: 15, fontWeight: 600 }}>{todayTraining.title || todayTraining.name}</div>
-                  <button style={{ fontSize: 12, marginTop: 8, padding: '5px 11px', borderRadius: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', color: 'var(--text-2)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
+                  <button style={{ fontSize: 12, marginTop: 8, padding: '5px 11px', borderRadius: 6, background: 'rgba(36,64,46,0.096)', border: '1px solid rgba(36,64,46,0.144)', color: 'var(--text-2)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
                     onClick={() => { const p = inferWorkoutProfile(todayTraining); if (p) { setSport(p.sport); setZone(p.zone); setDuration(p.duration); } }}>
                     Use for route
                   </button>
@@ -2524,26 +2523,26 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                 <div>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, color: 'var(--brand)', fontWeight: 700 }}>
-                    ~{targetKm} km target
+                    ~{targetKm} km visés
                   </div>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
                     {ftpBased
-                      ? `${Math.round(zoneSpeedKmh(zone))} km/h · from ${ftp}W FTP`
+                      ? `${Math.round(zoneSpeedKmh(zone))} km/h, d’après ta FTP de ${ftp} W`
                       : `${Math.round(zoneSpeedKmh(zone))} km/h · estimated`}
                   </div>
                 </div>
                 <button onClick={handleGenerate} disabled={genLoading || !startLat} style={{
                   padding: '10px 22px', borderRadius: 10, cursor: (genLoading || !startLat) ? 'default' : 'pointer',
-                  background: startLat ? 'var(--brand)' : 'rgba(255,255,255,0.06)',
+                  background: startLat ? 'var(--brand)' : 'rgba(36,64,46,0.096)',
                   border: 'none', color: '#fff', fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600,
                   opacity: genLoading ? 0.7 : 1, transition: 'all 0.15s',
                 }}>
-                  {genLoading ? 'Routing...' : 'Generate'}
+                  {genLoading ? 'Calcul…' : 'Générer'}
                 </button>
               </div>
 
               {genError && (
-                <div style={{ padding: '10px 14px', background: candidates.length > 0 ? 'rgba(247,127,58,0.1)' : 'rgba(240,96,96,0.12)', border: `1px solid ${candidates.length > 0 ? 'rgba(247,127,58,0.35)' : 'rgba(240,96,96,0.3)'}`, borderRadius: 8, fontSize: 13, color: candidates.length > 0 ? 'var(--accent-orange)' : 'var(--accent-red)', marginBottom: 14 }}>
+                <div style={{ padding: '10px 14px', background: candidates.length > 0 ? 'rgba(240,102,58,0.1)' : 'rgba(240,96,96,0.12)', border: `1px solid ${candidates.length > 0 ? 'rgba(240,102,58,0.35)' : 'rgba(240,96,96,0.3)'}`, borderRadius: 8, fontSize: 13, color: candidates.length > 0 ? 'var(--accent-orange)' : 'var(--accent-red)', marginBottom: 14 }}>
                   {genError}
                 </div>
               )}
@@ -2551,8 +2550,8 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               {candidates.map((c, i) => (
                 <div key={c.id} onClick={() => setSelected(i)} style={{
                   padding: '13px 14px', borderRadius: 12, marginBottom: 8, cursor: 'pointer',
-                  background: i === selected ? `${ROUTE_COLORS[i]}18` : 'rgba(255,255,255,0.03)',
-                  border: `1.5px solid ${i === selected ? ROUTE_COLORS[i] : 'rgba(255,255,255,0.06)'}`,
+                  background: i === selected ? `${ROUTE_COLORS[i]}18` : 'rgba(36,64,46,0.048)',
+                  border: `1.5px solid ${i === selected ? ROUTE_COLORS[i] : 'rgba(36,64,46,0.096)'}`,
                   transition: 'all 0.15s',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -2590,8 +2589,8 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                       <div style={{ textAlign: 'right', minWidth: 80 }}>
                         <div style={{
                           display: 'inline-block', padding: '3px 8px', borderRadius: 5,
-                          background: c.intScore.descentM > 40 ? 'rgba(247,127,58,0.15)' : 'rgba(62,207,110,0.15)',
-                          border: `1px solid ${c.intScore.descentM > 40 ? 'rgba(247,127,58,0.4)' : 'rgba(62,207,110,0.4)'}`,
+                          background: c.intScore.descentM > 40 ? 'rgba(240,102,58,0.15)' : 'rgba(92,138,46,0.15)',
+                          border: `1px solid ${c.intScore.descentM > 40 ? 'rgba(240,102,58,0.4)' : 'rgba(92,138,46,0.4)'}`,
                           fontFamily: 'var(--font-mono)', fontSize: 10,
                           color: c.intScore.descentM > 40 ? 'var(--accent-orange)' : 'var(--accent-green)',
                           marginBottom: 4, lineHeight: 1.3, textAlign: 'center',
@@ -2605,7 +2604,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                     )}
                   </div>
                   {c.intScore?.note && (
-                    <div style={{ fontSize: 12, color: c.intScore.descentM > 40 ? 'var(--accent-orange)' : 'var(--text-3)', marginTop: 8, fontFamily: 'var(--font-mono)', lineHeight: 1.45, borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 8 }}>
+                    <div style={{ fontSize: 12, color: c.intScore.descentM > 40 ? 'var(--accent-orange)' : 'var(--text-3)', marginTop: 8, fontFamily: 'var(--font-mono)', lineHeight: 1.45, borderTop: '1px solid rgba(36,64,46,0.08)', paddingTop: 8 }}>
                       {c.intScore.note}
                     </div>
                   )}
@@ -2624,14 +2623,14 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                   borderRadius: 10,
                   background: 'rgba(10,10,10,0.75)',
                   backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(36,64,46,0.128)',
                 }}>
                   <button onClick={() => exportGpxFile(`${sport}-${zone}-${candidates[selected]?.distanceKm}km`, exportCoords(candidates[selected]?.coords || []))}
                     style={{ flex: 1, padding: '11px', borderRadius: 9, border: 'none', cursor: 'pointer', background: 'var(--brand)', color: '#fff', fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600 }}>
-                    {isExportingGpx ? 'Preparing GPX...' : 'Download GPX'}
+                    {isExportingGpx ? 'Préparation…' : 'Télécharger le GPX'}
                   </button>
                   <button onClick={() => handleSaveRoute(`${sport} ${zone} ${candidates[selected]?.distanceKm}km`, exportCoords(candidates[selected]?.coords || []), candidates[selected]?.distanceKm, sport, [])}
-                    style={{ padding: '11px 16px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', color: 'var(--text-1)', fontFamily: 'var(--font-mono)', fontSize: 14 }}>
+                    style={{ padding: '11px 16px', borderRadius: 9, border: '1px solid rgba(36,64,46,0.16)', cursor: 'pointer', background: 'rgba(36,64,46,0.08)', color: 'var(--text-1)', fontFamily: 'var(--font-mono)', fontSize: 14 }}>
                     Save
                   </button>
                 </div>
@@ -2644,10 +2643,10 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
           {tab === 'draw' && (
             <div>
               {editingRoute ? (
-                <div style={{ marginBottom: 12, padding: '10px 13px', borderRadius: 10, background: 'rgba(247,127,58,0.1)', border: '1px solid rgba(247,127,58,0.3)' }}>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-orange)', marginBottom: 3 }}>EDITING</div>
+                <div style={{ marginBottom: 12, padding: '10px 13px', borderRadius: 10, background: 'rgba(240,102,58,0.1)', border: '1px solid rgba(240,102,58,0.3)' }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-orange)', marginBottom: 3 }}>Modification</div>
                   <div style={{ fontSize: 15, fontWeight: 600 }}>{editingRoute.name}</div>
-                  <button onClick={clearDraw} style={{ fontSize: 12, marginTop: 6, padding: '4px 10px', borderRadius: 6, background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>Cancel</button>
+                  <button onClick={clearDraw} style={{ fontSize: 12, marginTop: 6, padding: '4px 10px', borderRadius: 6, background: 'none', border: '1px solid rgba(36,64,46,0.16)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>Cancel</button>
                 </div>
               ) : (
                 <div style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 12, lineHeight: 1.65, fontFamily: 'var(--font-sans)' }}>
@@ -2658,8 +2657,8 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                 marginBottom: 10,
                 padding: '9px 11px',
                 borderRadius: 8,
-                background: 'rgba(77,127,232,0.08)',
-                border: '1px solid rgba(77,127,232,0.2)',
+                background: 'rgba(227,93,44,0.08)',
+                border: '1px solid rgba(227,93,44,0.2)',
                 fontSize: 13,
                 color: 'var(--text-2)',
                 lineHeight: 1.45,
@@ -2669,13 +2668,13 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               {waypoints.length > 0 && (
                 <div style={{ marginBottom: 12 }}>
                   {waypoints.map((pt, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, marginBottom: 4, border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 10px', background: 'rgba(36,64,46,0.048)', borderRadius: 8, marginBottom: 4, border: '1px solid rgba(36,64,46,0.096)' }}>
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: ROUTE_COLORS[i % 3], fontWeight: 700, minWidth: 20 }}>{i + 1}</div>
                       <div style={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-1)' }}>{pt.name}</div>
                       <div style={{ display: 'flex', gap: 3 }}>
-                        <button onClick={() => moveWaypoint(i, -1)} disabled={i === 0} style={{ padding: '3px 7px', fontSize: 11, borderRadius: 5, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'pointer', opacity: i === 0 ? 0.3 : 1 }}>↑</button>
-                        <button onClick={() => moveWaypoint(i, 1)} disabled={i === waypoints.length - 1} style={{ padding: '3px 7px', fontSize: 11, borderRadius: 5, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'pointer', opacity: i === waypoints.length - 1 ? 0.3 : 1 }}>↓</button>
-                        <button onClick={() => removeWaypoint(i)} style={{ padding: '3px 7px', fontSize: 11, borderRadius: 5, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--accent-red)', cursor: 'pointer' }}>×</button>
+                        <button onClick={() => moveWaypoint(i, -1)} disabled={i === 0} style={{ padding: '3px 7px', fontSize: 11, borderRadius: 5, background: 'none', border: '1px solid rgba(36,64,46,0.128)', color: 'var(--text-3)', cursor: 'pointer', opacity: i === 0 ? 0.3 : 1 }}>↑</button>
+                        <button onClick={() => moveWaypoint(i, 1)} disabled={i === waypoints.length - 1} style={{ padding: '3px 7px', fontSize: 11, borderRadius: 5, background: 'none', border: '1px solid rgba(36,64,46,0.128)', color: 'var(--text-3)', cursor: 'pointer', opacity: i === waypoints.length - 1 ? 0.3 : 1 }}>↓</button>
+                        <button onClick={() => removeWaypoint(i)} style={{ padding: '3px 7px', fontSize: 11, borderRadius: 5, background: 'none', border: '1px solid rgba(36,64,46,0.128)', color: 'var(--accent-red)', cursor: 'pointer' }}>×</button>
                       </div>
                     </div>
                   ))}
@@ -2687,26 +2686,26 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               )}
               {waypoints.length > 1 && drawnCoords.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                  <input value={saveName} onChange={e => setSaveName(e.target.value)} placeholder="Route name..."
-                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '10px 12px', color: 'var(--text-0)', fontFamily: 'var(--font-mono)', fontSize: 14, outline: 'none' }} />
+                  <input value={saveName} onChange={e => setSaveName(e.target.value)} placeholder="Nom du parcours"
+                    style={{ background: 'rgba(36,64,46,0.096)', border: '1px solid rgba(36,64,46,0.144)', borderRadius: 8, padding: '10px 12px', color: 'var(--text-0)', fontFamily: 'var(--font-mono)', fontSize: 14, outline: 'none' }} />
                   <div style={{ display: 'flex', gap: 7 }}>
                     <button onClick={() => exportGpxFile(saveName || `drawn-${drawnDistKm}km`, exportCoords(drawnCoords))}
-                      style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', color: 'var(--text-1)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                      style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1px solid rgba(36,64,46,0.16)', cursor: 'pointer', background: 'rgba(36,64,46,0.08)', color: 'var(--text-1)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
                       {isExportingGpx ? 'Preparing...' : 'GPX'}
                     </button>
                     <button onClick={() => handleSaveRoute(saveName, exportCoords(drawnCoords), routeType === 'outback' ? drawnDistKm * 2 : drawnDistKm, sport, waypoints)}
                       style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', cursor: 'pointer', background: editingRoute ? 'var(--accent-orange)' : 'var(--brand)', color: '#fff', fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 600 }}>
-                      {editingRoute ? 'Save Changes' : 'Save'}
+                      {editingRoute ? 'Enregistrer les modifications' : 'Enregistrer'}
                     </button>
                   </div>
                 </div>
               )}
               {waypoints.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-                  <button onClick={() => removeWaypoint(waypoints.length - 1)} style={{ flex: 1, padding: '8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', background: 'none', color: 'var(--text-2)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                  <button onClick={() => removeWaypoint(waypoints.length - 1)} style={{ flex: 1, padding: '8px', borderRadius: 8, border: '1px solid rgba(36,64,46,0.112)', cursor: 'pointer', background: 'none', color: 'var(--text-2)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
                     Annuler le dernier point
                   </button>
-                  <button onClick={clearDraw} style={{ flex: 1, padding: '8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', background: 'none', color: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                  <button onClick={clearDraw} style={{ flex: 1, padding: '8px', borderRadius: 8, border: '1px solid rgba(36,64,46,0.112)', cursor: 'pointer', background: 'none', color: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
                     Clear all
                   </button>
                 </div>
@@ -2725,8 +2724,8 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               ) : savedRoutes.map(r => (
                 <div key={r.id} style={{
                   marginBottom: 10, borderRadius: 12, overflow: 'hidden',
-                  background: previewRoute?.id === r.id ? 'rgba(77,127,232,0.08)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${previewRoute?.id === r.id ? 'rgba(77,127,232,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                  background: previewRoute?.id === r.id ? 'rgba(227,93,44,0.08)' : 'rgba(36,64,46,0.048)',
+                  border: `1px solid ${previewRoute?.id === r.id ? 'rgba(227,93,44,0.35)' : 'rgba(36,64,46,0.112)'}`,
                   transition: 'all 0.15s',
                 }}>
                   <div onClick={() => setPreviewRoute(previewRoute?.id === r.id ? null : r)} style={{ padding: '12px 14px', cursor: 'pointer' }}>
@@ -2742,30 +2741,30 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                     </div>
                   </div>
                   {ratingRoute?.id === r.id && (
-                    <div style={{ padding: '0 14px 12px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ padding: '0 14px 12px', borderTop: '1px solid rgba(36,64,46,0.08)' }}>
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)', margin: '10px 0 6px' }}>Optional feedback — helps improve future routes</div>
                       <textarea defaultValue={r.feedback || ''} onChange={e => setRatingRoute(rv => ({ ...rv, feedbackText: e.target.value }))}
-                        placeholder="What was good or bad about this route?"
-                        style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 7, padding: '8px 10px', color: 'var(--text-0)', fontFamily: 'var(--font-mono)', fontSize: 13, resize: 'vertical', minHeight: 56, outline: 'none' }} />
+                        placeholder="Ce qui t’a plu ou non sur ce parcours"
+                        style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(36,64,46,0.064)', border: '1px solid rgba(36,64,46,0.128)', borderRadius: 7, padding: '8px 10px', color: 'var(--text-0)', fontFamily: 'var(--font-mono)', fontSize: 13, resize: 'vertical', minHeight: 56, outline: 'none' }} />
                       <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                         <button onClick={() => handleSaveFeedback(r.id, ratingRoute.feedbackText || r.feedback || '')}
                           style={{ flex: 1, padding: '7px', borderRadius: 7, border: 'none', cursor: 'pointer', background: 'var(--brand)', color: '#fff', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600 }}>Save feedback</button>
                         <button onClick={() => setRatingRoute(null)}
-                          style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', background: 'none', color: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>Skip</button>
+                          style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid rgba(36,64,46,0.128)', cursor: 'pointer', background: 'none', color: 'var(--text-3)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>Skip</button>
                       </div>
                     </div>
                   )}
-                  <div style={{ padding: '8px 12px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: 5 }}>
+                  <div style={{ padding: '8px 12px', borderTop: '1px solid rgba(36,64,46,0.08)', display: 'flex', gap: 5 }}>
                     <button onClick={() => { handleRateRoute(r.id, r.rating || 0); setRatingRoute({ id: r.id, rating: r.rating || 0 }); }}
-                      style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>Rate</button>
+                      style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, background: 'none', border: '1px solid rgba(36,64,46,0.128)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>Rate</button>
                     <button onClick={() => handleEditRoute(r)}
-                      style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>Edit</button>
+                      style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, background: 'none', border: '1px solid rgba(36,64,46,0.128)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>Edit</button>
                     <button onClick={() => exportGpxFile(r.name, r.coords)}
-                      style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+                      style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, background: 'none', border: '1px solid rgba(36,64,46,0.128)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
                       {isExportingGpx ? 'Wait...' : 'GPX'}
                     </button>
                     <button onClick={() => handleDeleteRoute(r.id)}
-                      style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--accent-red)', cursor: 'pointer', fontFamily: 'var(--font-mono)', marginLeft: 'auto' }}>Del</button>
+                      style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, background: 'none', border: '1px solid rgba(36,64,46,0.128)', color: 'var(--accent-red)', cursor: 'pointer', fontFamily: 'var(--font-mono)', marginLeft: 'auto' }}>Del</button>
                   </div>
                 </div>
               ))}
@@ -2777,7 +2776,7 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
       {/* ── Right FABs ─────────────────────────────────────── */}
       <div style={{ position: 'absolute', top: 14, right: 14, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8, width: 'min(220px, calc(100vw - 28px))' }}>
         <Fab onClick={handleDetectLocation} disabled={detectingLoc}>
-          {detectingLoc ? 'Locating...' : 'My Location'}
+          {detectingLoc ? 'Localisation…' : 'Ma position'}
         </Fab>
         {startLat && !homeLat && (
           <Fab onClick={async () => { setHomeLat(startLat); setHomeLng(startLng); setHomeName(startName); const p = await persistence.getAthleteProfile(); await persistence.saveAthleteProfile({ ...(p || {}), homeLat: startLat, homeLng: startLng }); savePrefs({ homeLat: startLat, homeLng: startLng, homeName: startName }); }}>
@@ -2785,11 +2784,11 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
           </Fab>
         )}
         {mapPickMode && (
-          <Fab onClick={() => setMapPickMode(null)} active>Cancel pick</Fab>
+          <Fab onClick={() => setMapPickMode(null)} active>Annuler</Fab>
         )}
 
         {/* Divider */}
-        <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '2px 0' }} />
+        <div style={{ height: 1, background: 'rgba(36,64,46,0.128)', margin: '2px 0' }} />
 
         {/* Heatmap toggle */}
         {activities.some(a => a.map?.summary_polyline) && (
@@ -2797,20 +2796,20 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
             ...GLASS,
             borderRadius: 12, padding: '10px 14px', cursor: 'pointer',
             fontFamily: 'var(--font-mono)', fontSize: 13,
-            color: showHeatmap ? '#f77f3a' : 'var(--text-2)',
-            border: `1px solid ${showHeatmap ? '#f77f3a' : 'rgba(255,255,255,0.07)'}`,
-            background: showHeatmap ? 'rgba(247,127,58,0.12)' : 'rgba(10,10,10,0.90)',
+            color: showHeatmap ? '#f0663a' : 'var(--text-2)',
+            border: `1px solid ${showHeatmap ? '#f0663a' : 'rgba(36,64,46,0.112)'}`,
+            background: showHeatmap ? 'rgba(240,102,58,0.12)' : 'rgba(251,252,243,0.96)',
             display: 'flex', alignItems: 'center', gap: 9,
             width: '100%', textAlign: 'left', transition: 'all 0.18s',
           }}>
             <Picto name="fire" size={18} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>My Heatmap</div>
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Mes sorties</div>
               {showHeatmap && (
-                <div style={{ fontSize: 12, color: '#f77f3a', opacity: 0.85, marginTop: 1 }}>{heatmapPolylines.length} rides shown</div>
+                <div style={{ fontSize: 12, color: '#f0663a', opacity: 0.85, marginTop: 1 }}>{heatmapPolylines.length} rides shown</div>
               )}
             </div>
-            {showHeatmap && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#f77f3a', flexShrink: 0 }} />}
+            {showHeatmap && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#f0663a', flexShrink: 0 }} />}
           </button>
         )}
 
@@ -2824,8 +2823,8 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
               borderRadius: 12, padding: '10px 14px', cursor: 'pointer',
               fontFamily: 'var(--font-mono)', fontSize: 13,
               color: isActive ? cat.color : 'var(--text-2)',
-              border: `1px solid ${isActive ? cat.color : 'rgba(255,255,255,0.07)'}`,
-              background: isActive ? `${cat.color}1a` : 'rgba(10,10,10,0.90)',
+              border: `1px solid ${isActive ? cat.color : 'rgba(36,64,46,0.112)'}`,
+              background: isActive ? `${cat.color}1a` : 'rgba(251,252,243,0.96)',
               display: 'flex', alignItems: 'center', gap: 9,
               width: '100%', textAlign: 'left',
               transition: 'all 0.18s',
@@ -2837,10 +2836,10 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
                   <div style={{ fontSize: 12, color: cat.color, opacity: 0.85, marginTop: 1 }}>{count} nearby - shown on map</div>
                 )}
                 {isActive && poisLoading && (
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>Loading...</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>Chargement…</div>
                 )}
                 {isActive && !poisLoading && count === 0 && (
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>None nearby. Move map.</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>Rien autour. Déplace la carte.</div>
                 )}
               </div>
               {isActive && (
@@ -2862,15 +2861,15 @@ export default function GpxRouteBuilder({ athlete, events = [], plannedEvents = 
           position: 'absolute', bottom: selectedPoi ? 220 : 24, left: '50%', transform: 'translateX(-50%)',
           zIndex: 1000, pointerEvents: 'none',
           padding: '9px 22px', borderRadius: 22,
-          background: mapPickMode ? 'rgba(77,127,232,0.9)' : editingRoute ? 'rgba(247,127,58,0.85)' : 'rgba(0,0,0,0.75)',
+          background: mapPickMode ? 'rgba(227,93,44,0.9)' : editingRoute ? 'rgba(240,102,58,0.85)' : 'rgba(36,64,46,0.26)',
           color: '#fff', fontSize: 14, fontFamily: 'var(--font-mono)',
           backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          boxShadow: '0 4px 20px rgba(36,64,46,0.17)',
         }}>
           {mapPickMode
             ? `Click map to set ${mapPickMode} location`
             : editingRoute ? 'Editing — click to add waypoints'
-              : 'Click map to add waypoints'}
+              : 'Clique sur la carte pour ajouter des points'}
         </div>
       )}
     </div>

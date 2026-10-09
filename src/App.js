@@ -949,8 +949,8 @@ export default function App() {
         return (
           <div>
             <div className="page-header">
-              <div className="page-title">GPX Route Builder</div>
-              <div className="page-subtitle">Generate road-following routes and export GPX for Garmin and COROS</div>
+              <div className="page-title">Parcours GPX</div>
+              <div className="page-subtitle">Un parcours calé sur ta séance, à envoyer sur Garmin ou COROS</div>
             </div>
             <GpxRouteBuilder
               athlete={athlete}

@@ -3101,3 +3101,65 @@ button.today-week-day { font-family: var(--font-sans); cursor: pointer; color: i
 .sidebar .nav-item:hover .picto.nav-icon { background: rgba(232, 237, 200, 0.18); }
 .sidebar .nav-item.active .picto.nav-icon { background: #dfe8b8; }
 .sidebar .nav-group-title { padding-left: 8px; }
+
+/* ── Shopping list & journal ── */
+.nutri-empty { text-align: center; padding: 28px 12px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.nutri-empty p { font-size: 15px; color: var(--text-1); max-width: 440px; }
+.shop-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.shop-count { font-size: 14px; color: var(--text-2); }
+.shop-actions { display: flex; gap: 8px; }
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.shop-cat { background: var(--bg-2); border-radius: 14px; padding: 12px 14px; }
+.shop-cat h4, .shop-week h4 { font-family: var(--font-display); font-size: 15px; color: var(--pine); margin: 0 0 6px; }
+.shop-cat h4 span { font-family: var(--font-sans); font-weight: 500; color: var(--text-3); font-size: 13px; margin-left: 4px; }
+.shop-cat ul { list-style: none; margin: 0; padding: 0; }
+.shop-cat label { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; cursor: pointer; font-size: 14px; color: var(--text-1); }
+.shop-cat input[type="checkbox"] { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--brand); flex: none; }
+.shop-cat label.is-done .shop-item { color: var(--text-3); text-decoration: line-through; }
+.shop-item small { display: block; font-size: 12.5px; color: var(--text-3); }
+.shop-day { border-top: 1px solid var(--border); }
+.shop-day summary { display: flex; justify-content: space-between; padding: 10px 2px; cursor: pointer; font-size: 14px; }
+.shop-day-name { font-weight: 600; color: var(--text-1); text-transform: capitalize; }
+.shop-day-load { color: var(--text-3); }
+.shop-day ul { list-style: none; margin: 0 0 10px; padding: 0; }
+.shop-day li { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 3px 0; color: var(--text-1); }
+.shop-slot { color: var(--text-3); min-width: 120px; }
+
+.journal-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.journal-nav .btn { width: 38px; height: 38px; justify-content: center; padding: 0; font-size: 18px; }
+.journal-nav .btn:disabled { opacity: 0.35; cursor: default; }
+.journal-date { flex: 1; text-align: center; font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--pine); }
+.journal-date::first-letter { text-transform: uppercase; }
+.journal-date small { display: block; font-family: var(--font-sans); font-size: 12.5px; font-weight: 500; color: var(--text-3); }
+.journal-total { background: var(--bg-2); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
+.journal-total p { font-size: 14px; color: var(--text-2); margin-bottom: 8px; }
+.journal-total p strong { font-family: var(--font-display); font-size: 24px; color: var(--pine); }
+.journal-macros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; font-size: 13px; color: var(--text-2); }
+.journal-macros i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; }
+.journal-macros strong { display: block; color: var(--text-0); font-size: 14px; }
+.journal-empty { text-align: center; color: var(--text-3); font-size: 14px; padding: 16px 0; }
+.journal-list { list-style: none; margin: 0 0 12px; padding: 0; }
+.journal-list li { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.journal-time { color: var(--text-3); min-width: 40px; }
+.journal-name { flex: 1; color: var(--text-0); font-weight: 500; }
+.journal-kcal { color: var(--text-2); }
+.journal-del { background: none; border: none; font-size: 20px; color: var(--text-3); cursor: pointer; padding: 0 4px; }
+.journal-del:hover { color: var(--accent-red); }
+.journal-form { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; background: var(--bg-2); border-radius: 14px; padding: 14px; }
+.journal-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.journal-form .journal-field-wide { grid-column: 1 / -1; }
+.journal-form input { font: 500 14px var(--font-sans); padding: 8px 10px; border: 1.5px solid var(--border-accent); border-radius: 10px; background: var(--bg-1); color: var(--text-0); min-width: 0; }
+.journal-form-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
+.journal-add { width: 100%; padding: 12px; border-radius: 14px; border: 2px dashed var(--border-accent); background: none; font: 600 14px var(--font-sans); color: var(--brand); cursor: pointer; }
+@media (max-width: 560px) { .journal-form { grid-template-columns: 1fr 1fr; } }
+
+/* ── Calendar modals ── */
+.cal-modal-backdrop {
+  position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(27, 46, 34, 0.45);
+}
+.cal-modal {
+  width: 100%; max-height: 92vh; overflow-y: auto; background: var(--bg-1);
+  border: 1.5px solid var(--border); border-radius: 22px; padding: 22px 24px; box-shadow: var(--shadow-lg);
+}
+.cal-modal .btn-danger { color: var(--accent-red); border-color: rgba(200, 55, 45, 0.35); background: var(--bg-1); }
